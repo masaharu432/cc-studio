@@ -1,0 +1,127 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:#0d0e12; font-family:-apple-system,Segoe UI,Roboto,sans-serif; padding:40px; }
+  .grid { display:grid; grid-template-columns:repeat(3,260px); gap:48px 40px; justify-content:center; }
+  .cell { text-align:center; }
+  .cell svg { width:240px; height:240px; border-radius:54px; display:block; box-shadow:0 8px 30px rgba(0,0,0,.5); }
+  .lab { color:#c9ccd6; font-size:15px; margin-top:14px; font-weight:600; }
+  .sub { color:#7c8090; font-size:12px; margin-top:3px; }
+</style></head><body>
+<div class="grid">
+
+  <!-- 1. Parallel Lanes -->
+  <div class="cell">
+  <svg viewBox="0 0 512 512">
+    <defs><linearGradient id="bg1" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1b1d2b"/><stop offset="1" stop-color="#2a1f3d"/></linearGradient></defs>
+    <rect width="512" height="512" fill="url(#bg1)"/>
+    <g>
+      <rect x="120" y="150" width="270" height="34" rx="17" fill="#FF6B6B"/>
+      <rect x="120" y="206" width="200" height="34" rx="17" fill="#FFB454"/>
+      <rect x="120" y="262" width="245" height="34" rx="17" fill="#2DD4BF"/>
+      <rect x="120" y="318" width="160" height="34" rx="17" fill="#A78BFA"/>
+      <circle cx="120" cy="167" r="9" fill="#fff"/>
+      <circle cx="120" cy="223" r="9" fill="#fff"/>
+      <circle cx="120" cy="279" r="9" fill="#fff"/>
+      <circle cx="120" cy="335" r="9" fill="#fff"/>
+    </g>
+  </svg>
+  <div class="lab">1. Parallel Lanes</div><div class="sub">並走するセッションの帯</div>
+  </div>
+
+  <!-- 2. Lanes + prompt > -->
+  <div class="cell">
+  <svg viewBox="0 0 512 512">
+    <defs><linearGradient id="bg2" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#11131c"/><stop offset="1" stop-color="#1a2740"/></linearGradient></defs>
+    <rect width="512" height="512" fill="url(#bg2)"/>
+    <path d="M120 168 L176 210 L120 252" fill="none" stroke="#38BDF8" stroke-width="26" stroke-linecap="round" stroke-linejoin="round"/>
+    <g>
+      <rect x="210" y="170" width="190" height="30" rx="15" fill="#FF6B6B"/>
+      <rect x="210" y="222" width="150" height="30" rx="15" fill="#FFB454"/>
+      <rect x="210" y="274" width="120" height="30" rx="15" fill="#2DD4BF"/>
+    </g>
+    <rect x="120" y="300" width="80" height="30" rx="15" fill="#A78BFA"/>
+  </svg>
+  <div class="lab">2. Prompt + Lanes</div><div class="sub">ターミナル感を1案に</div>
+  </div>
+
+  <!-- 3. Constellation / conductor -->
+  <div class="cell">
+  <svg viewBox="0 0 512 512">
+    <defs>
+      <radialGradient id="bg3" cx="0.5" cy="0.4" r="0.8">
+        <stop offset="0" stop-color="#2b2350"/><stop offset="1" stop-color="#120f1e"/></radialGradient>
+      <radialGradient id="core3" cx="0.5" cy="0.5" r="0.5">
+        <stop offset="0" stop-color="#fff"/><stop offset="0.5" stop-color="#FFB454"/><stop offset="1" stop-color="#FF6B6B"/></radialGradient>
+    </defs>
+    <rect width="512" height="512" fill="url(#bg3)"/>
+    <g stroke="#5a5f80" stroke-width="5" opacity="0.7">
+      <line x1="256" y1="256" x2="146" y2="160"/>
+      <line x1="256" y1="256" x2="372" y2="172"/>
+      <line x1="256" y1="256" x2="150" y2="356"/>
+      <line x1="256" y1="256" x2="370" y2="350"/>
+    </g>
+    <circle cx="146" cy="160" r="26" fill="#2DD4BF"/>
+    <circle cx="372" cy="172" r="26" fill="#A78BFA"/>
+    <circle cx="150" cy="356" r="26" fill="#FFB454"/>
+    <circle cx="370" cy="350" r="26" fill="#38BDF8"/>
+    <circle cx="256" cy="256" r="46" fill="url(#core3)"/>
+  </svg>
+  <div class="lab">3. Constellation</div><div class="sub">中心から束ねて指揮する</div>
+  </div>
+
+  <!-- 4. Studio desk dots -->
+  <div class="cell">
+  <svg viewBox="0 0 512 512">
+    <defs><linearGradient id="bg4" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#241a2e"/><stop offset="1" stop-color="#10131c"/></linearGradient></defs>
+    <rect width="512" height="512" fill="url(#bg4)"/>
+    <g stroke="#3a3550" stroke-width="6">
+      <line x1="146" y1="120" x2="146" y2="392"/>
+      <line x1="216" y1="120" x2="216" y2="392"/>
+      <line x1="286" y1="120" x2="286" y2="392"/>
+      <line x1="356" y1="120" x2="356" y2="392"/>
+    </g>
+    <circle cx="146" cy="200" r="22" fill="#FF6B6B"/>
+    <circle cx="216" cy="300" r="22" fill="#FFB454"/>
+    <circle cx="286" cy="170" r="22" fill="#2DD4BF"/>
+    <circle cx="356" cy="280" r="22" fill="#A78BFA"/>
+  </svg>
+  <div class="lab">4. Studio Desk</div><div class="sub">卓のフェーダー（抽象）</div>
+  </div>
+
+  <!-- 5. CC monogram -->
+  <div class="cell">
+  <svg viewBox="0 0 512 512">
+    <defs><linearGradient id="bg5" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#FF7E5F"/><stop offset="1" stop-color="#A24BCF"/></linearGradient></defs>
+    <rect width="512" height="512" fill="url(#bg5)"/>
+    <g fill="none" stroke="#fff" stroke-width="40" stroke-linecap="round">
+      <path d="M250 150 A106 106 0 1 0 250 362"/>
+      <path d="M322 150 A106 106 0 1 0 322 362" opacity="0.55"/>
+    </g>
+  </svg>
+  <div class="lab">5. CC Monogram</div><div class="sub">名前そのまま・無難な保険</div>
+  </div>
+
+  <!-- 6. Lanes-as-play (hybrid orchestration) -->
+  <div class="cell">
+  <svg viewBox="0 0 512 512">
+    <defs><linearGradient id="bg6" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0f1320"/><stop offset="1" stop-color="#241433"/></linearGradient></defs>
+    <rect width="512" height="512" fill="url(#bg6)"/>
+    <g>
+      <rect x="110" y="158" width="180" height="32" rx="16" fill="#FF6B6B"/>
+      <rect x="110" y="210" width="292" height="32" rx="16" fill="#FFB454"/>
+      <rect x="110" y="262" width="150" height="32" rx="16" fill="#2DD4BF"/>
+      <rect x="110" y="314" width="240" height="32" rx="16" fill="#A78BFA"/>
+    </g>
+    <path d="M335 142 L335 222 L398 182 Z" fill="#fff"/>
+  </svg>
+  <div class="lab">6. Lanes + Play</div><div class="sub">1の派生・「回す」を強調</div>
+  </div>
+
+</div>
+</body></html>

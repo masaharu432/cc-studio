@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 13+ テーマアイコン用のモノクロ版 (システムが単色でティントする)。色以外は前景と同形。 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:pathData="M25,40.6 L37.6,50.4 L25,60.3"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="6"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+    <path android:pathData="M46.87,34.85 L79.57,34.85"
+        android:strokeColor="#FFFFFFFF" android:strokeWidth="6.7" android:strokeLineCap="round" />
+    <path android:pathData="M46.87,45.49 L69.33,45.49"
+        android:strokeColor="#FFFFFFFF" android:strokeWidth="6.7" android:strokeLineCap="round" />
+    <path android:pathData="M46.87,56.13 L76.02,56.13"
+        android:strokeColor="#FFFFFFFF" android:strokeWidth="6.7" android:strokeLineCap="round" />
+    <path android:pathData="M36.82,70.11 Q51.0,77.2 65.19,70.11"
+        android:strokeColor="#FFFFFFFF" android:strokeWidth="6.3" android:strokeLineCap="round" />
+</vector>

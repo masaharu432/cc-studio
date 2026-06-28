@@ -1,0 +1,71 @@
+plugins {
+    id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
+}
+
+// ビルドごとに一意な番号（ビルド時刻 yyMMdd-HHmm）。これが唯一の版数。APK 名と build チップに出す。
+def buildTime = new Date()
+def buildLabel = buildTime.format('yyMMdd-HHmm')
+// versionCode はビルド時刻（エポックからの分）から採番＝ビルドごとに必ず増える。
+// これでタップ更新でも「より新しい版」と判定され、古いアプリを確実に置き換える。Int に収まる。
+def buildCode = (int)(buildTime.time / 60000L)
+
+// 既定で開くワークベンチ URL。個人のホストはコミットしない（OSS 汎用）。
+// 実値は gitignore 済みの local.properties に `ccstudio.targetUrl=https://<host>/?folder=<path>`
+// を書くか、`-Pccstudio.targetUrl=...` で渡す。未設定なら中立なプレースホルダにフォールバック。
+def localProps = new Properties()
+def localPropsFile = rootProject.file('local.properties')
+if (localPropsFile.exists()) { localPropsFile.withInputStream { localProps.load(it) } }
+def targetUrl = localProps.getProperty('ccstudio.targetUrl') ?:
+        (project.findProperty('ccstudio.targetUrl') ?: 'https://localhost/')
+
+android {
+    namespace 'app.ccstudio'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "app.ccstudio"
+        minSdk 26
+        targetSdk 34
+        versionCode buildCode
+        versionName buildLabel
+        buildConfigField "String", "BUILD_LABEL", "\"${buildLabel}\""
+        buildConfigField "String", "TARGET_URL", "\"${targetUrl}\""
+    }
+
+    buildFeatures {
+        buildConfig true
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    kotlinOptions {
+        jvmTarget = '17'
+    }
+
+    // APK ファイル名に versionName(ビルド番号入り) を埋める。
+    applicationVariants.all { variant ->
+        variant.outputs.all { output ->
+            outputFileName = "cc-studio-${variant.name}-${buildLabel}.apk"
+        }
+    }
+}
+
+dependencies {
+    implementation 'androidx.core:core-ktx:1.13.1'
+    implementation 'androidx.appcompat:appcompat:1.7.0'
+    // addDocumentStartJavaScript（全フレーム×document-start 注入）に使う。
+    // ブラウザ拡張の content script(all_frames/document_start) と等価な注入を実現する。
+    implementation 'androidx.webkit:webkit:1.11.0'
+
+    // 純ロジック（メタ解析・URL/永続化・JSON 構築）の JVM ユニットテスト。
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.json:json:20240303'
+}

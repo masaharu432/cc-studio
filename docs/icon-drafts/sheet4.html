@@ -1,0 +1,70 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:#0d0e12; font-family:-apple-system,Segoe UI,Roboto,sans-serif; padding:40px; }
+  .grid { display:grid; grid-template-columns:repeat(2,300px); gap:52px 56px; justify-content:center; }
+  .cell { text-align:center; }
+  .cell svg { width:280px; height:280px; border-radius:62px; display:block; box-shadow:0 8px 30px rgba(0,0,0,.5); }
+  .lab { color:#c9ccd6; font-size:16px; margin-top:16px; font-weight:600; }
+  .sub { color:#7c8090; font-size:13px; margin-top:3px; }
+  .defs { position:absolute; width:0; height:0; }
+</style></head><body>
+<svg class="defs"><defs><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+  <stop offset="0" stop-color="#11131c"/><stop offset="1" stop-color="#1a2740"/></linearGradient></defs></svg>
+<div class="grid">
+
+  <!-- shared face: eye + 3 lanes; vary mouth center -->
+  <!-- 1: center x=250 -->
+  <div class="cell">
+  <svg viewBox="0 0 512 512">
+    <rect width="512" height="512" fill="url(#bg)"/>
+    <path d="M118 196 L182 246 L118 296" fill="none" stroke="#38BDF8" stroke-width="30" stroke-linecap="round" stroke-linejoin="round"/>
+    <rect x="212" y="150" width="200" height="34" rx="17" fill="#FF6B6B"/>
+    <rect x="212" y="204" width="148" height="34" rx="17" fill="#FFB454"/>
+    <rect x="212" y="258" width="182" height="34" rx="17" fill="#2DD4BF"/>
+    <path d="M178 346 Q250 382 322 346" fill="none" stroke="#A78BFA" stroke-width="32" stroke-linecap="round"/>
+  </svg>
+  <div class="lab">1. 中央(250)</div><div class="sub">マーク全体の中心あたり</div>
+  </div>
+
+  <!-- 2: center x=224 -->
+  <div class="cell">
+  <svg viewBox="0 0 512 512">
+    <rect width="512" height="512" fill="url(#bg)"/>
+    <path d="M118 196 L182 246 L118 296" fill="none" stroke="#38BDF8" stroke-width="30" stroke-linecap="round" stroke-linejoin="round"/>
+    <rect x="212" y="150" width="200" height="34" rx="17" fill="#FF6B6B"/>
+    <rect x="212" y="204" width="148" height="34" rx="17" fill="#FFB454"/>
+    <rect x="212" y="258" width="182" height="34" rx="17" fill="#2DD4BF"/>
+    <path d="M152 346 Q224 382 296 346" fill="none" stroke="#A78BFA" stroke-width="32" stroke-linecap="round"/>
+  </svg>
+  <div class="lab">2. やや左(224)</div><div class="sub">目の真下に寄せる</div>
+  </div>
+
+  <!-- 3: center x=204 (under eye) -->
+  <div class="cell">
+  <svg viewBox="0 0 512 512">
+    <rect width="512" height="512" fill="url(#bg)"/>
+    <path d="M118 196 L182 246 L118 296" fill="none" stroke="#38BDF8" stroke-width="30" stroke-linecap="round" stroke-linejoin="round"/>
+    <rect x="212" y="150" width="200" height="34" rx="17" fill="#FF6B6B"/>
+    <rect x="212" y="204" width="148" height="34" rx="17" fill="#FFB454"/>
+    <rect x="212" y="258" width="182" height="34" rx="17" fill="#2DD4BF"/>
+    <path d="M132 346 Q204 382 276 346" fill="none" stroke="#A78BFA" stroke-width="32" stroke-linecap="round"/>
+  </svg>
+  <div class="lab">3. 左(204)</div><div class="sub">ほぼ目の真下</div>
+  </div>
+
+  <!-- 4: center x=224, bigger grin -->
+  <div class="cell">
+  <svg viewBox="0 0 512 512">
+    <rect width="512" height="512" fill="url(#bg)"/>
+    <path d="M118 196 L182 246 L118 296" fill="none" stroke="#38BDF8" stroke-width="30" stroke-linecap="round" stroke-linejoin="round"/>
+    <rect x="212" y="150" width="200" height="34" rx="17" fill="#FF6B6B"/>
+    <rect x="212" y="204" width="148" height="34" rx="17" fill="#FFB454"/>
+    <rect x="212" y="258" width="182" height="34" rx="17" fill="#2DD4BF"/>
+    <path d="M146 340 Q224 402 302 340" fill="none" stroke="#A78BFA" stroke-width="34" stroke-linecap="round"/>
+  </svg>
+  <div class="lab">4. やや左 × 笑顔大</div><div class="sub">224中心でしっかり笑う</div>
+  </div>
+
+</div>
+</body></html>

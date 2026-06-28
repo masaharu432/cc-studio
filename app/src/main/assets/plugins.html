@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Plugins</title>
+<style>
+  :root{
+    --chassis:#11151C; --module:#1B222E; --line:#2A3342; --ink:#E8EDF4; --dim:#7C8694;
+    --brand:#2E90E8; --brand-soft:#8FC2F2; --live:#3FD79A; --live-dim:#1f6d52;
+    --sans:-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+    --mono:ui-monospace,"Roboto Mono","JetBrains Mono",Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{background:var(--chassis);color:var(--ink);font-family:var(--sans)}
+  .screen{height:100%;display:flex;flex-direction:column}
+  .bar{display:flex;align-items:center;gap:10px;padding:16px 16px 12px;border-bottom:1px solid var(--line);flex:0 0 auto;
+    padding-top:calc(16px + env(safe-area-inset-top))}
+  .title{font:600 13px/1 var(--mono);letter-spacing:.24em;color:var(--dim);text-transform:uppercase}
+  .build{margin-left:auto;font:500 10px/1 var(--mono);color:var(--brand-soft);background:#0e1620;
+    border:1px solid var(--line);padding:6px 8px;border-radius:7px;white-space:nowrap}
+  .navback{border:1px solid var(--line);background:transparent;color:var(--dim);border-radius:8px;
+    font:600 12px/1 var(--sans);padding:7px 10px 7px 8px;cursor:pointer;display:inline-flex;align-items:center;gap:5px}
+  .navback .chev{font-size:14px;color:var(--brand-soft)}
+  .summary{padding:11px 18px;font:500 11px/1 var(--mono);color:var(--dim);flex:0 0 auto}
+  .summary b{color:var(--ink);font-weight:700}
+  .pl-body{flex:1;overflow:auto;padding:6px 16px calc(20px + env(safe-area-inset-bottom))}
+  .bus{position:relative;padding-left:26px;display:flex;flex-direction:column;gap:11px;margin-top:6px}
+  .bus::before{content:"";position:absolute;left:8px;top:10px;bottom:10px;width:2px;background:var(--line);border-radius:2px}
+  .mod{position:relative;display:flex;flex-direction:column;gap:9px;background:var(--module);border:1px solid var(--line);
+    border-radius:13px;padding:13px 13px 12px 15px}
+  .mod::before{content:"";position:absolute;left:-18px;top:50%;width:18px;height:2px;background:var(--line);transform:translateY(-1px)}
+  .mod::after{content:"";position:absolute;left:-21px;top:50%;width:9px;height:9px;border-radius:50%;background:var(--line);
+    transform:translate(-1px,-50%);border:2px solid var(--chassis)}
+  .mod.on{border-color:#244b3f;box-shadow:inset 3px 0 0 var(--live)}
+  .mod.on::before{background:var(--live)}
+  .mod.on::after{background:var(--live);box-shadow:0 0 10px var(--live-dim)}
+  .mod-top{display:flex;align-items:center;gap:10px}
+  .mod-id{flex:1;min-width:0;display:flex;align-items:center;gap:8px}
+  .mod-name{font:600 14px/1.2 var(--sans);color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+  .ver{flex:0 0 auto;font:600 10px/1 var(--mono);color:var(--brand-soft);background:#0e1620;border:1px solid var(--line);
+    border-radius:5px;padding:4px 6px}
+  .mod-desc{font:500 11.5px/1.5 var(--sans);color:var(--dim)}
+  .mod-foot{display:flex;align-items:center;gap:10px;margin-top:1px}
+  .mod-meta{flex:1;min-width:0;font:500 10.5px/1.3 var(--mono);color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .mod-meta .st{letter-spacing:.08em}.mod.on .mod-meta .st{color:var(--live);font-weight:700}
+  .mod-actions{display:flex;gap:8px;flex:0 0 auto}
+  .iconbtn{width:40px;height:40px;border-radius:9px;border:1px solid var(--line);background:#161b24;color:var(--dim);
+    font-size:15px;cursor:pointer;display:grid;place-items:center;transition:background .15s,color .15s,border-color .15s}
+  .iconbtn.gear:hover{background:#0e1c2b;border-color:#1c4368;color:var(--brand-soft)}
+  .iconbtn.del:hover{background:#2a1512;border-color:#5e2a23;color:#e8897e}
+  .tgl{appearance:none;border:0;cursor:pointer;flex:0 0 auto;width:46px;height:26px;border-radius:99px;background:#2b3342;position:relative;transition:background .18s}
+  .tgl .knob{position:absolute;top:2.5px;left:2.5px;width:21px;height:21px;border-radius:50%;background:#aeb7c4;transition:transform .18s,background .18s}
+  .tgl[aria-pressed="true"]{background:var(--live-dim)}
+  .tgl[aria-pressed="true"] .knob{transform:translateX(20px);background:var(--live)}
+  .add{width:100%;margin:6px 0 4px;border:1px solid #1c6fc0;background:var(--brand);color:#fff;border-radius:11px;
+    padding:14px 12px;font:600 13px/1 var(--sans);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:8px}
+  .empty{padding:24px 8px 16px;text-align:center;color:var(--dim)}
+  .empty .plug{width:46px;height:46px;margin:0 auto 14px;border-radius:13px;display:grid;place-items:center;border:1.5px dashed #33405a;color:var(--brand-soft);font-size:20px;background:#0e1620}
+  .empty h3{margin:0 0 6px;font:600 14px/1.3 var(--sans);color:var(--ink)}
+  .empty p{margin:0 auto 16px;max-width:30ch;font:12px/1.55 var(--sans)}
+  .sect{margin-top:22px;border-top:1px solid var(--line);padding-top:16px}
+  .sect-h{font:700 10px/1 var(--mono);letter-spacing:.2em;text-transform:uppercase;color:var(--dim);margin:0 0 12px}
+  .row{display:flex;align-items:center;gap:12px;padding:4px 0}
+  .row .ic{width:30px;height:30px;border-radius:8px;display:grid;place-items:center;background:#0e1620;border:1px solid var(--line);color:var(--brand-soft);flex:0 0 auto}
+  .row-main{flex:1;min-width:0}
+  .row-t{font:600 13px/1.2 var(--sans);color:var(--ink)}
+  .row-d{font:500 10.5px/1.4 var(--mono);color:var(--dim);margin-top:4px}
+  @media (prefers-reduced-motion:reduce){.tgl,.tgl .knob,.iconbtn{transition:none}}
+</style>
+</head>
+<body>
+  <div class="screen">
+    <div class="bar">
+      <button class="navback" id="back"><span class="chev">‹</span>Screens</button>
+      <span class="title">Plugins</span><span class="build" id="build"></span>
+    </div>
+    <div class="summary" id="summary"></div>
+    <div class="pl-body">
+      <button class="add" id="add">＋ Add plugin</button>
+      <div class="bus" id="bus"></div>
+      <div class="sect"><p class="sect-h">About</p>
+        <div class="row"><div class="ic">▍</div><div class="row-main">
+          <div class="row-t">CC Studio</div><div class="row-d" id="about"></div></div></div>
+        <div class="row"><div class="ic">⌁</div><div class="row-main">
+          <div class="row-t">有効なプラグインは全フレームに常駐</div>
+          <div class="row-d">ON にした時点で以後の全ロード×全フレームに注入</div></div></div>
+      </div>
+    </div>
+  </div>
+<script>
+  function api(){ return window.CCStudio || {}; }
+  function el(t,c){ var e=document.createElement(t); if(c) e.className=c; return e; }
+  function fmtSize(b){ b=+b||0; return b<1024? b+' B':(b/1024).toFixed(1)+' KB'; }
+  function plugins(){ try{ return JSON.parse(api().listPlugins()||'[]'); }catch(_){ return []; } }
+
+  function makeMod(p){
+    var on=!!p.enabled;
+    var mod=el('div','mod'+(on?' on':''));
+    var top=el('div','mod-top');
+    var idw=el('div','mod-id');
+    var nm=el('span','mod-name'); nm.textContent=p.displayName||p.name; idw.appendChild(nm);
+    if(p.version){ var v=el('span','ver'); v.textContent='v'+p.version; idw.appendChild(v); }
+    var tgl=el('button','tgl'); tgl.setAttribute('aria-pressed', on?'true':'false');
+    tgl.appendChild(el('span','knob'));
+    tgl.addEventListener('click',function(){ try{ api().setEnabled(p.name,!on); }catch(_){ } render(); });
+    top.appendChild(idw); top.appendChild(tgl);
+    mod.appendChild(top);
+    if(p.description){ var desc=el('div','mod-desc'); desc.textContent=p.description; mod.appendChild(desc); }
+    var foot=el('div','mod-foot');
+    var meta=el('div','mod-meta'); meta.innerHTML=fmtSize(p.size)+' · <span class="st">'+(on?'ON':'OFF')+'</span> · all frames';
+    var acts=el('div','mod-actions');
+    if(p.hasSettings){
+      var g=el('button','iconbtn gear'); g.textContent='⚙'; g.title='このプラグインの設定';
+      acts.appendChild(g); // 設定の実体は将来フェーズ
+    }
+    var del=el('button','iconbtn del'); del.textContent='✕'; del.title='削除';
+    del.addEventListener('click',function(){
+      if(confirm('「'+(p.displayName||p.name)+'」を削除しますか？')){ try{ api().removePlugin(p.name); }catch(_){ } render(); }
+    });
+    acts.appendChild(del);
+    foot.appendChild(meta); foot.appendChild(acts);
+    mod.appendChild(foot);
+    return mod;
+  }
+
+  function emptyState(){
+    var w=el('div','empty');
+    w.innerHTML='<div class="plug">⌁</div><h3>No plugins yet</h3>'+
+      '<p>.js ファイルを追加すると、各スクリーンに注入できます。</p>';
+    return w;
+  }
+
+  window.__ccRenderPlugins=function(){
+    var list=plugins(); var bus=document.getElementById('bus'); bus.innerHTML='';
+    if(!list.length){ bus.appendChild(emptyState()); }
+    else { list.forEach(function(p){ bus.appendChild(makeMod(p)); }); }
+    var en=list.filter(function(p){return p.enabled;}).length;
+    document.getElementById('summary').innerHTML='<b>'+list.length+'</b> installed · <span style="color:#3FD79A;font-weight:700;">'+en+' enabled</span>';
+    var b=''; try{ b=(api().getBuild&&api().getBuild())||''; }catch(_){ }
+    document.getElementById('build').textContent='build '+b;
+    document.getElementById('about').textContent='build '+b;
+  };
+  function render(){ window.__ccRenderPlugins(); }
+  document.getElementById('add').addEventListener('click',function(){ try{ api().pickPlugin(); }catch(_){ } });
+  document.getElementById('back').addEventListener('click',function(){ try{ api().openSwitcher(); }catch(_){ } });
+  document.addEventListener('DOMContentLoaded', window.__ccRenderPlugins);
+</script>
+</body>
+</html>

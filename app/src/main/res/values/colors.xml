@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 通知の小アイコンの背景アクセント色（cc-web のティール系） -->
+    <color name="keepalive_accent">#FF0E8A7A</color>
+</resources>

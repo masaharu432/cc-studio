@@ -1,0 +1,12 @@
+.gradle/
+build/
+app/build/
+local.properties
+*.apk
+.idea/
+
+# design preview renders (local only)
+docs/design/previews/
+
+# personal token list for check-clean.sh (local only)
+scripts/personal-tokens.txt

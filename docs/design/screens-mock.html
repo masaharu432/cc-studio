@@ -1,0 +1,439 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CC Studio — Screens (switcher + plugins) mock</title>
+<style>
+  :root{
+    --chassis:#11151C;   /* near-black body */
+    --module:#1B222E;    /* card / band surface */
+    --line:#2A3342;      /* hairlines */
+    --ink:#E8EDF4;       /* primary text */
+    --dim:#7C8694;       /* secondary text */
+    --brand:#2E90E8;     /* blue = ACTIVE screen / nav */
+    --brand-soft:#8FC2F2;
+    --live:#3FD79A;      /* emerald = ENABLED plugin only */
+    --live-dim:#1f6d52;
+    --sans:-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+    --mono:ui-monospace,"Roboto Mono","JetBrains Mono",Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:radial-gradient(120% 80% at 50% -10%,#19212e,#0a0d12 60%);
+    color:var(--ink);font-family:var(--sans);min-height:100vh;padding:40px 20px 64px}
+  .head{max-width:980px;margin:0 auto 30px}
+  .eyebrow{font:600 11px/1 var(--mono);letter-spacing:.22em;text-transform:uppercase;color:var(--brand-soft);margin:0 0 12px}
+  h1{font:600 27px/1.2 var(--sans);margin:0 0 10px;letter-spacing:-.01em}
+  .head p{margin:0;color:var(--dim);font:14px/1.6 var(--sans);max-width:64ch}
+  .legend{display:flex;gap:18px;flex-wrap:wrap;margin-top:16px;font:600 11px/1 var(--mono);color:var(--dim)}
+  .legend b{display:inline-flex;align-items:center;gap:7px;font-weight:600}
+  .dot{width:9px;height:9px;border-radius:50%}
+  .dot.brand{background:var(--brand)} .dot.live{background:var(--live)} .dot.off{background:#3a4456}
+
+  .gallery{display:flex;gap:34px;justify-content:center;flex-wrap:wrap;align-items:flex-start}
+  .col{display:flex;flex-direction:column;align-items:center;gap:12px}
+  .cap{font:600 11px/1 var(--mono);letter-spacing:.08em;color:var(--dim)}
+  .cap b{color:var(--ink)}
+
+  /* phone frame */
+  .phone{width:380px;height:760px;border-radius:34px;background:#05070a;padding:11px;
+    box-shadow:0 40px 90px -40px rgba(0,0,0,.9),inset 0 0 0 1px #20262f;position:relative}
+  .screen{width:100%;height:100%;border-radius:25px;overflow:hidden;background:var(--chassis);display:flex;flex-direction:column;position:relative}
+
+  /* ── shared chrome ── */
+  .bar{display:flex;align-items:center;gap:10px;padding:16px 16px 12px;border-bottom:1px solid var(--line);flex:0 0 auto}
+  .wordmark{font:600 13px/1 var(--mono);letter-spacing:.14em;display:inline-flex;align-items:center;color:var(--ink)}
+  .wordmark i{color:var(--brand);margin:0 4px;font-style:normal}
+  .title{font:600 13px/1 var(--mono);letter-spacing:.24em;color:var(--dim);text-transform:uppercase}
+  .build{margin-left:auto;font:500 10px/1 var(--mono);color:var(--brand-soft);background:#0e1620;
+    border:1px solid var(--line);padding:6px 8px;border-radius:7px;white-space:nowrap}
+  .navback{border:1px solid var(--line);background:transparent;color:var(--dim);border-radius:8px;
+    font:600 12px/1 var(--sans);padding:7px 10px 7px 8px;cursor:pointer;display:inline-flex;align-items:center;gap:5px}
+  .navback .chev{font-size:14px;color:var(--brand-soft)}
+  .summary{padding:11px 18px;font:500 11px/1 var(--mono);color:var(--dim);flex:0 0 auto}
+  .summary b{color:var(--ink);font-weight:700}
+  .summary .en{color:var(--live);font-weight:700}
+  .summary .ac{color:var(--brand-soft);font-weight:700}
+
+  /* ============ SWITCHER — vertical band list (no thumbnails) ============ */
+  .sw-body{flex:1;overflow:auto;padding:4px 16px 14px;display:flex;flex-direction:column;gap:9px}
+  .band{position:relative;display:flex;align-items:center;gap:12px;border:1px solid var(--line);border-radius:12px;
+    padding:12px 10px 12px 14px;background:var(--module);cursor:pointer;flex:0 0 auto}
+  .band .fdot{width:8px;height:8px;border-radius:50%;background:var(--dim);flex:0 0 auto}
+  .band-main{flex:1;min-width:0}
+  .band-name{font:600 13.5px/1.2 var(--sans);color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .band-path{font:500 10.5px/1.3 var(--mono);color:var(--dim);margin-top:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .band-x{width:24px;height:24px;border-radius:6px;border:0;background:transparent;color:var(--dim);font-size:13px;cursor:pointer;flex:0 0 auto}
+  .band-x:hover{background:#23120f;color:#e8897e}
+  .band.active{border-color:var(--brand);box-shadow:inset 3px 0 0 var(--brand)}
+  .band.active .fdot{background:var(--brand);box-shadow:0 0 0 3px rgba(46,144,232,.22)}
+  .band.active .tag{margin-left:auto;font:700 8px/1 var(--mono);letter-spacing:.12em;color:#fff;background:var(--brand);
+    padding:4px 6px;border-radius:5px;flex:0 0 auto}
+  .band.new{justify-content:center;border-style:dashed;border-color:#33405a;color:var(--brand-soft);
+    font:600 11px/1 var(--sans);letter-spacing:.04em;text-transform:uppercase;gap:8px;padding:15px 10px}
+  .band.new .plus{font-size:17px}
+  /* per-screen actions: reload (apply plugin changes) + close. tapping the band body just switches. */
+  .band-actions{display:flex;align-items:center;gap:7px;flex:0 0 auto}
+  .bicon{width:38px;height:38px;border-radius:9px;border:1px solid var(--line);background:#161b24;color:var(--dim);
+    font-size:15px;display:grid;place-items:center;cursor:pointer;transition:background .15s,color .15s,border-color .15s}
+  .bicon.reload{color:var(--brand-soft)}
+  .bicon.reload:hover{background:#0e1c2b;border-color:#1c4368}
+  /* stale = loaded before the latest plugin change; reload to pick it up (your call — skip busy screens) */
+  .bicon.reload.stale{background:var(--brand);border-color:#1c6fc0;color:#fff}
+  .bicon.close:hover{background:#2a1512;border-color:#5e2a23;color:#e8897e}
+  @media (prefers-reduced-motion:reduce){.bicon{transition:none}}
+  .subnote{padding:0 18px 8px;font:500 10px/1.5 var(--mono);color:#5d6675;flex:0 0 auto}
+  /* swipe-to-delete: a Screen is removed in two steps — swipe left, then tap 削除 (no accidental close) */
+  .band-row{position:relative;overflow:hidden;border-radius:12px;flex:0 0 auto}
+  .band-row .band{transition:transform .2s}
+  .swipe-del{position:absolute;top:0;right:0;bottom:0;width:96px;border:0;cursor:pointer;border-radius:12px;
+    background:linear-gradient(180deg,#8f2f27,#722019);color:#fff;display:flex;flex-direction:column;align-items:center;
+    justify-content:center;gap:4px;font:600 12.5px/1 var(--sans)}
+  .swipe-del .x{font-size:15px}
+  .band-row.swiped .band{transform:translateX(-104px)}
+  @media (prefers-reduced-motion:reduce){.band-row .band{transition:none}}
+
+  /* pinned, non-closable system bands — same vocabulary, emerald rail + anchor */
+  .dock{flex:0 0 auto;padding:11px 16px calc(13px + env(safe-area-inset-bottom));border-top:1px solid var(--line);
+    background:linear-gradient(180deg,#10141b,#0c0f15);display:flex;flex-direction:column;gap:8px}
+  .dock-h{font:700 9px/1 var(--mono);letter-spacing:.2em;text-transform:uppercase;color:#5d6675;margin:2px 2px 0}
+  .band.sys{cursor:pointer;border-color:#244b3f;box-shadow:inset 3px 0 0 var(--live);background:var(--module)}
+  .band.sys.soon{cursor:default;border-color:var(--line);box-shadow:inset 3px 0 0 #3a4456;opacity:.72}
+  .band.sys.soon .sic{color:var(--dim)}
+  .band.sys .soon-tag{margin-left:auto;font:700 8px/1 var(--mono);letter-spacing:.1em;color:#5d6675;
+    border:1px dashed #33405a;border-radius:5px;padding:4px 6px;flex:0 0 auto}
+  .band.sys .sic{width:30px;height:30px;border-radius:8px;display:grid;place-items:center;flex:0 0 auto;
+    background:#0e1620;border:1px solid var(--line);color:var(--live);font-size:16px}
+  .band.sys .band-name{color:var(--ink)}
+  .band.sys .band-meta{font:500 10.5px/1 var(--mono);color:var(--dim);margin-top:5px}
+  .band.sys .band-meta .en{color:var(--live);font-weight:700}
+  .band.sys .anchor{flex:0 0 auto;width:28px;height:28px;border-radius:7px;display:grid;place-items:center;color:var(--dim);
+    font-size:13px;border:1px dashed #33405a}
+
+  /* ============ PLUGINS SCREEN ============ */
+  .pl-body{flex:1;overflow:auto;padding:6px 16px 20px}
+  .bus{position:relative;padding-left:26px;display:flex;flex-direction:column;gap:11px;margin-top:6px}
+  .bus::before{content:"";position:absolute;left:8px;top:10px;bottom:10px;width:2px;background:var(--line);border-radius:2px}
+  .mod{position:relative;display:flex;flex-direction:column;gap:9px;background:var(--module);border:1px solid var(--line);
+    border-radius:13px;padding:13px 13px 12px 15px}
+  .mod::before{content:"";position:absolute;left:-18px;top:50%;width:18px;height:2px;background:var(--line);transform:translateY(-1px)}
+  .mod::after{content:"";position:absolute;left:-21px;top:50%;width:9px;height:9px;border-radius:50%;background:var(--line);
+    transform:translate(-1px,-50%);border:2px solid var(--chassis)}
+  .mod.on{border-color:#244b3f;box-shadow:inset 3px 0 0 var(--live)}
+  .mod.on::before{background:var(--live)}
+  .mod.on::after{background:var(--live);box-shadow:0 0 10px var(--live-dim)}
+  /* live pulse traveling the enabled connector */
+  .mod.on .spark{position:absolute;left:-18px;top:18px;width:5px;height:5px;border-radius:50%;background:#bfffe4;
+    transform:translateY(-50%);animation:run 2.4s linear infinite;box-shadow:0 0 6px var(--live)}
+  @keyframes run{0%{left:-18px;opacity:0}15%{opacity:1}85%{opacity:1}100%{left:-2px;opacity:0}}
+  @media (prefers-reduced-motion:reduce){.mod.on .spark{animation:none;opacity:0}}
+  /* top: name + version + toggle */
+  .mod-top{display:flex;align-items:center;gap:10px}
+  .mod-id{flex:1;min-width:0;display:flex;align-items:center;gap:8px}
+  .mod-name{font:600 14px/1.2 var(--sans);color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+  .ver{flex:0 0 auto;font:600 10px/1 var(--mono);color:var(--brand-soft);background:#0e1620;border:1px solid var(--line);
+    border-radius:5px;padding:4px 6px}
+  .chip{flex:0 0 auto;font:600 9px/1 var(--mono);letter-spacing:.08em;color:var(--dim);border:1px solid var(--line);
+    border-radius:5px;padding:4px 5px}
+  .mod-desc{font:500 11.5px/1.5 var(--sans);color:var(--dim)}  /* 全文表示・カードが伸びるのは許容 */
+  /* foot: meta + per-plugin actions (settings / delete) */
+  .mod-foot{display:flex;align-items:center;gap:10px;margin-top:1px}
+  .mod-meta{flex:1;min-width:0;font:500 10.5px/1.3 var(--mono);color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .mod-meta .st{letter-spacing:.08em}.mod.on .mod-meta .st{color:var(--live);font-weight:700}
+  .mod-actions{display:flex;gap:8px;flex:0 0 auto}
+  .iconbtn{width:40px;height:40px;border-radius:9px;border:1px solid var(--line);background:#161b24;color:var(--dim);
+    font-size:15px;cursor:pointer;display:grid;place-items:center;transition:background .15s,color .15s,border-color .15s}
+  .iconbtn.gear:hover{background:#0e1c2b;border-color:#1c4368;color:var(--brand-soft)}
+  .iconbtn.del:hover{background:#2a1512;border-color:#5e2a23;color:#e8897e}
+  .tgl{appearance:none;border:0;cursor:pointer;flex:0 0 auto;width:46px;height:26px;border-radius:99px;background:#2b3342;position:relative;transition:background .18s}
+  .tgl .knob{position:absolute;top:2.5px;left:2.5px;width:21px;height:21px;border-radius:50%;background:#aeb7c4;transition:transform .18s,background .18s}
+  .tgl[aria-pressed="true"]{background:var(--live-dim)}
+  .tgl[aria-pressed="true"] .knob{transform:translateX(20px);background:var(--live)}
+  @media (prefers-reduced-motion:reduce){.tgl,.tgl .knob,.iconbtn{transition:none}}
+  .add{width:100%;margin-top:16px;border:1px solid #1c6fc0;background:var(--brand);color:#fff;border-radius:11px;
+    padding:14px 12px;font:600 13px/1 var(--sans);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:8px}
+
+  .sect{margin-top:22px;border-top:1px solid var(--line);padding-top:16px}
+  .sect-h{font:700 10px/1 var(--mono);letter-spacing:.2em;text-transform:uppercase;color:var(--dim);margin:0 0 12px}
+  .row{display:flex;align-items:center;gap:12px;padding:4px 0}
+  .row .ic{width:30px;height:30px;border-radius:8px;display:grid;place-items:center;background:#0e1620;border:1px solid var(--line);color:var(--brand-soft);flex:0 0 auto}
+  .row-main{flex:1;min-width:0}
+  .row-t{font:600 13px/1.2 var(--sans);color:var(--ink)}
+  .row-d{font:500 10.5px/1.4 var(--mono);color:var(--dim);margin-top:4px}
+
+  /* reload confirmation — warns that a running process on that screen will be interrupted */
+  .backdrop{position:absolute;inset:0;background:rgba(6,9,13,.66);display:flex;align-items:center;justify-content:center;padding:22px;z-index:20}
+  .dialog{width:100%;background:linear-gradient(180deg,#161d27,#11151c);border:1px solid var(--line);border-radius:16px;
+    padding:18px 16px 16px;box-shadow:0 30px 60px -20px rgba(0,0,0,.85)}
+  .dialog .dic{width:42px;height:42px;border-radius:11px;display:grid;place-items:center;background:#0e1620;
+    border:1px solid var(--line);color:var(--brand-soft);font-size:19px;margin-bottom:13px}
+  .dialog h3{margin:0 0 8px;font:600 16px/1.3 var(--sans);color:var(--ink)}
+  .dialog p{margin:0 0 16px;font:500 12.5px/1.65 var(--sans);color:var(--dim)}
+  .dialog p b{color:var(--ink);font-weight:700}
+  .dialog p .warn{color:#e8b07e}                 /* caution accent, reserved for interruption */
+  .dialog-actions{display:flex;gap:9px}
+  .dbtn{flex:1;border-radius:10px;padding:13px 10px;font:600 13px/1 var(--sans);cursor:pointer;border:1px solid var(--line)}
+  .dbtn.ghost{background:transparent;color:var(--dim)}
+  .dbtn.primary{background:var(--brand);border-color:#1c6fc0;color:#fff}
+
+  /* the floating spine button (︙) shown on every web screen */
+  .spine{position:absolute;left:0;bottom:21%;width:28px;height:80px;border:0;border-radius:0 12px 12px 0;
+    background:linear-gradient(180deg,#2E90E8,#1c6fc0);color:#fff;font-size:18px;box-shadow:2px 0 12px rgba(0,0,0,.5);z-index:5}
+</style>
+</head>
+<body>
+  <div class="head">
+    <p class="eyebrow">CC Studio · Screens</p>
+    <h1>すべては「スクリーン」。︙ は切り替えるだけ。</h1>
+    <p>各スクリーンは <b>別フォルダで開いた VS Code</b>。左端の <b>︙</b> から全画面オーバービューを開き、開いているフォルダで見分けて選ぶ。サムネイルは持たず<b>帯（行）でフォルダ名とパスを表示</b>、増えたら縦スクロール。<b>Plugins は最初から在る消せないシステムスクリーン</b>。<b>青＝アクティブなスクリーン／ナビ</b>、<b>エメラルド＝有効なプラグイン</b>に予約した信号色。</p>
+    <div class="legend">
+      <b><span class="dot brand"></span>アクティブスクリーン / ナビ</b>
+      <b><span class="dot live"></span>有効プラグイン（ON）</b>
+      <b><span class="dot off"></span>インストール済み・OFF</b>
+    </div>
+  </div>
+
+  <div class="gallery">
+
+    <!-- ===================== SWITCHER ===================== -->
+    <div class="col">
+      <div class="phone"><div class="screen">
+        <div class="bar">
+          <span class="wordmark">CC<i>▍</i>STUDIO</span>
+          <span class="title">Screens</span>
+          <span class="build">build 06‑28.4</span>
+        </div>
+        <div class="summary"><b>5</b> screens · <span class="ac">1 active</span></div>
+        <div class="subnote">タップで切替（そのまま）。⟳ でリロードして起動。左スワイプで削除。裏で実行中はそのまま。</div>
+
+        <div class="sw-body">
+          <div class="band-row">
+            <button class="swipe-del"><span class="x">✕</span>削除</button>
+            <div class="band active">
+              <span class="fdot"></span>
+              <div class="band-main">
+                <div class="band-name">cc-studio</div>
+                <div class="band-path"><repo-root>/…/mytools/cc-studio</div>
+              </div>
+              <button class="bicon reload" title="リロードして起動">⟳</button>
+            </div>
+          </div>
+
+          <!-- swiped open: step 2 of delete is revealed -->
+          <div class="band-row swiped">
+            <button class="swipe-del"><span class="x">✕</span>削除</button>
+            <div class="band">
+              <span class="fdot"></span>
+              <div class="band-main">
+                <div class="band-name">cc-web</div>
+                <div class="band-path"><repo-root>/…/mytools/cc-web</div>
+              </div>
+              <button class="bicon reload stale" title="プラグイン変更後 — リロードで反映">⟳</button>
+            </div>
+          </div>
+
+          <div class="band-row">
+            <button class="swipe-del"><span class="x">✕</span>削除</button>
+            <div class="band">
+              <span class="fdot"></span>
+              <div class="band-main">
+                <div class="band-name">cc-hub-project</div>
+                <div class="band-path"><repo-root>/…/cc-hub-project</div>
+              </div>
+              <button class="bicon reload stale" title="プラグイン変更後 — リロードで反映">⟳</button>
+            </div>
+          </div>
+
+          <div class="band-row">
+            <button class="swipe-del"><span class="x">✕</span>削除</button>
+            <div class="band">
+              <span class="fdot"></span>
+              <div class="band-main">
+                <div class="band-name">dotfiles</div>
+                <div class="band-path">$HOME/dotfiles</div>
+              </div>
+              <button class="bicon reload" title="リロードして起動">⟳</button>
+            </div>
+          </div>
+
+          <div class="band-row">
+            <button class="swipe-del"><span class="x">✕</span>削除</button>
+            <div class="band">
+              <span class="fdot"></span>
+              <div class="band-main">
+                <div class="band-name"><project></div>
+                <div class="band-path"><repo-root>/…/<project></div>
+              </div>
+              <button class="bicon reload" title="リロードして起動">⟳</button>
+            </div>
+          </div>
+
+          <div class="band new"><span class="plus">＋</span><span>New screen</span></div>
+        </div>
+
+        <!-- pinned, non-closable system screens — same band, emerald rail + anchor -->
+        <div class="dock">
+          <div class="dock-h">System</div>
+          <div class="band sys">
+            <div class="sic">⌁</div>
+            <div class="band-main">
+              <div class="band-name">Plugins</div>
+              <div class="band-meta">2 installed · <span class="en">1 enabled</span></div>
+            </div>
+            <div class="anchor" title="固定（消せません）">⚓</div>
+          </div>
+          <div class="band sys soon">
+            <div class="sic">🗂</div>
+            <div class="band-main">
+              <div class="band-name">Files</div>
+              <div class="band-meta">スマホ内のファイルを開く</div>
+            </div>
+            <div class="soon-tag">SOON</div>
+          </div>
+        </div>
+      </div></div>
+      <p class="cap"><b>Switcher</b> — ︙ overview · 帯リスト（縦スクロール）＋固定システム帯</p>
+    </div>
+
+    <!-- ===================== PLUGINS SCREEN ===================== -->
+    <div class="col">
+      <div class="phone"><div class="screen">
+        <div class="bar">
+          <button class="navback"><span class="chev">‹</span>Screens</button>
+          <span class="title">Plugins</span>
+          <span class="build">build 06‑28.4</span>
+        </div>
+        <div class="summary"><b>2</b> installed · <span class="en">1 enabled</span></div>
+
+        <div class="pl-body">
+          <div class="bus">
+            <div class="mod on">
+              <span class="spark"></span>
+              <div class="mod-top">
+                <div class="mod-id">
+                  <span class="mod-name">keyboard-suppress</span>
+                  <span class="ver">v1.2.0</span>
+                </div>
+                <button class="tgl" aria-pressed="true" title="有効 / 無効"><span class="knob"></span></button>
+              </div>
+              <div class="mod-desc">物理キーボードの自動表示を抑制する。エディタの入力欄やターミナルにフォーカスが移っても、ソフトウェアキーボード（IME）を勝手に開かせない。全フレームに document-start で常駐し、ページ自身のスクリプトより先にリスナを仕込む。</div>
+              <div class="mod-foot">
+                <div class="mod-meta">2.1 KB · <span class="st">ON</span> · all frames · document-start</div>
+                <div class="mod-actions">
+                  <button class="iconbtn gear" title="このプラグインの設定">⚙</button>
+                  <button class="iconbtn del" title="削除">✕</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="mod">
+              <div class="mod-top">
+                <div class="mod-id">
+                  <span class="mod-name">my-plugin.js</span>
+                  <span class="ver">v0.3.1</span>
+                </div>
+                <button class="tgl" aria-pressed="false" title="有効 / 無効"><span class="knob"></span></button>
+              </div>
+              <div class="mod-desc">自作のUI調整スクリプト。</div>
+              <div class="mod-foot">
+                <div class="mod-meta">4.8 KB · <span class="st">OFF</span></div>
+                <div class="mod-actions">
+                  <button class="iconbtn del" title="削除">✕</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <button class="add">＋ Add plugin</button>
+
+          <div class="sect">
+            <p class="sect-h">About</p>
+            <div class="row">
+              <div class="ic">▍</div>
+              <div class="row-main">
+                <div class="row-t">CC Studio</div>
+                <div class="row-d">build 06‑28.4 · <tailnet-host></div>
+              </div>
+            </div>
+            <div class="row">
+              <div class="ic">⌁</div>
+              <div class="row-main">
+                <div class="row-t">有効なプラグインは全フレームに常駐</div>
+                <div class="row-d">ON にした時点で以後の全ロード×全フレームに注入</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div></div>
+      <p class="cap"><b>Plugins</b> — システムスクリーン · ライブ注入バス（自動注入設定は廃止）</p>
+    </div>
+
+    <!-- ===================== A WEB SCREEN (context) ===================== -->
+    <div class="col">
+      <div class="phone"><div class="screen">
+        <div class="bar">
+          <span class="wordmark">VS&nbsp;Code</span>
+          <span class="title" style="margin-left:auto">cc-studio</span>
+        </div>
+        <div class="pl-body" style="font:11px/1.7 var(--mono);color:#5f6b7d">
+<span style="color:#46505f">// a screen = one VS Code,</span>
+<span style="color:#46505f">// opened at one folder</span>
+
+<span style="color:#5a8fd6">export function</span> <span style="color:#c7a25f">send</span>(){
+  <span style="color:#5fae8a">socket</span>.<span style="color:#c7a25f">emit</span>(<span style="color:#5fae8a">"msg"</span>)
+}
+
+<span style="color:#46505f">// 別フォルダを開きたい →</span>
+<span style="color:#46505f">// ︙ → New screen</span>
+        </div>
+        <button class="spine">⋮</button>
+      </div></div>
+      <p class="cap"><b>Web screen</b> — ︙ で switcher を開く</p>
+    </div>
+
+    <!-- ===================== RELOAD CONFIRM ===================== -->
+    <div class="col">
+      <div class="phone"><div class="screen">
+        <div class="bar">
+          <span class="wordmark">CC<i>▍</i>STUDIO</span>
+          <span class="title">Screens</span>
+          <span class="build">build 06‑28.4</span>
+        </div>
+        <div class="summary"><b>5</b> screens · <span class="ac">1 active</span></div>
+        <div class="sw-body">
+          <div class="band-row"><div class="band">
+            <span class="fdot"></span>
+            <div class="band-main">
+              <div class="band-name">cc-web</div>
+              <div class="band-path"><repo-root>/…/mytools/cc-web</div>
+            </div>
+            <button class="bicon reload stale">⟳</button>
+          </div></div>
+          <div class="band-row"><div class="band">
+            <span class="fdot"></span>
+            <div class="band-main">
+              <div class="band-name">cc-hub-project</div>
+              <div class="band-path"><repo-root>/…/cc-hub-project</div>
+            </div>
+            <button class="bicon reload stale">⟳</button>
+          </div></div>
+        </div>
+
+        <div class="backdrop">
+          <div class="dialog">
+            <div class="dic">⟳</div>
+            <h3>リロードして起動しますか？</h3>
+            <p><b>cc-web</b> を再読込してプラグインの変更を反映します。<span class="warn">このスクリーンで実行中の処理があれば中断されます。</span></p>
+            <div class="dialog-actions">
+              <button class="dbtn ghost">そのまま開く</button>
+              <button class="dbtn primary">リロード</button>
+            </div>
+          </div>
+        </div>
+      </div></div>
+      <p class="cap"><b>Reload confirm</b> — 実行中の中断を警告</p>
+    </div>
+
+  </div>
+</body>
+</html>

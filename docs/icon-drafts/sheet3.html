@@ -1,0 +1,69 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:#0d0e12; font-family:-apple-system,Segoe UI,Roboto,sans-serif; padding:40px; }
+  .grid { display:grid; grid-template-columns:repeat(2,300px); gap:52px 56px; justify-content:center; }
+  .cell { text-align:center; }
+  .cell svg { width:280px; height:280px; border-radius:62px; display:block; box-shadow:0 8px 30px rgba(0,0,0,.5); }
+  .lab { color:#c9ccd6; font-size:16px; margin-top:16px; font-weight:600; }
+  .sub { color:#7c8090; font-size:13px; margin-top:3px; }
+  .defs { position:absolute; width:0; height:0; }
+</style></head><body>
+<svg class="defs"><defs><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+  <stop offset="0" stop-color="#11131c"/><stop offset="1" stop-color="#1a2740"/></linearGradient></defs></svg>
+<div class="grid">
+
+  <!-- 1: straight mouth, separated -->
+  <div class="cell">
+  <svg viewBox="0 0 512 512">
+    <rect width="512" height="512" fill="url(#bg)"/>
+    <path d="M118 196 L182 246 L118 296" fill="none" stroke="#38BDF8" stroke-width="30" stroke-linecap="round" stroke-linejoin="round"/>
+    <rect x="212" y="150" width="200" height="34" rx="17" fill="#FF6B6B"/>
+    <rect x="212" y="204" width="148" height="34" rx="17" fill="#FFB454"/>
+    <rect x="212" y="258" width="182" height="34" rx="17" fill="#2DD4BF"/>
+    <rect x="252" y="346" width="150" height="32" rx="16" fill="#A78BFA"/>
+  </svg>
+  <div class="lab">1. まっすぐ口</div><div class="sub">下段を離して直線の口</div>
+  </div>
+
+  <!-- 2: gentle smile -->
+  <div class="cell">
+  <svg viewBox="0 0 512 512">
+    <rect width="512" height="512" fill="url(#bg)"/>
+    <path d="M118 196 L182 246 L118 296" fill="none" stroke="#38BDF8" stroke-width="30" stroke-linecap="round" stroke-linejoin="round"/>
+    <rect x="212" y="150" width="200" height="34" rx="17" fill="#FF6B6B"/>
+    <rect x="212" y="204" width="148" height="34" rx="17" fill="#FFB454"/>
+    <rect x="212" y="258" width="182" height="34" rx="17" fill="#2DD4BF"/>
+    <path d="M256 344 Q328 380 400 344" fill="none" stroke="#A78BFA" stroke-width="32" stroke-linecap="round"/>
+  </svg>
+  <div class="lab">2. 微笑み</div><div class="sub">ゆるくニコッ</div>
+  </div>
+
+  <!-- 3: bigger grin -->
+  <div class="cell">
+  <svg viewBox="0 0 512 512">
+    <rect width="512" height="512" fill="url(#bg)"/>
+    <path d="M118 196 L182 246 L118 296" fill="none" stroke="#38BDF8" stroke-width="30" stroke-linecap="round" stroke-linejoin="round"/>
+    <rect x="212" y="150" width="200" height="34" rx="17" fill="#FF6B6B"/>
+    <rect x="212" y="204" width="148" height="34" rx="17" fill="#FFB454"/>
+    <rect x="212" y="258" width="182" height="34" rx="17" fill="#2DD4BF"/>
+    <path d="M248 338 Q328 402 408 338" fill="none" stroke="#A78BFA" stroke-width="34" stroke-linecap="round"/>
+  </svg>
+  <div class="lab">3. 笑顔（大）</div><div class="sub">しっかり口角を上げる</div>
+  </div>
+
+  <!-- 4: gentle smile, mouth centered narrower -->
+  <div class="cell">
+  <svg viewBox="0 0 512 512">
+    <rect width="512" height="512" fill="url(#bg)"/>
+    <path d="M118 196 L182 246 L118 296" fill="none" stroke="#38BDF8" stroke-width="30" stroke-linecap="round" stroke-linejoin="round"/>
+    <rect x="212" y="150" width="200" height="34" rx="17" fill="#FF6B6B"/>
+    <rect x="212" y="204" width="148" height="34" rx="17" fill="#FFB454"/>
+    <rect x="212" y="258" width="182" height="34" rx="17" fill="#2DD4BF"/>
+    <path d="M272 346 Q328 376 384 346" fill="none" stroke="#A78BFA" stroke-width="32" stroke-linecap="round"/>
+  </svg>
+  <div class="lab">4. 微笑み（小）</div><div class="sub">口を短く中央寄せ</div>
+  </div>
+
+</div>
+</body></html>

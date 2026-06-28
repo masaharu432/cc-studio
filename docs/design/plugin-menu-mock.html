@@ -1,0 +1,357 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CC Studio · Control Center — UI mock</title>
+<style>
+  /* ============ design tokens ============ */
+  :root{
+    --chassis:#11151C;     /* panel body */
+    --module:#1B222E;      /* raised rows / cards */
+    --module-2:#232E3D;
+    --line:#2A3342;        /* hairlines */
+    --ink:#E8EDF4;         /* primary text */
+    --dim:#7C8694;         /* muted text */
+    --brand:#2E90E8;       /* chrome / nav / ACTIVE SCREEN */
+    --brand-soft:#8FC2F2;
+    --live:#3FD79A;        /* THE signal color — reserved for ENABLED PLUGIN */
+    --live-dim:#1f6d52;
+    --sans:-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+    --mono:ui-monospace,"SF Mono","Roboto Mono","JetBrains Mono",Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    font-family:var(--sans);
+    background:
+      radial-gradient(1200px 700px at 80% -10%, #18202b 0%, transparent 60%),
+      radial-gradient(900px 600px at -10% 110%, #131a24 0%, transparent 55%),
+      #0a0d12;
+    color:var(--ink);min-height:100vh;padding:40px 24px 64px;
+  }
+
+  /* ============ studio header ============ */
+  .studio{max-width:1120px;margin:0 auto 30px}
+  .studio .eyebrow{font:600 11px/1 var(--mono);letter-spacing:.22em;text-transform:uppercase;color:var(--brand-soft);margin:0 0 10px}
+  .studio h1{font:600 24px/1.15 var(--sans);margin:0 0 8px;letter-spacing:-.01em}
+  .studio p{margin:0;max-width:64ch;color:var(--dim);font-size:14px;line-height:1.55}
+  .legend{display:flex;gap:18px;flex-wrap:wrap;margin-top:16px;font:500 12px/1 var(--mono);color:var(--dim)}
+  .legend b{display:inline-flex;align-items:center;gap:7px;font-weight:500;color:var(--dim)}
+  .dot{width:9px;height:9px;border-radius:50%}
+  .dot.brand{background:var(--brand);box-shadow:0 0 0 3px rgba(46,144,232,.18)}
+  .dot.live{background:var(--live);box-shadow:0 0 0 3px rgba(63,215,154,.18)}
+  .dot.off{background:var(--line)}
+
+  /* ============ gallery ============ */
+  .gallery{max-width:1120px;margin:0 auto;display:flex;gap:34px;flex-wrap:wrap;align-items:flex-start;justify-content:center}
+  .frame{width:330px}
+  .cap{font:600 11px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--dim);margin:0 0 12px;text-align:center}
+  .cap span{color:var(--brand-soft)}
+
+  /* phone / editor backdrop */
+  .device{position:relative;border-radius:26px;overflow:hidden;background:#1e1e1e;border:1px solid #000;
+    box-shadow:0 30px 70px -30px rgba(0,0,0,.8),0 0 0 1px rgba(255,255,255,.03) inset;height:600px}
+  .editor-bar{height:34px;background:#23272e;display:flex;align-items:center;gap:7px;padding:0 12px;border-bottom:1px solid #00000055}
+  .tl{width:10px;height:10px;border-radius:50%}
+  .tl.r{background:#ff5f57}.tl.y{background:#febc2e}.tl.g{background:#28c840}
+  .editor-bar .file{margin-left:10px;font:500 11px/1 var(--mono);color:#9aa3b2}
+  .code{padding:14px 14px 14px 40px;font:12.5px/1.7 var(--mono);position:relative;opacity:.85}
+  .code::before{content:"1\A 2\A 3\A 4\A 5\A 6";white-space:pre;position:absolute;left:12px;top:14px;color:#454b57;text-align:right;width:18px}
+  .c-key{color:#c586c0}.c-fn{color:#dcdcaa}.c-str{color:#ce9178}.c-com{color:#6a9955}.c-var{color:#9cdcfe}.c-num{color:#b5cea8}
+
+  /* launch spine (︙ tab) */
+  .spine{position:absolute;left:0;top:160px;width:30px;height:120px;background:linear-gradient(180deg,#2E90E8,#1c6fc0);
+    border-radius:0 11px 11px 0;display:flex;align-items:center;justify-content:center;color:#fff;font-size:19px;
+    box-shadow:2px 0 10px rgba(0,0,0,.45);z-index:3;opacity:.55}
+
+  /* ============ the panel ============ */
+  .panel{position:absolute;left:18px;top:54px;width:288px;background:linear-gradient(180deg,#141a23,#10141b);
+    border:1px solid var(--line);border-radius:14px;box-shadow:0 24px 50px -18px rgba(0,0,0,.7);z-index:4;overflow:hidden;
+    animation:slidein .4s cubic-bezier(.2,.7,.2,1) both}
+  @keyframes slidein{from{opacity:0;transform:translateX(-14px)}to{opacity:1;transform:none}}
+  @media (prefers-reduced-motion:reduce){.panel{animation:none}}
+
+  /* header */
+  .p-head{display:flex;align-items:center;gap:8px;padding:12px 12px 11px;border-bottom:1px solid var(--line)}
+  .wordmark{font:600 12px/1 var(--mono);letter-spacing:.13em;color:var(--ink);white-space:nowrap}
+  .wordmark i{color:var(--brand);font-style:normal;margin:0 4px}
+  .p-head .build{margin-left:auto;font:500 10px/1 var(--mono);color:var(--brand-soft);white-space:nowrap;
+    background:#0e1620;border:1px solid var(--line);padding:5px 7px;border-radius:6px}
+
+  /* tab bar (the container) */
+  .tabs{display:flex;gap:3px;padding:8px 8px 0;overflow-x:auto;scrollbar-width:none;border-bottom:1px solid var(--line);
+    -webkit-mask-image:linear-gradient(90deg,#000 90%,transparent);mask-image:linear-gradient(90deg,#000 90%,transparent)}
+  .tabs::-webkit-scrollbar{display:none}
+  .tab{flex:0 0 auto;appearance:none;border:0;background:transparent;cursor:pointer;font:600 10px/1 var(--sans);
+    letter-spacing:.05em;text-transform:uppercase;color:var(--dim);padding:9px 8px;border-bottom:2px solid transparent;
+    position:relative;display:flex;align-items:center;gap:5px}
+  .tab .pip{width:6px;height:6px;border-radius:50%}
+  .tab .pip.live{background:var(--live);box-shadow:0 0 0 3px rgba(63,215,154,.18)}
+  .tab .pip.brand{background:var(--brand);box-shadow:0 0 0 3px rgba(46,144,232,.18)}
+  .tab[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--brand)}
+
+  /* body */
+  .body{padding:13px 13px 14px;max-height:430px;overflow:auto}
+  .row-head{display:flex;align-items:center;gap:8px;margin:0 0 12px}
+  .summary{font:500 11px/1 var(--mono);color:var(--dim);display:flex;gap:6px;align-items:center;margin:0}
+  .summary .on{color:var(--live);font-weight:600}
+  .summary .act{color:var(--brand-soft);font-weight:600}
+
+  /* view switch (tab/grid) */
+  .seg{margin-left:auto;display:flex;border:1px solid var(--line);border-radius:7px;overflow:hidden;flex:0 0 auto}
+  .seg button{appearance:none;border:0;background:transparent;color:var(--dim);padding:5px 8px;font:600 11px/1 var(--sans);
+    cursor:pointer;display:flex;align-items:center}
+  .seg button[aria-pressed="true"]{background:var(--brand);color:#fff}
+
+  /* ===== SCREENS grid — switch VS Code views like a browser tab grid ===== */
+  .scr-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+  .scr{position:relative;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--module);cursor:pointer}
+  .scr.active{border-color:var(--brand);box-shadow:0 0 0 1px var(--brand),0 8px 18px -10px rgba(46,144,232,.55)}
+  .pv{height:62px;padding:8px 9px;font:8.5px/1.55 var(--mono);overflow:hidden;background:linear-gradient(180deg,#0f141b,#0b0e14);position:relative;white-space:pre}
+  .scr.active .pv::after{content:"ACTIVE";position:absolute;top:6px;right:6px;font:600 8px/1 var(--mono);letter-spacing:.1em;
+    color:#fff;background:var(--brand);padding:3px 5px;border-radius:4px}
+  .scr-foot{display:flex;align-items:center;gap:6px;padding:7px 8px;border-top:1px solid var(--line);background:#141a23}
+  .scr-favi{width:6px;height:6px;border-radius:50%;background:var(--dim);flex:0 0 auto}
+  .scr.active .scr-favi{background:var(--brand);box-shadow:0 0 0 3px rgba(46,144,232,.2)}
+  .scr-title{font:550 11px/1 var(--sans);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;color:var(--ink)}
+  .scr-x{width:18px;height:18px;border-radius:5px;border:0;background:transparent;color:var(--dim);font-size:13px;cursor:pointer;flex:0 0 auto;display:grid;place-items:center}
+  .scr.new{display:flex;flex-direction:column;align-items:center;justify-content:center;border-style:dashed;border-color:#33405a;
+    color:var(--brand-soft);min-height:99px;gap:7px;background:#0e1620}
+  .scr.new .plus{font-size:20px;line-height:1}
+  .scr.new span{font:600 10px/1 var(--sans);letter-spacing:.05em;text-transform:uppercase}
+
+  /* ===== PLUGINS — injection bus, per-plugin ON/OFF (no global inject) ===== */
+  .bus{position:relative;padding-left:18px;display:flex;flex-direction:column;gap:9px}
+  .bus::before{content:"";position:absolute;left:5px;top:8px;bottom:8px;width:2px;background:var(--line);border-radius:2px}
+  .mod{position:relative;display:flex;align-items:center;gap:10px;background:var(--module);border:1px solid var(--line);
+    border-radius:10px;padding:11px 11px 11px 13px}
+  .mod::before{content:"";position:absolute;left:-13px;top:50%;width:13px;height:2px;background:var(--line);transform:translateY(-1px)}
+  .mod::after{content:"";position:absolute;left:-15px;top:50%;width:8px;height:8px;border-radius:50%;background:var(--line);
+    transform:translate(-1px,-50%);border:2px solid var(--chassis)}
+  .mod.is-on{border-color:#244b3f;box-shadow:inset 3px 0 0 var(--live)}
+  .mod.is-on::before{background:var(--live)}
+  .mod.is-on::after{background:var(--live);box-shadow:0 0 8px var(--live-dim)}
+  .mod-main{min-width:0;flex:1}
+  .mod-name{font:550 13.5px/1.2 var(--sans);color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .mod-meta{font:500 10.5px/1 var(--mono);color:var(--dim);margin-top:5px}
+  .mod-meta .state{letter-spacing:.08em}
+  .mod.is-on .mod-meta .state{color:var(--live)}
+
+  /* toggle */
+  .tgl{appearance:none;border:0;cursor:pointer;flex:0 0 auto;width:40px;height:23px;border-radius:99px;background:#2b3342;position:relative;transition:background .18s}
+  .tgl .knob{position:absolute;top:2px;left:2px;width:19px;height:19px;border-radius:50%;background:#aeb7c4;transition:transform .18s,background .18s}
+  .tgl[aria-pressed="true"]{background:var(--live-dim)}
+  .tgl[aria-pressed="true"] .knob{transform:translateX(17px);background:var(--live)}
+  @media (prefers-reduced-motion:reduce){.tgl,.tgl .knob{transition:none}}
+
+  /* actions */
+  .actions{margin-top:15px}
+  .btn{width:100%;appearance:none;cursor:pointer;border-radius:9px;padding:11px 10px;font:600 12px/1 var(--sans);
+    display:inline-flex;align-items:center;justify-content:center;gap:7px}
+  .btn-primary{background:var(--brand);color:#fff;border:1px solid #1c6fc0}
+  .btn .g{font-size:13px}
+
+  /* empty state */
+  .empty{padding:24px 8px 16px;text-align:center}
+  .empty .plug{width:46px;height:46px;margin:0 auto 14px;border-radius:13px;display:grid;place-items:center;border:1.5px dashed #33405a;color:var(--brand-soft);font-size:20px;background:#0e1620}
+  .empty h3{margin:0 0 6px;font:600 14px/1.3 var(--sans)}
+  .empty p{margin:0 auto 16px;max-width:30ch;color:var(--dim);font-size:12px;line-height:1.55}
+
+  .note{max-width:1120px;margin:34px auto 0;color:#5d6675;font:500 11px/1.6 var(--mono);text-align:center}
+</style>
+</head>
+<body>
+
+  <header class="studio">
+    <p class="eyebrow">CC Studio · Control Center</p>
+    <h1>画面を切り替え、プラグインを1枚ずつ効かせる</h1>
+    <p>左端の <b>︙</b> から開く計器。<b>複数の VS Code 画面</b>をブラウザのタブ/グリッドのように切り替え、プラグインは各々 ON/OFF。グローバルな「今すぐ注入」は廃止し、各プラグインのトグルが唯一の制御。<b>青＝アクティブな画面／ナビ</b>、<b>エメラルド＝有効なプラグイン</b>だけに予約した信号色。</p>
+    <div class="legend">
+      <b><span class="dot brand"></span>アクティブな画面 / ナビ</b>
+      <b><span class="dot live"></span>有効なプラグイン（ON）</b>
+      <b><span class="dot off"></span>インストール済み・OFF</b>
+    </div>
+  </header>
+
+  <div class="gallery">
+
+    <!-- ===================== FRAME 1: SCREENS (the new tab/grid switcher) ===================== -->
+    <div class="frame">
+      <p class="cap"><span>01</span> &nbsp;Screens — switch VS Code views</p>
+      <div class="device">
+        <div class="editor-bar"><span class="tl r"></span><span class="tl y"></span><span class="tl g"></span><span class="file">composer.ts — cc-web</span></div>
+        <div class="code">
+<span class="c-com">// claude code — composer</span>
+<span class="c-key">export</span> <span class="c-key">function</span> <span class="c-fn">send</span>(){
+  <span class="c-var">socket</span>.<span class="c-fn">emit</span>(<span class="c-str">"msg"</span>)
+}
+        </div>
+
+        <div class="spine">⋮</div>
+        <div class="panel">
+          <div class="p-head"><span class="wordmark">CC<i>▍</i>STUDIO</span><span class="build">build 06‑28.3</span></div>
+          <div class="tabs" role="tablist">
+            <button class="tab" role="tab" aria-selected="true">Screens <span class="pip brand"></span></button>
+            <button class="tab" role="tab" aria-selected="false">Plugins <span class="pip live"></span></button>
+            <button class="tab" role="tab" aria-selected="false">Files</button>
+            <button class="tab" role="tab" aria-selected="false">Settings</button>
+            <button class="tab" role="tab" aria-selected="false">About</button>
+          </div>
+          <div class="body">
+            <div class="row-head">
+              <p class="summary"><span>3 screens</span> · <b class="act">1 active</b></p>
+              <div class="seg" role="group" aria-label="view">
+                <button aria-pressed="true" title="grid">⊞</button>
+                <button aria-pressed="false" title="list">☰</button>
+              </div>
+            </div>
+            <div class="scr-grid">
+              <div class="scr active">
+                <div class="pv"><span class="c-com">// composer</span>
+<span class="c-key">export</span> <span class="c-fn">send</span>()
+<span class="c-var">socket</span>.<span class="c-fn">emit</span>()</div>
+                <div class="scr-foot"><span class="scr-favi"></span><span class="scr-title">composer.ts</span><button class="scr-x">✕</button></div>
+              </div>
+              <div class="scr">
+                <div class="pv"><span class="c-com">$ npm run dev</span>
+<span class="c-var">ready</span> in 412ms
+<span class="c-fn">▸ localhost</span></div>
+                <div class="scr-foot"><span class="scr-favi"></span><span class="scr-title">terminal</span><button class="scr-x">✕</button></div>
+              </div>
+              <div class="scr">
+                <div class="pv"><span class="c-com"># README</span>
+<span class="c-str">## cc-web</span>
+mobile bridge</div>
+                <div class="scr-foot"><span class="scr-favi"></span><span class="scr-title">README.md</span><button class="scr-x">✕</button></div>
+              </div>
+              <div class="scr new">
+                <span class="plus">＋</span><span>New screen</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===================== FRAME 2: PLUGINS (per-plugin ON/OFF, no global inject) ===================== -->
+    <div class="frame">
+      <p class="cap"><span>02</span> &nbsp;Plugins — per-plugin on / off</p>
+      <div class="device">
+        <div class="editor-bar"><span class="tl r"></span><span class="tl y"></span><span class="tl g"></span><span class="file">composer.ts — cc-web</span></div>
+        <div class="code">
+<span class="c-com">// keyboard-suppress live</span>
+<span class="c-var">el</span>.<span class="c-fn">blur</span>()
+<span class="c-var">app</span>.<span class="c-fn">mount</span>(<span class="c-str">"#root"</span>)
+        </div>
+
+        <div class="spine">⋮</div>
+        <div class="panel">
+          <div class="p-head"><span class="wordmark">CC<i>▍</i>STUDIO</span><span class="build">build 06‑28.3</span></div>
+          <div class="tabs" role="tablist">
+            <button class="tab" role="tab" aria-selected="false">Screens <span class="pip brand"></span></button>
+            <button class="tab" role="tab" aria-selected="true">Plugins <span class="pip live"></span></button>
+            <button class="tab" role="tab" aria-selected="false">Files</button>
+            <button class="tab" role="tab" aria-selected="false">Settings</button>
+            <button class="tab" role="tab" aria-selected="false">About</button>
+          </div>
+          <div class="body">
+            <div class="row-head"><p class="summary"><span>2 installed</span> · <b class="on">1 enabled</b></p></div>
+            <div class="bus">
+              <div class="mod is-on">
+                <div class="mod-main">
+                  <div class="mod-name">keyboard-suppress.js</div>
+                  <div class="mod-meta">1.4 KB · <span class="state">ON</span></div>
+                </div>
+                <button class="tgl" aria-pressed="true" aria-label="enable"><span class="knob"></span></button>
+              </div>
+              <div class="mod">
+                <div class="mod-main">
+                  <div class="mod-name">paste-fix.js</div>
+                  <div class="mod-meta">0.9 KB · <span class="state">OFF</span></div>
+                </div>
+                <button class="tgl" aria-pressed="false" aria-label="enable"><span class="knob"></span></button>
+              </div>
+            </div>
+            <div class="actions"><button class="btn btn-primary"><span class="g">＋</span> Add plugin</button></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===================== FRAME 3: tabs as a real container (Files) ===================== -->
+    <div class="frame">
+      <p class="cap"><span>03</span> &nbsp;Tabs are a real container</p>
+      <div class="device">
+        <div class="editor-bar"><span class="tl r"></span><span class="tl y"></span><span class="tl g"></span><span class="file">explorer — cc-web</span></div>
+        <div class="code">
+<span class="c-com">// downloads land here</span>
+<span class="c-var">CCStudio</span>.<span class="c-fn">saveBase64</span>()
+<span class="c-var">a</span>.<span class="c-fn">click</span>()
+        </div>
+
+        <div class="spine">⋮</div>
+        <div class="panel">
+          <div class="p-head"><span class="wordmark">CC<i>▍</i>STUDIO</span><span class="build">build 06‑28.3</span></div>
+          <div class="tabs" role="tablist">
+            <button class="tab" role="tab" aria-selected="false">Screens <span class="pip brand"></span></button>
+            <button class="tab" role="tab" aria-selected="false">Plugins <span class="pip live"></span></button>
+            <button class="tab" role="tab" aria-selected="true">Files</button>
+            <button class="tab" role="tab" aria-selected="false">Settings</button>
+            <button class="tab" role="tab" aria-selected="false">About</button>
+          </div>
+          <div class="body">
+            <div class="row-head"><p class="summary"><span>2 saved this session</span></p></div>
+            <div style="display:flex;flex-direction:column;gap:8px">
+              <div class="mod" style="padding-left:11px">
+                <div style="width:30px;height:30px;border-radius:8px;background:#0e1620;border:1px solid var(--line);display:grid;place-items:center;color:var(--brand-soft);font-size:13px;flex:0 0 auto">⬇</div>
+                <div class="mod-main"><div class="mod-name">diff-2026-06-28.patch</div><div class="mod-meta">12 KB · just now</div></div>
+                <button class="scr-x" style="width:auto;padding:6px 8px;border:1px solid var(--line);border-radius:6px;font:600 10px/1 var(--mono);color:var(--brand-soft)">OPEN</button>
+              </div>
+              <div class="mod" style="padding-left:11px">
+                <div style="width:30px;height:30px;border-radius:8px;background:#0e1620;border:1px solid var(--line);display:grid;place-items:center;color:var(--brand-soft);font-size:13px;flex:0 0 auto">⬇</div>
+                <div class="mod-main"><div class="mod-name">screenshot.png</div><div class="mod-meta">340 KB · 4 min ago</div></div>
+                <button class="scr-x" style="width:auto;padding:6px 8px;border:1px solid var(--line);border-radius:6px;font:600 10px/1 var(--mono);color:var(--brand-soft)">OPEN</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <p class="note">mock · system fonts only (Roboto / Roboto Mono on Android) · touch targets ≥40px · reduced-motion respected · blue = active screen / nav, emerald = enabled plugin only</p>
+
+<script>
+  document.querySelectorAll('.tgl').forEach(function(t){
+    t.addEventListener('click',function(){
+      var on=t.getAttribute('aria-pressed')==='true';
+      t.setAttribute('aria-pressed',String(!on));
+      var mod=t.closest('.mod'); mod.classList.toggle('is-on',!on);
+      var s=mod.querySelector('.state'); if(s)s.textContent=!on?'ON':'OFF';
+      var panel=t.closest('.panel'),n=panel.querySelectorAll('.mod.is-on').length,b=panel.querySelector('.summary .on');
+      if(b)b.textContent=n+' enabled';
+    });
+  });
+  document.querySelectorAll('.tabs').forEach(function(bar){
+    bar.addEventListener('click',function(e){var tab=e.target.closest('.tab');if(!tab)return;
+      bar.querySelectorAll('.tab').forEach(function(x){x.setAttribute('aria-selected','false')});
+      tab.setAttribute('aria-selected','true');});
+  });
+  document.querySelectorAll('.seg').forEach(function(seg){
+    seg.addEventListener('click',function(e){var b=e.target.closest('button');if(!b)return;
+      seg.querySelectorAll('button').forEach(function(x){x.setAttribute('aria-pressed','false')});
+      b.setAttribute('aria-pressed','true');});
+  });
+  document.querySelectorAll('.scr-grid').forEach(function(g){
+    g.addEventListener('click',function(e){
+      if(e.target.closest('.scr-x')||e.target.closest('.scr.new'))return;
+      var s=e.target.closest('.scr');if(!s||s.classList.contains('new'))return;
+      g.querySelectorAll('.scr').forEach(function(x){x.classList.remove('active')});
+      s.classList.add('active');
+    });
+  });
+</script>
+</body>
+</html>

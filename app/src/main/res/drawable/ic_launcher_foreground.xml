@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  CC Studio アイコン前景 (アダプティブ前景レイヤー)。
+  プロンプト `>` = ウインクした目、3本のセッションのレーン、下段を口に見立てた微笑み。
+  すべて 108 ビューポートの中央セーフゾーン (半径36) 内に収めてあり、丸/角丸どちらのマスクでも欠けない。
+  レーンと口は round-cap のストロークで角丸バー/笑みのカーブを表現している。
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- 目: ウインクの `>` -->
+    <path
+        android:pathData="M25,40.6 L37.6,50.4 L25,60.3"
+        android:strokeColor="#38BDF8"
+        android:strokeWidth="6"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+    <!-- セッションのレーン x3 -->
+    <path
+        android:pathData="M46.87,34.85 L79.57,34.85"
+        android:strokeColor="#FF6B6B"
+        android:strokeWidth="6.7"
+        android:strokeLineCap="round" />
+    <path
+        android:pathData="M46.87,45.49 L69.33,45.49"
+        android:strokeColor="#FFB454"
+        android:strokeWidth="6.7"
+        android:strokeLineCap="round" />
+    <path
+        android:pathData="M46.87,56.13 L76.02,56.13"
+        android:strokeColor="#2DD4BF"
+        android:strokeWidth="6.7"
+        android:strokeLineCap="round" />
+    <!-- 口: 微笑み -->
+    <path
+        android:pathData="M36.82,70.11 Q51.0,77.2 65.19,70.11"
+        android:strokeColor="#A78BFA"
+        android:strokeWidth="6.3"
+        android:strokeLineCap="round" />
+</vector>
