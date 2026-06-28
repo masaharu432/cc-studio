@@ -34,6 +34,30 @@ tailscale serve --bg 127.0.0.1:8088
 WSL で動かす場合、`tailscale serve` は **Windows 側**で実行する（mirrored networking で
 Windows loopback が WSL loopback に届く）。
 
+## 推奨設定：ファイルを「プレビュー既定」で開く（`settings.json`）
+
+スマホで Claude Code に作業させると、編集された **Markdown / HTML の成果物をすぐ確認したい**。
+だが VS Code 標準のプレビュー（特に Live Preview）は**横分割**で開くため、小さなスマホ画面では
+プレビューが激狭になって使い物にならない。そこで、これらを**タブ内にフルサイズで開く既定**にする:
+
+| パターン | 既定エディタ | 由来 |
+|---|---|---|
+| `*.md` | `vscode.markdown.preview.editor` | VS Code 組込み（分割せずタブ内プレビュー） |
+| `*.html` | `aios.htmlPreview` | `kyledunne.aios-html-auto-preview`（カスタムエディタ。タブ内フルサイズ） |
+
+`workbench.editorAssociations` で割り当てている。HTML を Live Preview の `ms-vscode.live-server` で
+やらないのは、同拡張がプレビュー列を `ViewColumn.Beside`（横分割）でハードコードしており、
+VS Code 側の設定では分割を止められないため（タブ内表示にはカスタムエディタを持つ拡張が要る）。
+
+編集に戻すときはタブの「Reopen Editor With… → Text Editor」。プレビュー既定をやめたい人は
+この 2 行を消すか、各自の `settings.json` で上書きすればよい（merge は非破壊）。
+
+## 拡張の指定とローカル追加
+
+インストールする拡張は [`extensions.txt`](extensions.txt)（1 行 1 ID、`#` でコメント）で指定する。
+**tracked リストを触らず各自で足したい拡張**は、`extensions.local.txt`（gitignore 済み）に書けば
+setup.sh が両方を読む。
+
 ## 調整値（cc-studio.env / 環境変数）
 
 | 変数 | 既定 | 意味 |

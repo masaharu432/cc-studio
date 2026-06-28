@@ -15,3 +15,6 @@ scripts/personal-tokens.txt
 server/provision/cc-studio.env
 **/code-server/config.yaml
 *.bak
+
+# 各ユーザのローカル追加拡張（tracked リストを触らず足せる）
+server/provision/extensions.local.txt

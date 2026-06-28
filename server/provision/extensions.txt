@@ -1,5 +1,10 @@
 # code-server に入れる拡張（Open VSX から取得）。1行1ID、# でコメント。
+# 各自の追加分は extensions.local.txt（gitignore 済み）に書けば、ここを触らず足せる。
+#
 # Claude Code 公式拡張（コア）
 Anthropic.claude-code
-# HTML プレビュー
+# HTML プレビュー（埋め込みサーバ。プレビューは横分割で開く）
 ms-vscode.live-server
+# HTML をタブ内フルサイズでプレビューするカスタムエディタ（*.html を既定割当）。
+# 小画面で Live Preview の横分割が狭い問題への対策。サードパーティ拡張。
+kyledunne.aios-html-auto-preview

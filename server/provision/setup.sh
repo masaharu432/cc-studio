@@ -118,15 +118,19 @@ else
 fi
 
 # ---- 5b) provision: 拡張インストール ----
+# extensions.txt（tracked）+ extensions.local.txt（任意・gitignore）の両方を読む。
 ext_failed=()
-while IFS= read -r raw || [[ -n "$raw" ]]; do
-  id="${raw%%#*}"; id="$(printf '%s' "$id" | tr -d '[:space:]')"
-  [[ -z "$id" ]] && continue
-  args=(--install-extension "$id")
-  [[ $FORCE -eq 1 ]] && args+=(--force)
-  log "extension: $id"
-  cs "${args[@]}" >/dev/null 2>&1 || ext_failed+=("$id")
-done < "$HERE/extensions.txt"
+for listfile in "$HERE/extensions.txt" "$HERE/extensions.local.txt"; do
+  [[ -f "$listfile" ]] || continue
+  while IFS= read -r raw || [[ -n "$raw" ]]; do
+    id="${raw%%#*}"; id="$(printf '%s' "$id" | tr -d '[:space:]')"
+    [[ -z "$id" ]] && continue
+    args=(--install-extension "$id")
+    [[ $FORCE -eq 1 ]] && args+=(--force)
+    log "extension: $id"
+    cs "${args[@]}" >/dev/null 2>&1 || ext_failed+=("$id")
+  done < "$listfile"
+done
 
 # ---- 6) expose: tailscale serve は前段ホスト側で手動 ----
 cat <<EOF
