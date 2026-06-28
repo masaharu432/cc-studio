@@ -10,3 +10,8 @@ docs/design/previews/
 
 # personal token list for check-clean.sh (local only)
 scripts/personal-tokens.txt
+
+# server provisioning — local env & secrets (never commit)
+server/provision/cc-studio.env
+**/code-server/config.yaml
+*.bak

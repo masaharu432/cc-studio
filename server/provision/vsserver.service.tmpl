@@ -1,0 +1,16 @@
+# systemd user unit テンプレ。setup.sh が @...@ を実値で置換して
+# ~/.config/systemd/user/vsserver.service を生成する。直接は使わない。
+[Unit]
+Description=cc-studio code-server (vsserver) workbench
+After=network.target
+
+[Service]
+Type=exec
+# env -i 相当に環境を絞り、VS Code 統合ターミナル由来の VSCODE_IPC_HOOK_CLI を避ける。
+Environment=VSCODE_IPC_HOOK_CLI=
+ExecStart=@CC_BIN@ --bind-addr @CC_BIND@:@CC_PORT@ @CC_FOLDER@
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,5 @@
+# code-server に入れる拡張（Open VSX から取得）。1行1ID、# でコメント。
+# Claude Code 公式拡張（コア）
+Anthropic.claude-code
+# HTML プレビュー
+ms-vscode.live-server
