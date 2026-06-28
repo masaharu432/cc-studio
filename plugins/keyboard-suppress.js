@@ -1,6 +1,6 @@
 // ==CCStudioPlugin==
 // @name        keyboard-suppress
-// @version     1.2.11
+// @version     1.2.12
 // @description ソフトキーボードの自動表示を抑制する。入力欄やターミナルへ自動フォーカスが移っても、ソフトキーボードを勝手に開かせない。全フレームに document-start で常駐する。
 // ==/CCStudioPlugin==
 // keyboard-suppress.js — CC Studio 組込み機能（assets同梱）
@@ -43,7 +43,7 @@
 
   // ---- 診断: focus-hud 共有ログ(window.top.__ccStudioFocusLog)へ「KB …」行を出す ----
   // focus-hud が無くても害は無い（配列に積むだけ）。原因切り分けが済んだら DIAG=false に。
-  var KB_VER = '1.2.11';
+  var KB_VER = '1.2.12';
   var DIAG = true;
   function kbTopWin() { try { return window.top || window; } catch (_) { return window; } }
   function kbFrame() {
@@ -105,22 +105,28 @@
     root.__ccStudioKbSup = true;
     kbLog('install ' + kbFrame()); // 設置/再設置を可視化（write 後に再設置されれば再度出る）
 
-    // タップ時刻を記録（対象不問）。チャット欄はタップ位置がコンテナ/子要素になりがちなので、
-    // 「composer 要素ピッタリか」では判定しない。フレーム内でタップがあった事実だけを使う。
-    var mark = function () {
-      try { doc.__ccStudioLastTap = Date.now(); } catch (_) { /* ignore */ }
+    // タップの「時刻」と「座標」を記録（pointerdown/touchstart 両対応）。座標で composer 枠内判定する。
+    var mark = function (e) {
+      try {
+        var x, y;
+        if (e && e.touches && e.touches[0]) { x = e.touches[0].clientX; y = e.touches[0].clientY; }
+        else if (e && e.changedTouches && e.changedTouches[0]) { x = e.changedTouches[0].clientX; y = e.changedTouches[0].clientY; }
+        else if (e) { x = e.clientX; y = e.clientY; }
+        doc.__ccStudioLastTapTime = Date.now();
+        if (typeof x === 'number') { doc.__ccStudioLastTapX = x; doc.__ccStudioLastTapY = y; }
+      } catch (_) { /* ignore */ }
     };
     doc.addEventListener('pointerdown', mark, true);
     doc.addEventListener('touchstart', mark, true);
 
-    // composer の focusin。直近にタップがあれば「ユーザー起点」として通す。
-    // タップが無ければ自動フォーカス（ページ読込/遷移/送信後＝Enter はタップでない）→ blur。
+    // composer の focusin。タップが「その composer の枠内」だったら通す（ユーザー起点）。
+    // 枠外タップ（新セッションの「+」等）や、タップ無し（自動フォーカス）→ blur。
     doc.addEventListener(
       'focusin',
       function (e) {
         var t = e.target;
         if (!isComposer(t)) return; // composer 以外は一切触らない
-        if (!recentTap(doc)) {
+        if (!tapOnComposer(doc, t)) {
           kbLog('blur1 ' + kbFrame());
           try { t.blur(); } catch (_) { /* ignore */ }
         } else {
@@ -132,10 +138,10 @@
 
     // 設置時の一発チェック: 既に composer がフォーカス済み（＝リスナ設置“前”に自動フォーカスされた。
     // 新規セッション作成時など。一度フォーカスされると focusin は再発火しないので focusin では拾えない）
-    // かつ直近タップが無ければ blur。設置時の1回だけ＝連続 poll ではないので誤爆/争奪は起こさない。
+    // かつ「枠内タップ」でなければ blur。設置時の1回だけ＝連続 poll ではないので誤爆/争奪は起こさない。
     try {
       var a = doc.activeElement;
-      if (a && isComposer(a) && !recentTap(doc)) {
+      if (a && isComposer(a) && !tapOnComposer(doc, a)) {
         kbLog('blur0 install-active ' + kbFrame());
         a.blur();
       }
