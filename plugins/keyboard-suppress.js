@@ -76,10 +76,22 @@
     }
   }
 
-  // 直近の「タップ」（pointerdown/touchstart, 対象不問）— ユーザー起点フォーカスの許可に使う。
-  function recentTap(doc) {
-    var t = doc.__ccStudioLastTap;
-    return typeof t === 'number' && Date.now() - t < ACTIVITY_WINDOW_MS;
+  // 直近タップが「その composer の枠内」だったか（時間窓内）。
+  // 「フレーム内のどこかでタップ」では緩すぎる（新セッションの「+」ボタンのタップが composer と
+  // 同フレームで起き、直後の自動フォーカスを誤許可してキーボードが出ていた）。座標で枠内判定する。
+  var TAP_PAD_PX = 40; // 枠の外側この幅まではタップ許可（コンテナ/プレースホルダの余白を吸収）
+  function tapOnComposer(doc, el) {
+    var t = doc.__ccStudioLastTapTime;
+    if (typeof t !== 'number' || Date.now() - t >= ACTIVITY_WINDOW_MS) return false;
+    var x = doc.__ccStudioLastTapX, y = doc.__ccStudioLastTapY;
+    if (typeof x !== 'number' || !el) return false;
+    try {
+      var r = el.getBoundingClientRect();
+      return x >= r.left - TAP_PAD_PX && x <= r.right + TAP_PAD_PX &&
+        y >= r.top - TAP_PAD_PX && y <= r.bottom + TAP_PAD_PX;
+    } catch (_) {
+      return false;
+    }
   }
   // 1つの document に capture リスナを設置（設置済みなら何もしない＝冪等）。
   // 方式は focusin のみ（#1 タップ入力＋#2 自動フォーカス抑制を両立する想定）。
