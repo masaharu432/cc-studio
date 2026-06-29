@@ -113,7 +113,8 @@
     var acts=el('div','mod-actions');
     if(p.hasSettings){
       var g=el('button','iconbtn gear'); g.textContent='⚙'; g.title='このプラグインの設定';
-      acts.appendChild(g); // 設定の実体は将来フェーズ
+      g.addEventListener('click',function(){ try{ api().openPluginSettings(p.name); }catch(_){ } });
+      acts.appendChild(g);
     }
     var del=el('button','iconbtn del'); del.textContent='✕'; del.title='削除';
     del.addEventListener('click',function(){
