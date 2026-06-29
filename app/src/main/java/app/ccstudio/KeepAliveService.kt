@@ -104,7 +104,9 @@ class KeepAliveService : Service() {
             "${getString(R.string.task_permission_title)} — $project"
         else
             "${getString(R.string.task_done_title)} — $project"
-        val body = if (message.isNotEmpty()) message else project
+        // フォルダ（cwd フルパス）を必ず表示。message があれば上に添える。
+        val folder = cwd.ifEmpty { project }
+        val body = if (message.isNotEmpty()) "$message\n$folder" else folder
 
         notifyTask(title, body, cwd)
     }
@@ -157,8 +159,6 @@ class KeepAliveService : Service() {
         NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle(getString(R.string.keepalive_notification_title))
             .setSmallIcon(R.drawable.ic_keepalive)
-            .setColor(ContextCompat.getColor(this, R.color.keepalive_accent))
-            .setColorized(true)
             .setOngoing(true)
             .setShowWhen(false)
             .setPriority(NotificationCompat.PRIORITY_LOW)
