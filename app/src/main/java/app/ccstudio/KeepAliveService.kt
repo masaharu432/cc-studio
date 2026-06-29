@@ -156,11 +156,11 @@ class KeepAliveService : Service() {
     private fun buildKeepAliveNotification(): Notification =
         NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle(getString(R.string.keepalive_notification_title))
-            .setContentText(getString(R.string.keepalive_notification_text))
             .setSmallIcon(R.drawable.ic_keepalive)
             .setColor(ContextCompat.getColor(this, R.color.keepalive_accent))
             .setColorized(true)
             .setOngoing(true)
+            .setShowWhen(false)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .build()
 
