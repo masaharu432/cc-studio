@@ -2,7 +2,15 @@
 
 - 日付: 2026-06-29
 - 対象: cc-studio（Android アプリ + 同梱 code-server）
-- 状態: 設計合意済み / 実装計画はこの後に作成
+- 状態: 設計合意済み / 実装中（リレー方式に改訂）
+
+## セキュリティ前提
+
+cc-studio は **tailscale の tailnet 前提**で、インターネットには公開されない。配信経路はすべて tailnet ゲート内に閉じるため、トークン等のアプリ層認証は設けない（tailnet 到達性そのものが認証境界）。POST 受け口は 127.0.0.1 バインドでローカル限定。
+
+## 重要な制約: code-server（サブモジュール）は編集しない
+
+`server/code-server` は upstream `github.com/coder/code-server.git` を指す **git サブモジュール**で、実行時は `~/.local/bin/code-server`（公式 standalone インストール版）が動く。**サブモジュールのソースを編集しても実行時に反映されず、フォーク維持の負担にもなる**ため、サーバ機能は code-server に相乗りせず **サブモジュール外の独立リレープロセス**として実装する。
 
 ## 背景・課題
 
@@ -31,12 +39,12 @@ cc-studio は code-server を WebView で包んだ Android アプリ。現状:
 [Claude Code 拡張 or CLI]
    │  AI 応答終了 / 許可待ち
    ▼  .claude/settings.json の Stop / Notification フック発火
-[フックコマンド (薄いスクリプト)]
-   │  hook JSON(stdin) を整形
-   ▼  POST http://localhost:<port>/cc-notify   (localhost のみ)
-[code-server: /cc-notify (POST)]
-   │  接続中の WS クライアントへブロードキャスト
-   ▼  wss://agent1…/cc-notify/ws  (code-server 既存 auth 配下)
+[フックコマンド (curl)]
+   │  hook JSON(stdin) をそのまま
+   ▼  POST http://127.0.0.1:<relay port>/cc-notify   (localhost のみ)
+[notify-relay  (server/notify-relay, code-server 非依存の単体 Node プロセス)]
+   │  受信を正規化し、接続中の WS クライアントへブロードキャスト
+   ▼  wss://agent1…/cc-notify/ws   (tailscale serve パス割当, tailnet ゲート)
 [Android: KeepAliveService の OkHttp WebSocket クライアント]
    │  受信イベントを cwd でスクリーン突合・前面判定で出し分け
    ▼
@@ -47,47 +55,52 @@ cc-studio は code-server を WebView で包んだ Android アプリ。現状:
 
 ### 1. フックコマンド
 - `.claude/settings.json` の `Stop` と `Notification` に登録。
-- 役割: stdin の hook JSON から `{kind, project, branch, cwd, session_id, message, last_response, ts}` を組み立て、`http://localhost:<code-server port>/cc-notify` に POST するだけ。
+- 役割: stdin の hook JSON を `http://127.0.0.1:${CC_NOTIFY_RELAY_PORT:-8770}/cc-notify` に curl で POST するだけ（整形はリレー側）。
 - 失敗してもフックチェーンを壊さない（常に exit 0）。
 
-### 2. `/cc-notify`（POST, localhost バインドのみ）
-- code-server の Node ルートに追加。
-- 受信イベントを保持中の WS クライアント全員へブロードキャスト。
-- localhost のみで外部公開しないため認証不要。
+### 2. notify-relay（`server/notify-relay/relay.mjs`, code-server 非依存）
+- Node 標準ライブラリのみ（`http` + `crypto`）の単体プロセス。**外部 npm 依存なし**（`ws` も使わず WS ハンドシェイク/送信フレームを最小実装）。
+- `127.0.0.1:<port>`（既定 8770, env `CC_NOTIFY_RELAY_PORT`）で待受。
+- `POST /cc-notify`: hook JSON を `normalizeEvent` で `{kind, project, branch, cwd, session_id, message, ts}` に正規化し、接続中 WS クライアントへブロードキャスト。`{delivered:n}` を返す。
+- `GET /cc-notify/ws`（Upgrade）: WS クライアントを登録（サーバ→クライアント送信のみ。受信は不要）。close/error で登録解除。
+- provision が code-server と並べて起動し、`tailscale serve` で `/cc-notify` パスをこのポートへ割り当てる。
 
-### 3. `/cc-notify/ws`（WebSocket）
-- 同じく code-server ルートに追加。**code-server の既存 auth ミドルウェア配下**にマウント。
-- 再接続は指数バックオフ。
+### 3. tailscale serve パス割当（exposure）
+- `wss://<host>/cc-notify/ws` がリレーへ届くよう tailscale serve のパスマッピングを追加。
+- tailnet 内からのみ到達可能（=認証境界）。アプリ側に秘密は持たせない。
 
 ### 4. KeepAliveService の受信機能
-- OkHttp WebSocket で `wss://…/cc-notify/ws` に接続。**起動時に一度 code-server のパスワードでログインして cookie を取得**し、その cookie で WS 接続。
+- OkHttp WebSocket で `wss://<host>/cc-notify/ws` に接続（tailnet ゲートのみ、cookie/トークン不要）。
+- 接続先 host は `BuildConfig.TARGET_URL` から導出。再接続は指数バックオフ。
 - 受信したら出し分けロジック（下記）を経てネイティブ通知。
 
 ## イベントペイロード
 
+リレーが正規化して送る（`last_response`/`branch` は v1 では持たない）:
+
 ```json
 {
+  "event": "cc-notify",
   "kind": "Stop | Notification",
   "project": "...",
-  "branch": "...",
+  "branch": "",
   "cwd": "/path/to/workspace",
-  "session_id": "...",
+  "sessionId": "...",
   "message": "...",
-  "last_response": "...",
   "ts": 1700000000
 }
 ```
 
 ## 認証
 
-- `/cc-notify`(POST): localhost バインドのみ → 認証不要。
-- `/cc-notify/ws`(WS): code-server 既存 auth 配下。KeepAliveService が code-server パスワードでログイン→cookie 取得→その cookie で接続。新しい秘密鍵は増やさない。
+- `/cc-notify`(POST): リレーが 127.0.0.1 バインド → ローカル限定で認証不要。
+- `/cc-notify/ws`(WS): tailscale serve で公開し tailnet ゲートのみ。アプリ側に秘密は持たせない（[[cc-studio-tailnet-only]] の前提）。
 
 ## 通知の中身と出し分け
 
 | フック | タイトル例 | 本文 | チャンネル |
 |---|---|---|---|
-| `Stop` | ✅ AI 応答完了 — `project/branch` | `last_response` 冒頭抜粋 | `cc_task` |
+| `Stop` | ✅ 応答が完了しました — `project` | hook の `message`（無ければ project） | `cc_task` |
 | `Notification` | 🔔 許可待ち — `project` | hook の `message` | `cc_task` |
 
 - 既存 keepalive チャンネル（`cc_web_keepalive`, LOW/無音）とは**別の新チャンネル `cc_task`**（IMPORTANCE_DEFAULT〜HIGH, 音/バナーあり）。
@@ -119,8 +132,9 @@ if (appInForeground && eventScreenId != null && eventScreenId == activeScreenId)
 
 ## 影響ファイル（見込み）
 
-- 追加/編集: code-server ルート（`/cc-notify`, `/cc-notify/ws`）— `server/code-server/src/node/routes/` 配下。
-- 追加: フックコマンド（薄いスクリプト）＋ `.claude/settings.json` の hook 差し替え。
+- 追加: `server/notify-relay/relay.mjs`（code-server 非依存のリレー）＋ テスト。**サブモジュール `server/code-server` は編集しない**（[[dont-edit-code-server-submodule]]）。
+- 編集: `server/provision/`（リレー起動 + `tailscale serve` パス割当）。
+- 編集: `.claude/settings.json`（hook を curl POST に差し替え）。
 - 編集: [KeepAliveService.kt](../../../app/src/main/java/app/ccstudio/KeepAliveService.kt)（WS クライアント＋`cc_task` チャンネル＋通知発火）。
 - 編集: [ScreenManager.kt](../../../app/src/main/java/app/ccstudio/ScreenManager.kt) / [MainActivity.kt](../../../app/src/main/java/app/ccstudio/MainActivity.kt)（`findScreenByFolderPath`、前面フラグ、タップ Intent 処理、必要なら新規スクリーン生成）。
 - 追加: `strings.xml` の `cc_task` チャンネル名/通知文言。
@@ -129,7 +143,7 @@ if (appInForeground && eventScreenId != null && eventScreenId == activeScreenId)
 
 - フック→localhost POST 失敗: 無視（exit 0）。フックがブロックしない。
 - WS 切断: KeepAliveService が指数バックオフで自動再接続。
-- code-server ログイン失敗: リトライ。資格情報が無ければ通知機能は無効（生存通知やアプリ本体には影響させない）。
+- リレー未起動/未接続: 通知機能のみ無効（生存通知やアプリ本体には影響させない）。
 - 突合不能な cwd: 抑制せず通知（取りこぼしより誤抑制を避ける）。
 
 ## テスト方針
@@ -138,6 +152,19 @@ if (appInForeground && eventScreenId != null && eventScreenId == activeScreenId)
 - `/cc-notify` → WS ブロードキャスト: POST した内容が接続クライアントに届くこと。
 - 出し分けロジック: 前面×該当スクリーン=抑制 / 背面=通知 / 別スクリーン=通知 / 未一致=通知 の 4 ケース。
 - タップ Intent: 既存スクリーン select / 未オープン時の新規作成。
+
+## 通知設定画面（追加要件）
+
+Plugins システムスクリーン（plugins.html）のプラグイン一覧の下に「通知設定」セクションを追加する。内容は**種類別 ON/OFF のみ**（最小構成）:
+
+- ✅ 応答完了 (Stop) — 既定 ON
+- 🔔 許可待ち (Notification) — 既定 ON
+
+種類別トグル両方 OFF で実質マスター OFF となるため、別途マスタートグルは作らない。設定は `SharedPreferences("cc_notify_prefs")` に保存し、`NotifyPrefs` 経由で MainActivity（ブリッジ）と KeepAliveService の両方から参照する。KeepAliveService は無効な種類の通知を出さない。JS↔native は既存の `window.CCStudio.*` ブリッジに `getNotifyPrefs()` / `setNotifyPref(kind, enabled)` を追加して接続する。
+
+## ペンディング（将来）
+
+- **通知に AI 応答本文の抜粋（`last_response`）を展開表示**: relay が hook の `transcript_path` を読み、最後のアシスタント発話を数百字に切って payload に載せ、アプリが `BigTextStyle` で展開表示する。タップ→スクリーンの導線は現状のまま。2026-06-29 時点でユーザー判断によりペンディング。
 
 ## スコープ外（YAGNI）
 

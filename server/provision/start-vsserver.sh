@@ -18,8 +18,25 @@ FOLDER="${1:-${CC_FOLDER:-$HOME}}"
 PREFIX="${CC_PREFIX:-$HOME/.local}"
 BIN="$PREFIX/bin/code-server"
 LOG="$HOME/.local/share/code-server/start.log"
+RELAY_PORT="${CC_NOTIFY_RELAY_PORT:-8770}"
+RELAY_JS="$HERE/../notify-relay/relay.mjs"
+RELAY_LOG="$HOME/.local/share/code-server/notify-relay.log"
 
 [[ -x "$BIN" ]] || { echo "code-server not found at $BIN（先に setup.sh）" >&2; exit 1; }
+
+# notify-relay（未起動なら起動）。code-server の起動有無に関わらず毎回確認する
+# （code-server 既起動時はこの後 early-exit するため、リレー起動はここで行う）。
+if ! ss -tln 2>/dev/null | grep -q "127.0.0.1:${RELAY_PORT} "; then
+  if command -v node >/dev/null 2>&1 && [[ -f "$RELAY_JS" ]]; then
+    setsid env -i HOME="$HOME" PATH="$PREFIX/bin:/usr/local/bin:/usr/bin:/bin" \
+      CC_NOTIFY_RELAY_PORT="$RELAY_PORT" node "$RELAY_JS" >"$RELAY_LOG" 2>&1 &
+    echo "notify-relay starting on 127.0.0.1:${RELAY_PORT}  (log: ${RELAY_LOG})"
+  else
+    echo "notify-relay skipped (node not found or relay.mjs missing)" >&2
+  fi
+else
+  echo "notify-relay already on 127.0.0.1:${RELAY_PORT}"
+fi
 
 if ss -tln 2>/dev/null | grep -q ":${PORT} "; then
   echo "code-server already listening on ${BIND}:${PORT}"

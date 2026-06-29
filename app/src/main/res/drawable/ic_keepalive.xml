@@ -1,11 +1,24 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 通知ステータスバー用の単色アイコン。OS が白マスクとして描画するため fillColor は白固定。 -->
+<!-- 通知ステータスバー用の単色アイコン。OS が白マスクとして描画するため stroke は白固定。
+     CC Studio ブランドマーク（ウインクの `>` + セッションのレーン3本 + 笑み）を 24dp に収めた版。
+     ic_launcher_monochrome と同じモチーフ。keepalive と cc_task 通知の両方で使用。 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
     android:height="24dp"
     android:viewportWidth="24"
     android:viewportHeight="24">
     <path
-        android:fillColor="#FFFFFFFF"
-        android:pathData="M12,3C7.03,3 3,7.03 3,12s4.03,9 9,9 9,-4.03 9,-9 -4.03,-9 -9,-9zM12,19c-3.86,0 -7,-3.14 -7,-7s3.14,-7 7,-7 7,3.14 7,7 -3.14,7 -7,7zM7,12l3.5,3.5L17,9l-1.41,-1.42 -5.09,5.09 -2.09,-2.08z" />
+        android:pathData="M2.2,7 L6.7,10.6 L2.2,14.1"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="2.4"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+    <path android:pathData="M10.1,5 L21.8,5"
+        android:strokeColor="#FFFFFFFF" android:strokeWidth="2.6" android:strokeLineCap="round" />
+    <path android:pathData="M10.1,8.8 L18.1,8.8"
+        android:strokeColor="#FFFFFFFF" android:strokeWidth="2.6" android:strokeLineCap="round" />
+    <path android:pathData="M10.1,12.6 L20.5,12.6"
+        android:strokeColor="#FFFFFFFF" android:strokeWidth="2.6" android:strokeLineCap="round" />
+    <path android:pathData="M6.4,17.7 Q11.5,20.2 16.7,17.7"
+        android:strokeColor="#FFFFFFFF" android:strokeWidth="2.4" android:strokeLineCap="round" />
 </vector>

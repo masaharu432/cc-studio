@@ -69,7 +69,13 @@
     <div class="summary" id="summary"></div>
     <div class="subnote">タップで切替（そのまま）。⟳ でリロードして起動。左スワイプで削除。裏で実行中はそのまま。</div>
     <div class="sw-body" id="webList"></div>
-    <div class="dock"><div class="dock-h">System</div><div id="sysList"></div></div>
+    <div class="dock"><div class="dock-h">System</div><div id="sysList"></div>
+      <div class="band sys feat" id="notifyCard">
+        <div class="sic" style="color:#e9b949">🔔</div>
+        <div class="band-main"><div class="band-name">通知</div></div>
+        <div class="anchor" style="border:0;color:var(--brand-soft);font-size:18px">›</div>
+      </div>
+    </div>
   </div>
 <script>
   function api(){ return window.CCStudio || {}; }
@@ -147,6 +153,7 @@
     var b=''; try{ b=(api().getBuild&&api().getBuild())||''; }catch(_){ }
     document.getElementById('build').textContent='build '+b;
   };
+  document.getElementById('notifyCard').addEventListener('click', function(){ try{ api().openNotifySettings(); }catch(_){ } });
   document.addEventListener('DOMContentLoaded', window.__ccRenderScreens);
 </script>
 </body>

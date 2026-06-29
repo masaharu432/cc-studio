@@ -40,6 +40,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var store: PluginStore
     private lateinit var screenStore: ScreenStore
     private var switcher: WebView? = null
+    private var notifyView: WebView? = null
 
     /** プラグインの有効集合が変わるたびに +1。各 Web スクリーンの loadedGeneration と比べて stale 判定。 */
     private var pluginGeneration: Int = 0
@@ -83,6 +84,10 @@ class MainActivity : AppCompatActivity() {
         root = FrameLayout(this)
         setContentView(root)
         screens = ScreenManager(root)
+        screens.onActiveChanged = { s ->
+            NotifyState.activeFolder =
+                if (s != null && s.kind == ScreenKind.WEB) ScreenUrl.folderPath(s.url) else null
+        }
 
         // 1) Plugins システムスクリーン（先頭・固定）
         screens.add(createSystemPluginsScreen())
@@ -102,14 +107,57 @@ class MainActivity : AppCompatActivity() {
         val activeWeb = webList.getOrNull(state.activeIndex) ?: webList.firstOrNull()
         activeWeb?.let { screens.select(it.id) }
 
+        // 通知タップでアプリが起動した場合（アプリが落ちていた状態でタップ）の処理
+        intent.getStringExtra(KeepAliveService.EXTRA_OPEN_CWD)?.let { openScreenForCwd(it) }
+
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
+                val nv = notifyView
+                if (nv != null && nv.visibility == View.VISIBLE) { closeNotify(); openSwitcher(); return }
                 val sw = switcher
                 if (sw != null && sw.visibility == View.VISIBLE) { closeSwitcher(); return }
                 val a = screens.activeOrNull()
                 if (a != null && a.webView.canGoBack()) a.webView.goBack() else finish()
             }
         })
+    }
+
+    override fun onResume() {
+        super.onResume()
+        NotifyState.foreground = true
+        NotifyState.activeFolder = screens.activeOrNull()
+            ?.takeIf { it.kind == ScreenKind.WEB }
+            ?.let { ScreenUrl.folderPath(it.url) }
+    }
+
+    override fun onPause() {
+        super.onPause()
+        NotifyState.foreground = false
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        intent.getStringExtra(KeepAliveService.EXTRA_OPEN_CWD)?.let { openScreenForCwd(it) }
+    }
+
+    /** 通知タップ用: cwd に対応する WEB スクリーンへ。無ければ新規作成して開く。 */
+    private fun openScreenForCwd(cwd: String) {
+        if (cwd.isEmpty()) return
+        val hit = screens.webScreens().firstOrNull {
+            NotifyDecision.matches(ScreenUrl.folderPath(it.url), cwd)
+        }
+        if (hit != null) {
+            screens.select(hit.id)
+            return
+        }
+        val schemeEnd = TARGET_URL.indexOf("://")
+        if (schemeEnd < 0) return
+        val host = TARGET_URL.substring(schemeEnd + 3).substringBefore('/')
+        val base = TARGET_URL.substring(0, schemeEnd) + "://" + host
+        val url = "$base/?folder=" + java.net.URLEncoder.encode(cwd, "UTF-8")
+        val s = createWebScreen(url, reloadOnFirstLoad = true)
+        screens.add(s); screens.select(s.id)
     }
 
     // ── WebView ファクトリ ──────────────────────────────────────────────
@@ -231,6 +279,10 @@ class MainActivity : AppCompatActivity() {
                 screens.add(s); screens.select(s.id); closeSwitcher()
             }
         },
+        notifyPrefsJsonFn = { NotifyPrefs.toJson(this) },
+        onSetNotifyPref = { kind, enabled -> NotifyPrefs.setEnabled(this, kind, enabled) },
+        onOpenNotify = { runOnUiThread { closeSwitcher(); openNotify() } },
+        onCloseNotify = { runOnUiThread { closeNotify(); openSwitcher() } },
     )
 
     // ── スクリーン操作・プラグイン反映 ──────────────────────────────────
@@ -298,6 +350,27 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun closeSwitcher() { switcher?.visibility = View.GONE }
+
+    /** 通知設定の全画面（notify.html）をオーバーレイ表示する（switcher と同型）。 */
+    private fun openNotify() {
+        val nv = notifyView ?: newConfiguredWebView().also {
+            it.webViewClient = WebViewClient()
+            it.loadUrl("file:///android_asset/notify.html")
+            root.addView(
+                it,
+                FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.MATCH_PARENT,
+                    FrameLayout.LayoutParams.MATCH_PARENT,
+                ),
+            )
+            notifyView = it
+        }
+        nv.visibility = View.VISIBLE
+        nv.bringToFront()
+        nv.evaluateJavascript("window.__ccRenderNotify && window.__ccRenderNotify();", null)
+    }
+
+    private fun closeNotify() { notifyView?.visibility = View.GONE }
 
     private fun refreshSwitcher() {
         switcher?.evaluateJavascript("window.__ccRenderScreens && window.__ccRenderScreens();", null)

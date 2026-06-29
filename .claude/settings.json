@@ -1,0 +1,27 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "curl -s -m 3 -X POST -H 'Content-Type: application/json' --data-binary @- \"http://127.0.0.1:${CC_NOTIFY_RELAY_PORT:-8770}/cc-notify\" >/dev/null 2>&1 || true",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "matcher": "permission_prompt",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "curl -s -m 3 -X POST -H 'Content-Type: application/json' --data-binary @- \"http://127.0.0.1:${CC_NOTIFY_RELAY_PORT:-8770}/cc-notify\" >/dev/null 2>&1 || true",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}

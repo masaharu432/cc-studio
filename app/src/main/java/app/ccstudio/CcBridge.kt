@@ -26,6 +26,10 @@ class CcBridge(
     private val onReloadScreen: (id: Long) -> Unit,
     private val onCloseScreen: (id: Long) -> Unit,
     private val onNewScreen: () -> Unit,
+    private val notifyPrefsJsonFn: () -> String,
+    private val onSetNotifyPref: (kind: String, enabled: Boolean) -> Unit,
+    private val onOpenNotify: () -> Unit,
+    private val onCloseNotify: () -> Unit,
 ) {
     /** ︙メニューに出すビルド番号（ビルド時刻）。 */
     @JavascriptInterface
@@ -87,4 +91,14 @@ class CcBridge(
     @JavascriptInterface fun closeScreen(id: String) { id.toLongOrNull()?.let(onCloseScreen) }
     /** 新規 Web スクリーンを作って選択。 */
     @JavascriptInterface fun newScreen() = onNewScreen()
+
+    // ── 通知設定 ──
+    /** 種類別 ON/OFF の現在値（{"stop":bool,"permission":bool}）。 */
+    @JavascriptInterface fun getNotifyPrefs(): String = notifyPrefsJsonFn()
+    /** 種類別 ON/OFF を保存する。kind は "Stop" | "Notification"。 */
+    @JavascriptInterface fun setNotifyPref(kind: String, enabled: Boolean) = onSetNotifyPref(kind, enabled)
+    /** 通知設定の全画面（notify.html オーバーレイ）を開く。 */
+    @JavascriptInterface fun openNotifySettings() = onOpenNotify()
+    /** 通知設定の全画面を閉じて switcher に戻る。 */
+    @JavascriptInterface fun closeNotifySettings() = onCloseNotify()
 }
