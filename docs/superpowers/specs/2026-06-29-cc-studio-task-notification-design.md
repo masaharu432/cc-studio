@@ -162,6 +162,10 @@ Plugins システムスクリーン（plugins.html）のプラグイン一覧の
 
 種類別トグル両方 OFF で実質マスター OFF となるため、別途マスタートグルは作らない。設定は `SharedPreferences("cc_notify_prefs")` に保存し、`NotifyPrefs` 経由で MainActivity（ブリッジ）と KeepAliveService の両方から参照する。KeepAliveService は無効な種類の通知を出さない。JS↔native は既存の `window.CCStudio.*` ブリッジに `getNotifyPrefs()` / `setNotifyPref(kind, enabled)` を追加して接続する。
 
+## ペンディング（将来）
+
+- **通知に AI 応答本文の抜粋（`last_response`）を展開表示**: relay が hook の `transcript_path` を読み、最後のアシスタント発話を数百字に切って payload に載せ、アプリが `BigTextStyle` で展開表示する。タップ→スクリーンの導線は現状のまま。2026-06-29 時点でユーザー判断によりペンディング。
+
 ## スコープ外（YAGNI）
 
 - アプリ完全終了中でも届くプッシュ（FCM/Firebase）。将来 `/cc-notify` の先に FCM を足せば拡張可能、という余地だけ残す。
