@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>通知設定</title>
+<style>
+  :root{
+    --chassis:#11151C; --module:#1B222E; --line:#2A3342; --ink:#E8EDF4; --dim:#7C8694;
+    --brand:#2E90E8; --brand-soft:#8FC2F2; --live:#3FD79A; --live-dim:#1f6d52;
+    --sans:-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+    --mono:ui-monospace,"Roboto Mono","JetBrains Mono",Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{background:var(--chassis);color:var(--ink);font-family:var(--sans)}
+  .screen{height:100%;display:flex;flex-direction:column}
+  .bar{display:flex;align-items:center;gap:10px;padding:16px 16px 12px;border-bottom:1px solid var(--line);flex:0 0 auto;
+    padding-top:calc(16px + env(safe-area-inset-top))}
+  .title{font:600 13px/1 var(--mono);letter-spacing:.24em;color:var(--dim);text-transform:uppercase}
+  .navback{border:1px solid var(--line);background:transparent;color:var(--dim);border-radius:8px;
+    font:600 12px/1 var(--sans);padding:7px 10px 7px 8px;cursor:pointer;display:inline-flex;align-items:center;gap:5px}
+  .navback .chev{font-size:14px;color:var(--brand-soft)}
+  .body{flex:1;overflow:auto;padding:6px 16px calc(20px + env(safe-area-inset-bottom))}
+  .sect{margin-top:14px;padding-top:6px}
+  .sect-h{font:700 10px/1 var(--mono);letter-spacing:.2em;text-transform:uppercase;color:var(--dim);margin:0 0 12px}
+  .row{display:flex;align-items:center;gap:12px;padding:8px 0}
+  .row .ic{width:34px;height:34px;border-radius:8px;display:grid;place-items:center;background:#0e1620;border:1px solid var(--line);color:var(--brand-soft);flex:0 0 auto;font-size:15px}
+  .row-main{flex:1;min-width:0}
+  .row-t{font:600 13px/1.2 var(--sans);color:var(--ink)}
+  .row-d{font:500 10.5px/1.4 var(--mono);color:var(--dim);margin-top:4px}
+  .tgl{appearance:none;border:0;cursor:pointer;flex:0 0 auto;width:46px;height:26px;border-radius:99px;background:#2b3342;position:relative;transition:background .18s}
+  .tgl .knob{position:absolute;top:2.5px;left:2.5px;width:21px;height:21px;border-radius:50%;background:#aeb7c4;transition:transform .18s,background .18s}
+  .tgl[aria-pressed="true"]{background:var(--live-dim)}
+  .tgl[aria-pressed="true"] .knob{transform:translateX(20px);background:var(--live)}
+  .note{margin-top:18px;font:500 11px/1.6 var(--sans);color:#5d6675}
+  @media (prefers-reduced-motion:reduce){.tgl,.tgl .knob{transition:none}}
+</style>
+</head>
+<body>
+  <div class="screen">
+    <div class="bar">
+      <button class="navback" id="back"><span class="chev">‹</span>Screens</button>
+      <span class="title">通知設定</span>
+    </div>
+    <div class="body">
+      <div class="sect"><p class="sect-h">種類別</p>
+        <div class="row"><div class="ic">✅</div><div class="row-main">
+          <div class="row-t">応答完了 (Stop)</div>
+          <div class="row-d">AI が応答を終えたとき通知</div></div>
+          <button class="tgl" id="tgl-stop" aria-pressed="true" onclick="window.__ccToggleNotify('Stop')"><span class="knob"></span></button></div>
+        <div class="row"><div class="ic">🔔</div><div class="row-main">
+          <div class="row-t">許可待ち (Notification)</div>
+          <div class="row-d">入力 / 許可待ちのとき通知</div></div>
+          <button class="tgl" id="tgl-permission" aria-pressed="true" onclick="window.__ccToggleNotify('Notification')"><span class="knob"></span></button></div>
+      </div>
+      <p class="note">通知は端末の OS 通知として届きます。今見ているスクリーンの結果は通知しません。</p>
+    </div>
+  </div>
+<script>
+  function api(){ return window.CCStudio || {}; }
+  function readPrefs(){ try{ return JSON.parse(api().getNotifyPrefs()); }catch(_){ return {stop:true, permission:true}; } }
+  window.__ccRenderNotify=function(){
+    var p=readPrefs();
+    var s=document.getElementById('tgl-stop'), n=document.getElementById('tgl-permission');
+    if(s) s.setAttribute('aria-pressed', String(!!p.stop));
+    if(n) n.setAttribute('aria-pressed', String(!!p.permission));
+  };
+  window.__ccToggleNotify=function(kind){
+    var id = kind==='Stop' ? 'tgl-stop' : 'tgl-permission';
+    var elx=document.getElementById(id); if(!elx) return;
+    var next = elx.getAttribute('aria-pressed')!=='true';
+    try{ api().setNotifyPref(kind, next); }catch(_){ }
+    elx.setAttribute('aria-pressed', String(next));
+  };
+  document.getElementById('back').addEventListener('click',function(){ try{ api().closeNotifySettings(); }catch(_){ } });
+  document.addEventListener('DOMContentLoaded', window.__ccRenderNotify);
+</script>
+</body>
+</html>

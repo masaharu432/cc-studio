@@ -28,6 +28,8 @@ class CcBridge(
     private val onNewScreen: () -> Unit,
     private val notifyPrefsJsonFn: () -> String,
     private val onSetNotifyPref: (kind: String, enabled: Boolean) -> Unit,
+    private val onOpenNotify: () -> Unit,
+    private val onCloseNotify: () -> Unit,
 ) {
     /** ︙メニューに出すビルド番号（ビルド時刻）。 */
     @JavascriptInterface
@@ -95,4 +97,8 @@ class CcBridge(
     @JavascriptInterface fun getNotifyPrefs(): String = notifyPrefsJsonFn()
     /** 種類別 ON/OFF を保存する。kind は "Stop" | "Notification"。 */
     @JavascriptInterface fun setNotifyPref(kind: String, enabled: Boolean) = onSetNotifyPref(kind, enabled)
+    /** 通知設定の全画面（notify.html オーバーレイ）を開く。 */
+    @JavascriptInterface fun openNotifySettings() = onOpenNotify()
+    /** 通知設定の全画面を閉じて switcher に戻る。 */
+    @JavascriptInterface fun closeNotifySettings() = onCloseNotify()
 }

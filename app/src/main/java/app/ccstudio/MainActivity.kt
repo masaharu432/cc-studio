@@ -40,6 +40,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var store: PluginStore
     private lateinit var screenStore: ScreenStore
     private var switcher: WebView? = null
+    private var notifyView: WebView? = null
 
     /** プラグインの有効集合が変わるたびに +1。各 Web スクリーンの loadedGeneration と比べて stale 判定。 */
     private var pluginGeneration: Int = 0
@@ -111,6 +112,8 @@ class MainActivity : AppCompatActivity() {
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
+                val nv = notifyView
+                if (nv != null && nv.visibility == View.VISIBLE) { closeNotify(); openSwitcher(); return }
                 val sw = switcher
                 if (sw != null && sw.visibility == View.VISIBLE) { closeSwitcher(); return }
                 val a = screens.activeOrNull()
@@ -278,6 +281,8 @@ class MainActivity : AppCompatActivity() {
         },
         notifyPrefsJsonFn = { NotifyPrefs.toJson(this) },
         onSetNotifyPref = { kind, enabled -> NotifyPrefs.setEnabled(this, kind, enabled) },
+        onOpenNotify = { runOnUiThread { closeSwitcher(); openNotify() } },
+        onCloseNotify = { runOnUiThread { closeNotify(); openSwitcher() } },
     )
 
     // ── スクリーン操作・プラグイン反映 ──────────────────────────────────
@@ -345,6 +350,27 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun closeSwitcher() { switcher?.visibility = View.GONE }
+
+    /** 通知設定の全画面（notify.html）をオーバーレイ表示する（switcher と同型）。 */
+    private fun openNotify() {
+        val nv = notifyView ?: newConfiguredWebView().also {
+            it.webViewClient = WebViewClient()
+            it.loadUrl("file:///android_asset/notify.html")
+            root.addView(
+                it,
+                FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.MATCH_PARENT,
+                    FrameLayout.LayoutParams.MATCH_PARENT,
+                ),
+            )
+            notifyView = it
+        }
+        nv.visibility = View.VISIBLE
+        nv.bringToFront()
+        nv.evaluateJavascript("window.__ccRenderNotify && window.__ccRenderNotify();", null)
+    }
+
+    private fun closeNotify() { notifyView?.visibility = View.GONE }
 
     private fun refreshSwitcher() {
         switcher?.evaluateJavascript("window.__ccRenderScreens && window.__ccRenderScreens();", null)
