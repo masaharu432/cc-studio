@@ -67,7 +67,6 @@
       <span class="build" id="build"></span>
     </div>
     <div class="summary" id="summary"></div>
-    <div class="subnote">タップで切替（そのまま）。⟳ でリロードして起動。左スワイプで削除。裏で実行中はそのまま。</div>
     <div class="sw-body" id="webList"></div>
     <div class="dock"><div class="dock-h">System</div><div id="sysList"></div>
       <div class="band sys feat" id="notifyCard">
@@ -148,8 +147,7 @@
     web.forEach(function(s){ list.appendChild(makeWebBand(s)); });
     var sysEl=document.getElementById('sysList'); sysEl.innerHTML='';
     sys.forEach(function(s){ sysEl.appendChild(makeSysBand(s)); });
-    var active=data.filter(function(s){return s.active;}).length;
-    document.getElementById('summary').innerHTML='<b>'+web.length+'</b> screens · <span style="color:#8FC2F2;font-weight:700;">'+active+' active</span>';
+    document.getElementById('summary').innerHTML='<b>'+web.length+'</b> screens';
     var b=''; try{ b=(api().getBuild&&api().getBuild())||''; }catch(_){ }
     document.getElementById('build').textContent='build '+b;
   };
