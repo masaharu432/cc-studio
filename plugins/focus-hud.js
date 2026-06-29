@@ -1,9 +1,10 @@
 // ==CCStudioPlugin==
 // @name        focus-hud
-// @version     1.4.0
+// @version     1.5.0
 // @description フォーカス診断オーバーレイ。どの要素・どのフレームにフォーカス/タップが入ったかを画面上部に時系列表示する（スクショで状況共有する用）。全フレームに document-start で常駐し、表示は最前面フレームのみ。
 // @run-at      document-start
 // @all-frames  true
+// @setting     visible boolean true HUD を表示
 // ==/CCStudioPlugin==
 // focus-hud.js — CC Studio 診断プラグイン（keyboard-suppress とは独立）
 // 目的: 「エクスプローラー表示でチャット入力にフォーカスが行きキーボードが出る」等の
@@ -21,6 +22,21 @@
   var MONACO_SEL = '.monaco-editor';
   var TAP_WINDOW_MS = 700;
   var MAX_LOG = 16;
+
+  // 表示状態は TOP フレームの共有フラグに持つ。初期値は注入された設定（既定 true）。
+  function readVisibleSetting() {
+    try {
+      var s = window.__ccPluginSettings && window.__ccPluginSettings['focus-hud'];
+      return !(s && s.visible === false);
+    } catch (_) { return true; }
+  }
+  function hudVisible() {
+    try {
+      var t = topWin();
+      if (typeof t.__ccStudioHudVisible === 'undefined') t.__ccStudioHudVisible = readVisibleSetting();
+      return t.__ccStudioHudVisible !== false;
+    } catch (_) { return readVisibleSetting(); }
+  }
 
   function topWin() {
     try { return window.top || window; } catch (_) { return window; }
@@ -162,6 +178,13 @@
   function renderHud(force) {
     try {
       if (!isTop() || !document.body) return;
+      if (!hudVisible()) {
+        var hiddenEl = document.getElementById('__ccStudioFocusHud');
+        if (hiddenEl) hiddenEl.style.display = 'none';
+        return; // 非表示中は描画しない（監視・ログ収集は継続）。
+      }
+      var shownEl = document.getElementById('__ccStudioFocusHud');
+      if (shownEl) shownEl.style.display = '';
       var el = document.getElementById('__ccStudioFocusHud');
       if (el && el.__ccExpanded && !force) return; // 展開中は凍結
       if (!el) {
@@ -184,7 +207,7 @@
       el.style.top = Math.round((vv && vv.offsetTop) || 0) + 'px';
       var kbv = '';
       try { kbv = topWin().__ccStudioKbVer || ''; } catch (_) {}
-      var head = 'FOCUS-HUD v1.4.0  KB:' + (kbv ? 'v' + kbv : 'none') +
+      var head = 'FOCUS-HUD v1.5.0  KB:' + (kbv ? 'v' + kbv : 'none') +
         '  vvH:' + (vv ? Math.round(vv.height) : '?') +
         (el.__ccExpanded ? '  (tap=畳む)' : '  (tap=開く)');
       if (!el.__ccExpanded) {
@@ -225,6 +248,20 @@
     }
   } catch (_) { setInterval(watchAll, 1000); }
   if (isTop()) {
+    try {
+      if (!window.__ccStudioHudSettingHook) {
+        window.__ccStudioHudSettingHook = true;
+        window.addEventListener('ccstudio:setting', function (e) {
+          try {
+            var d = e && e.detail;
+            if (d && d.plugin === 'focus-hud' && d.key === 'visible') {
+              topWin().__ccStudioHudVisible = d.value !== false;
+              renderHud(true); // 凍結を無視して即反映
+            }
+          } catch (_) { /* ignore */ }
+        }, false);
+      }
+    } catch (_) { /* ignore */ }
     try {
       if (!window.__ccStudioFocusHudTimer) {
         window.__ccStudioFocusHudTimer = setInterval(function () { renderHud(false); }, 350);
