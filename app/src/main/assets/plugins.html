@@ -68,6 +68,16 @@
   .row-t{font:600 13px/1.2 var(--sans);color:var(--ink)}
   .row-d{font:500 10.5px/1.4 var(--mono);color:var(--dim);margin-top:4px}
   @media (prefers-reduced-motion:reduce){.tgl,.tgl .knob,.iconbtn{transition:none}}
+  .navcard{width:100%;margin:14px 0 4px;display:flex;align-items:center;gap:12px;text-align:left;
+    background:var(--module);border:1px solid var(--line);border-radius:13px;padding:14px 14px;cursor:pointer;
+    transition:background .15s,border-color .15s}
+  .navcard:hover{background:#0e1c2b;border-color:#1c4368}
+  .navcard-ic{width:34px;height:34px;border-radius:9px;display:grid;place-items:center;background:#0e1620;
+    border:1px solid var(--line);color:var(--brand-soft);font-size:16px;flex:0 0 auto}
+  .navcard-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+  .navcard-t{font:600 14px/1.2 var(--sans);color:var(--ink)}
+  .navcard-d{font:500 11px/1.3 var(--mono);color:var(--dim)}
+  .navcard-chev{flex:0 0 auto;color:var(--brand-soft);font-size:20px}
 </style>
 </head>
 <body>
@@ -80,7 +90,31 @@
     <div class="pl-body">
       <button class="add" id="add">＋ Add plugin</button>
       <div class="bus" id="bus"></div>
-      <div class="sect"><p class="sect-h">通知設定</p>
+      <button class="navcard" id="notify-card" onclick="window.__ccOpenNotify()">
+        <span class="navcard-ic">🔔</span>
+        <span class="navcard-main">
+          <span class="navcard-t">通知</span>
+          <span class="navcard-d">応答完了・許可待ちの通知設定</span>
+        </span>
+        <span class="navcard-chev">›</span>
+      </button>
+      <div class="sect"><p class="sect-h">About</p>
+        <div class="row"><div class="ic">▍</div><div class="row-main">
+          <div class="row-t">CC Studio</div><div class="row-d" id="about"></div></div></div>
+        <div class="row"><div class="ic">⌁</div><div class="row-main">
+          <div class="row-t">有効なプラグインは全フレームに常駐</div>
+          <div class="row-d">ON にした時点で以後の全ロード×全フレームに注入</div></div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="screen" id="notify-screen" style="display:none">
+    <div class="bar">
+      <button class="navback" id="notify-back"><span class="chev">‹</span>Plugins</button>
+      <span class="title">通知設定</span>
+    </div>
+    <div class="pl-body">
+      <div class="sect"><p class="sect-h">種類別</p>
         <div class="row"><div class="ic">✅</div><div class="row-main">
           <div class="row-t">応答完了 (Stop)</div>
           <div class="row-d">AI が応答を終えたとき通知</div></div>
@@ -89,13 +123,6 @@
           <div class="row-t">許可待ち (Notification)</div>
           <div class="row-d">入力/許可待ちのとき通知</div></div>
           <button class="tgl" id="tgl-permission" aria-pressed="true" onclick="window.__ccToggleNotify('Notification')"><span class="knob"></span></button></div>
-      </div>
-      <div class="sect"><p class="sect-h">About</p>
-        <div class="row"><div class="ic">▍</div><div class="row-main">
-          <div class="row-t">CC Studio</div><div class="row-d" id="about"></div></div></div>
-        <div class="row"><div class="ic">⌁</div><div class="row-main">
-          <div class="row-t">有効なプラグインは全フレームに常駐</div>
-          <div class="row-d">ON にした時点で以後の全ロード×全フレームに注入</div></div></div>
       </div>
     </div>
   </div>
@@ -171,10 +198,21 @@
     try{ api().setNotifyPref(kind, next); }catch(_){ }
     elx.setAttribute('aria-pressed', String(next));
   };
+  // 通知設定の全画面を開く/閉じる（plugins.html 内の2画面切替）
+  window.__ccOpenNotify=function(){
+    window.__ccRenderNotify();
+    document.querySelector('.screen').style.display='none';
+    document.getElementById('notify-screen').style.display='flex';
+  };
+  window.__ccCloseNotify=function(){
+    document.getElementById('notify-screen').style.display='none';
+    document.querySelector('.screen').style.display='flex';
+  };
 
   document.getElementById('add').addEventListener('click',function(){ try{ api().pickPlugin(); }catch(_){ } });
   document.getElementById('back').addEventListener('click',function(){ try{ api().openSwitcher(); }catch(_){ } });
-  document.addEventListener('DOMContentLoaded', function(){ window.__ccRenderPlugins(); window.__ccRenderNotify(); });
+  document.getElementById('notify-back').addEventListener('click', window.__ccCloseNotify);
+  document.addEventListener('DOMContentLoaded', window.__ccRenderPlugins);
 </script>
 </body>
 </html>
