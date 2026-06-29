@@ -64,4 +64,43 @@ class PluginMetaTest {
         assertTrue(PluginMetaParser.parse(on).allFrames)
         assertFalse(PluginMetaParser.parse(off).allFrames)
     }
+
+    @Test fun parsesSettingLines() {
+        val js = """
+            // ==CCStudioPlugin==
+            // @name        focus-hud
+            // @setting     visible boolean true HUD を表示
+            // @setting     compact boolean false コンパクト表示
+            // ==/CCStudioPlugin==
+            (function(){})();
+        """.trimIndent()
+        val m = PluginMetaParser.parse(js)
+        assertTrue(m.hasSettings) // @setting があれば true
+        assertEquals(2, m.settings.size)
+        val s0 = m.settings[0]
+        assertEquals("visible", s0.key)
+        assertEquals("boolean", s0.type)
+        assertEquals("true", s0.default)
+        assertEquals("HUD を表示", s0.label) // ラベルは空白を含み行末まで
+        assertEquals("compact", m.settings[1].key)
+        assertEquals("false", m.settings[1].default)
+    }
+
+    @Test fun ignoresUnknownSettingTypeAndMalformedLines() {
+        val js = """
+            // ==CCStudioPlugin==
+            // @setting     mode enum a foo
+            // @setting     broken
+            // @setting     ok boolean true ラベル
+            // ==/CCStudioPlugin==
+        """.trimIndent()
+        val m = PluginMetaParser.parse(js)
+        assertEquals(1, m.settings.size) // boolean の正常行のみ
+        assertEquals("ok", m.settings[0].key)
+    }
+
+    @Test fun noSettingsYieldsEmptyList() {
+        val m = PluginMetaParser.parse("(function(){})();")
+        assertTrue(m.settings.isEmpty())
+    }
 }
