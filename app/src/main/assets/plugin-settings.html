@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>プラグイン設定</title>
+<style>
+  :root{
+    --chassis:#11151C; --module:#1B222E; --line:#2A3342; --ink:#E8EDF4; --dim:#7C8694;
+    --brand:#2E90E8; --brand-soft:#8FC2F2; --live:#3FD79A; --live-dim:#1f6d52;
+    --sans:-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+    --mono:ui-monospace,"Roboto Mono","JetBrains Mono",Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{background:var(--chassis);color:var(--ink);font-family:var(--sans)}
+  .screen{height:100%;display:flex;flex-direction:column}
+  .bar{display:flex;align-items:center;gap:10px;padding:16px 16px 12px;border-bottom:1px solid var(--line);flex:0 0 auto;
+    padding-top:calc(16px + env(safe-area-inset-top))}
+  .title{font:600 13px/1 var(--mono);letter-spacing:.18em;color:var(--dim);text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .navback{border:1px solid var(--line);background:transparent;color:var(--dim);border-radius:8px;
+    font:600 12px/1 var(--sans);padding:7px 10px 7px 8px;cursor:pointer;display:inline-flex;align-items:center;gap:5px;flex:0 0 auto}
+  .navback .chev{font-size:14px;color:var(--brand-soft)}
+  .body{flex:1;overflow:auto;padding:6px 16px calc(20px + env(safe-area-inset-bottom))}
+  .sect{margin-top:14px;padding-top:6px}
+  .row{display:flex;align-items:center;gap:12px;padding:8px 0}
+  .row .ic{width:34px;height:34px;border-radius:8px;display:grid;place-items:center;background:#0e1620;border:1px solid var(--line);color:var(--brand-soft);flex:0 0 auto;font-size:15px}
+  .row-main{flex:1;min-width:0}
+  .row-t{font:600 13px/1.2 var(--sans);color:var(--ink)}
+  .tgl{appearance:none;border:0;cursor:pointer;flex:0 0 auto;width:46px;height:26px;border-radius:99px;background:#2b3342;position:relative;transition:background .18s}
+  .tgl .knob{position:absolute;top:2.5px;left:2.5px;width:21px;height:21px;border-radius:50%;background:#aeb7c4;transition:transform .18s,background .18s}
+  .tgl[aria-pressed="true"]{background:var(--live-dim)}
+  .tgl[aria-pressed="true"] .knob{transform:translateX(20px);background:var(--live)}
+  .note{margin-top:18px;font:500 11px/1.6 var(--sans);color:#5d6675}
+  .empty{padding:24px 8px;text-align:center;color:var(--dim);font:500 12px/1.5 var(--sans)}
+  @media (prefers-reduced-motion:reduce){.tgl,.tgl .knob{transition:none}}
+</style>
+</head>
+<body>
+  <div class="screen">
+    <div class="bar">
+      <button class="navback" id="back"><span class="chev">‹</span>Plugins</button>
+      <span class="title" id="title">設定</span>
+    </div>
+    <div class="body">
+      <div class="sect" id="list"></div>
+      <p class="note">設定はリロード無しで、開いている全スクリーンに即反映されます。</p>
+    </div>
+  </div>
+<script>
+  function api(){ return window.CCStudio || {}; }
+  function el(t,c){ var e=document.createElement(t); if(c) e.className=c; return e; }
+  function view(){ try{ return JSON.parse(api().getSettingsView()||'{}'); }catch(_){ return {}; } }
+
+  function boolRow(name,s){
+    var row=el('div','row');
+    var ic=el('div','ic'); ic.textContent='⚙'; row.appendChild(ic);
+    var main=el('div','row-main');
+    var t=el('div','row-t'); t.textContent=s.label||s.key; main.appendChild(t);
+    row.appendChild(main);
+    var tgl=el('button','tgl'); tgl.setAttribute('aria-pressed', String(!!s.value));
+    tgl.appendChild(el('span','knob'));
+    tgl.addEventListener('click',function(){
+      var next = tgl.getAttribute('aria-pressed')!=='true';
+      try{ api().setSetting(name, s.key, next); }catch(_){ }
+      tgl.setAttribute('aria-pressed', String(next));
+    });
+    row.appendChild(tgl);
+    return row;
+  }
+
+  window.__ccRenderSettings=function(){
+    var v=view();
+    document.getElementById('title').textContent = v.displayName || v.name || '設定';
+    var list=document.getElementById('list'); list.innerHTML='';
+    var defs=(v.settings||[]).filter(function(s){ return s.type==='boolean'; });
+    if(!defs.length){
+      var e=el('div','empty'); e.textContent='このプラグインに設定項目はありません。';
+      list.appendChild(e); return;
+    }
+    defs.forEach(function(s){ list.appendChild(boolRow(v.name, s)); });
+  };
+  document.getElementById('back').addEventListener('click',function(){ try{ api().closePluginSettings(); }catch(_){ } });
+  document.addEventListener('DOMContentLoaded', window.__ccRenderSettings);
+</script>
+</body>
+</html>
