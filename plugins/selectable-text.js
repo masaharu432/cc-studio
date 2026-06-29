@@ -1,23 +1,21 @@
 // ==CCStudioPlugin==
 // @name        selectable-text
-// @version     0.7.0
-// @description チャットの返信やプレビューなど、編集できない文字を選択してコピーできるようにします。文字を長押しすると「コピー」ボタンが出ます。ハンドルで範囲を調整してからコピーできます。
+// @version     0.8.0
+// @description モバイルの画面ではチャットの返信やプレビューなど編集できない文字をうまく選択・コピーできません。このプラグインは、文字を長押しすると「コピー」ボタンを出し、ハンドルで範囲を調整してコピーできるようにします。
 // @run-at        document-start
 // @all-frames    true
 // ==/CCStudioPlugin==
-// selectable-text.js — CC Studio プラグイン。実機診断 + webview ソース(pre/index.html)で確定した真因に基づく。
-//   構造: webview は OUTER(pre/index.html) が INNER(チャット/プレビュー本体)にリスナを張る二層。
-//   - INNER の contextmenu を OUTER の転送リスナが拾い、e.defaultPrevented なら何もせず、さもなくば
-//     preventDefault(native バーを殺す) + ホストへ転送(VS Code メニューを開く)。
-//   - この WebView は nested iframe の選択に native の選択 Copy バー(ActionMode)を出さない(実機 B)。
-//   - だが pre/index.html は webview に clipboard-write を許可し、VS Code 自身 execCommand('copy') で
-//     webview の選択をコピーしている。→ INNER フレームで document.execCommand('copy') は確実に効く。
-//   対処(非トップ=webview フレーム):
-//   - 長押し(contextmenu)で「コピー」ボタンを無条件に表示(選択文字列が読めるかに依存しない。v0.5 はこのゲートで失敗)。
-//   - contextmenu は preventDefault + stopImmediatePropagation して VS Code メニュー転送を止める(選択ハンドルは残る)。
-//   - ボタンタップで document.execCommand('copy')(生きた選択をコピー)。保険で clipboard API とトップ転送も。
-//   - ハンドルで範囲調整→タップすれば調整後の範囲がコピーされる。
-//   TOP(ファイル一覧/エディタの長押しメニュー)は温存するため iframe 限定。保険で user-select 解放(Monaco 除外)。
+// selectable-text.js — CC Studio プラグイン。実機診断(select-diag)で機構を確定:
+//   - 長押しで window-capture の contextmenu が webview 本体フレームで発火する(CTXwin)。
+//   - その時点で選択は読める(getSelection に selLen>0)。
+//   - documentElement に append した position:fixed ボタンは画面内に可視で出る(btnrect visible)。
+//   つまり「長押し→ボタン表示」は確実に動く。以前ボタンが出なかったのは selectionchange の自動非表示が
+//   表示直後に消していたため。→ 自動非表示を撤去し、表示は無条件・消去はコピー時/一定時間後のみにする。
+//   コピー: ボタンタップで document.execCommand('copy')(VS Code 自身と同じ・clipboard-write 許可済み)で
+//   生きた選択(=ハンドルで調整後の範囲)をコピー。保険で clipboard API とトップ転送、長押し時点のテキスト保持。
+//   非トップ(webview)では contextmenu を preventDefault+stopImmediatePropagation して VS Code メニュー転送を止める
+//   (選択ハンドルは残る)。TOP(ファイル一覧/エディタの長押しメニュー)は温存するため iframe 限定。
+//   保険として user-select も広く解放(Monaco 除外)。
 (function () {
   'use strict';
 
@@ -25,10 +23,10 @@
   var BTN_ID = 'cc-studio-copy-btn';
   var TOAST_ID = 'cc-studio-copy-toast';
   var COPY_MSG = '__cc_st_copy';
-  var VER = '0.7.0';
+  var VER = '0.8.0';
 
-  var ENABLE_COPY_UI = true;     // 非トップ(webview)で長押し→コピーボタン
-  var BTN_TIMEOUT_MS = 8000;     // 操作されなければ自動で消す
+  var ENABLE_COPY_UI = true;
+  var BTN_TIMEOUT_MS = 9000;
   var DEBOUNCE_MS = 250;
   var POLL_MS = 1000;
   var POLL_FOR_MS = 15000;
@@ -41,6 +39,7 @@
 
   // ===== 非トップ(webview): 長押し→「コピー」ボタン =====
   var hideTimer = null;
+  var lastSelText = '';
 
   function hideBtn() {
     if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }
@@ -55,12 +54,10 @@
       var b = document.getElementById(BTN_ID);
       if (!b) {
         b = document.createElement('button');
-        b.id = BTN_ID;
-        b.type = 'button';
-        b.textContent = '⧉ コピー';
+        b.id = BTN_ID; b.type = 'button'; b.textContent = '⧉ コピー';
         b.style.cssText =
           'position:fixed;z-index:2147483647;height:38px;padding:0 16px;border:0;border-radius:19px;' +
-          'background:#1e88e5;color:#fff;font:13px/38px sans-serif;box-shadow:0 2px 8px rgba(0,0,0,.5);white-space:nowrap;';
+          'background:#1e88e5;color:#fff;font:14px/38px sans-serif;box-shadow:0 2px 8px rgba(0,0,0,.5);white-space:nowrap;';
         // 選択を保ったままコピーするため、押下のデフォルト(フォーカス移動=選択解除)を止める。
         b.addEventListener('pointerdown', function (e) { e.preventDefault(); e.stopPropagation(); }, true);
         b.addEventListener('mousedown', function (e) { e.preventDefault(); e.stopPropagation(); }, true);
@@ -68,10 +65,10 @@
         root.appendChild(b);
       }
       var vw = window.innerWidth || (document.documentElement && document.documentElement.clientWidth) || 320;
-      var bw = 116, bh = 38, gap = 14;
+      var bw = 116, bh = 38, gap = 16;
       var left = Math.min(Math.max((cx || 20) - bw / 2, 6), vw - bw - 6);
       var top = (cy || 60) - bh - gap;
-      if (top < 6) top = (cy || 0) + gap + 20;
+      if (top < 6) top = (cy || 0) + gap + 22;   // 上に出せなければ指の下
       b.style.left = left + 'px';
       b.style.top = top + 'px';
       if (hideTimer) clearTimeout(hideTimer);
@@ -80,11 +77,10 @@
   }
 
   function doCopy() {
+    var live = selText();                       // ハンドルで調整後の範囲(生きた選択)
+    var text = (live && live.trim()) ? live : lastSelText;
     var done = false;
-    // 1) 生きた選択をそのまま execCommand でコピー(VS Code と同じ・clipboard-write 許可済み)。
-    try { done = !!(document.execCommand && document.execCommand('copy')); } catch (_) {}
-    // 2) 保険: 文字列が読めるならクリップボード API / トップ転送でも。
-    var text = selText();
+    try { done = !!(document.execCommand && document.execCommand('copy')); } catch (_) {}  // 生きた選択をコピー
     if (text && text.trim()) {
       try { if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).catch(function () {}); } catch (_) {}
       try { (window.top || window).postMessage(mkCopy(text), '*'); } catch (_) {}
@@ -95,30 +91,16 @@
   }
   function mkCopy(text) { var o = { text: text }; o[COPY_MSG] = true; return o; }
 
-  // 長押しで発火する contextmenu を、VS Code メニュー転送の抑止 + ボタン表示トリガに使う。
   function onContextMenu(e) {
     if (isTop || !ENABLE_COPY_UI) return;
-    // 転送リスナ(pre/index.html)は e.defaultPrevented なら何もしない。両方掛けて確実に止める。
-    try { e.preventDefault(); e.stopImmediatePropagation(); } catch (_) {}
-    showBtn(e.clientX, e.clientY);   // 無条件に表示(選択確定は後でよい。コピーは execCommand で生きた選択を拾う)
-  }
-
-  // 選択が完全に消えたらボタンも消す(best-effort)。
-  function onSelectionChange() {
-    if (!document.getElementById(BTN_ID)) return;
-    var s;
-    try { s = window.getSelection(); } catch (_) { s = null; }
-    // 何も選択されていない & テキストも空 → 消す
-    if (s && s.isCollapsed && !selText()) hideBtn();
+    try { e.preventDefault(); e.stopImmediatePropagation(); } catch (_) {}  // VS Code メニュー転送を止める
+    lastSelText = selText();                     // 長押し時点のテキストを保険で保持
+    showBtn(e.clientX, e.clientY);               // 無条件に表示(自動非表示はしない)
   }
 
   function installCopyUI() {
     if (isTop || !ENABLE_COPY_UI) return;
-    try {
-      window.addEventListener('contextmenu', onContextMenu, true);
-      document.addEventListener('selectionchange', onSelectionChange, false);
-      log('copy UI installed (iframe)');
-    } catch (_) {}
+    try { window.addEventListener('contextmenu', onContextMenu, true); log('copy UI installed'); } catch (_) {}
   }
 
   // ===== トップ: コピー依頼の保険受け口 =====

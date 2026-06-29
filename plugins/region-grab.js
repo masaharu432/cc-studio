@@ -1,7 +1,7 @@
 // ==CCStudioPlugin==
 // @name        region-grab
 // @version     0.1.0
-// @description 編集できない画面の文字を、指で四角く囲ってまとめてコピーします。左端の □ ボタンを押してから、コピーしたい範囲をドラッグで囲むとコピーされます。
+// @description モバイルでは編集できない画面の文字をコピーするのが難しいです。このプラグインは、左端の □ ボタンを押してコピーしたい範囲を指で四角く囲うと、その中の文字をまとめてコピーできるようにします。
 // @run-at        document-start
 // @all-frames    true
 // ==/CCStudioPlugin==
