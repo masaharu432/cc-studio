@@ -83,6 +83,10 @@ class MainActivity : AppCompatActivity() {
         root = FrameLayout(this)
         setContentView(root)
         screens = ScreenManager(root)
+        screens.onActiveChanged = { s ->
+            NotifyState.activeFolder =
+                if (s != null && s.kind == ScreenKind.WEB) ScreenUrl.folderPath(s.url) else null
+        }
 
         // 1) Plugins システムスクリーン（先頭・固定）
         screens.add(createSystemPluginsScreen())
@@ -110,6 +114,19 @@ class MainActivity : AppCompatActivity() {
                 if (a != null && a.webView.canGoBack()) a.webView.goBack() else finish()
             }
         })
+    }
+
+    override fun onResume() {
+        super.onResume()
+        NotifyState.foreground = true
+        NotifyState.activeFolder = screens.activeOrNull()
+            ?.takeIf { it.kind == ScreenKind.WEB }
+            ?.let { ScreenUrl.folderPath(it.url) }
+    }
+
+    override fun onPause() {
+        super.onPause()
+        NotifyState.foreground = false
     }
 
     // ── WebView ファクトリ ──────────────────────────────────────────────

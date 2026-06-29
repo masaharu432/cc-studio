@@ -12,6 +12,9 @@ class ScreenManager(private val container: FrameLayout) {
     private var activeId: Long = -1
     private var idSeq: Long = 0
 
+    /** アクティブスクリーンが変わるたびに呼ばれる（NotifyState 更新用）。 */
+    var onActiveChanged: ((Screen?) -> Unit)? = null
+
     fun nextId(): Long = ++idSeq
 
     fun add(screen: Screen) {
@@ -39,6 +42,7 @@ class ScreenManager(private val container: FrameLayout) {
         for (s in screens) s.webView.visibility =
             if (s.id == id) View.VISIBLE else View.GONE
         target.webView.requestFocus()
+        onActiveChanged?.invoke(target)
     }
 
     /** Web スクリーンを閉じる。閉じたら隣をアクティブ化。System は閉じない。 */
@@ -52,7 +56,7 @@ class ScreenManager(private val container: FrameLayout) {
         s.webView.destroy()
         if (wasActive) {
             val next = screens.getOrNull(idx) ?: screens.lastOrNull()
-            if (next != null) select(next.id) else activeId = -1
+            if (next != null) select(next.id) else { activeId = -1; onActiveChanged?.invoke(null) }
         }
         return true
     }
