@@ -97,6 +97,7 @@ class KeepAliveService : Service() {
         if (!NotifyDecision.shouldNotify(NotifyState.foreground, NotifyState.activeFolder, cwd)) return
 
         val kind = json.optString("kind", "Stop")
+        if (!NotifyPrefs.isEnabled(this, kind)) return
         val project = json.optString("project")
         val message = json.optString("message")
         val title = if (kind == "Notification")

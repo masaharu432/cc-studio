@@ -276,6 +276,8 @@ class MainActivity : AppCompatActivity() {
                 screens.add(s); screens.select(s.id); closeSwitcher()
             }
         },
+        notifyPrefsJsonFn = { NotifyPrefs.toJson(this) },
+        onSetNotifyPref = { kind, enabled -> NotifyPrefs.setEnabled(this, kind, enabled) },
     )
 
     // ── スクリーン操作・プラグイン反映 ──────────────────────────────────
