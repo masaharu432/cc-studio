@@ -16,6 +16,7 @@ data class PluginInfo(
     val bundled: Boolean,
     val runAt: String,                // "document-start" | "document-idle"
     val allFrames: Boolean,           // true: 全フレーム / false: トップフレームのみ
+    val settings: List<SettingDef>,   // @setting 宣言（無ければ空）
 )
 
 /**
@@ -121,6 +122,7 @@ class PluginStore(private val context: Context) {
                     bundled = bundledNames.contains(f.name),
                     runAt = meta.runAt,
                     allFrames = meta.allFrames,
+                    settings = meta.settings,
                 )
             }
             ?: emptyList()
@@ -144,6 +146,30 @@ class PluginStore(private val context: Context) {
         val set = enabledSet()
         if (enabled) set.add(name) else set.remove(name)
         prefs.edit().putStringSet("enabled_plugins", set).apply()
+    }
+
+    /** 設定値の生文字列（未保存は null）。キーは setting:<plugin>:<key>。 */
+    fun settingValue(name: String, key: String): String? =
+        prefs.getString("setting:$name:$key", null)
+
+    /** 設定値を文字列で永続化（型解釈は呼び出し側 / PluginSettings に委ねる）。 */
+    fun setSettingRaw(name: String, key: String, value: String) {
+        prefs.edit().putString("setting:$name:$key", value).apply()
+    }
+
+    /** 対象プラグインの設定スキーマ（無ければ空）。 */
+    fun settingsOf(name: String): List<SettingDef> =
+        list().firstOrNull { it.name == name }?.settings ?: emptyList()
+
+    /** 設定を持つ全プラグインの「default を保存値で上書き＋型変換した」有効値マップ。 */
+    fun effectiveSettings(): Map<String, Map<String, Any>> {
+        val out = LinkedHashMap<String, Map<String, Any>>()
+        for (p in list()) {
+            if (p.settings.isEmpty()) continue
+            val raw = p.settings.associate { it.key to settingValue(p.name, it.key) }
+            out[p.name] = PluginSettings.merge(p.settings, raw)
+        }
+        return out
     }
 
     /** プラグインを削除（ファイル削除 + 有効集合から除外）。組込みは「削除済み」として記録し再投入を抑止。 */
