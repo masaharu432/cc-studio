@@ -106,6 +106,9 @@ class MainActivity : AppCompatActivity() {
         val activeWeb = webList.getOrNull(state.activeIndex) ?: webList.firstOrNull()
         activeWeb?.let { screens.select(it.id) }
 
+        // 通知タップでアプリが起動した場合（アプリが落ちていた状態でタップ）の処理
+        intent.getStringExtra(KeepAliveService.EXTRA_OPEN_CWD)?.let { openScreenForCwd(it) }
+
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
                 val sw = switcher
@@ -127,6 +130,31 @@ class MainActivity : AppCompatActivity() {
     override fun onPause() {
         super.onPause()
         NotifyState.foreground = false
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        intent.getStringExtra(KeepAliveService.EXTRA_OPEN_CWD)?.let { openScreenForCwd(it) }
+    }
+
+    /** 通知タップ用: cwd に対応する WEB スクリーンへ。無ければ新規作成して開く。 */
+    private fun openScreenForCwd(cwd: String) {
+        if (cwd.isEmpty()) return
+        val hit = screens.webScreens().firstOrNull {
+            NotifyDecision.matches(ScreenUrl.folderPath(it.url), cwd)
+        }
+        if (hit != null) {
+            screens.select(hit.id)
+            return
+        }
+        val schemeEnd = TARGET_URL.indexOf("://")
+        if (schemeEnd < 0) return
+        val host = TARGET_URL.substring(schemeEnd + 3).substringBefore('/')
+        val base = TARGET_URL.substring(0, schemeEnd) + "://" + host
+        val url = "$base/?folder=" + java.net.URLEncoder.encode(cwd, "UTF-8")
+        val s = createWebScreen(url, reloadOnFirstLoad = true)
+        screens.add(s); screens.select(s.id)
     }
 
     // ── WebView ファクトリ ──────────────────────────────────────────────

@@ -19,4 +19,11 @@ class NotifyDecisionTest {
         assertTrue(NotifyDecision.shouldNotify(true, "/a/other", "/a/proj"))      // 別画面 → 通知
         assertTrue(NotifyDecision.shouldNotify(true, null, "/a/proj"))            // 該当なし → 通知
     }
+
+    @Test fun matchesPicksScreenByFolder() {
+        // 「該当スクリーン選択」は matches を folder 一覧に適用する想定。
+        val folders = listOf("/a/one", "/a/two")
+        val hit = folders.firstOrNull { NotifyDecision.matches(it, "/a/two/src") }
+        assertTrue(hit == "/a/two")
+    }
 }
