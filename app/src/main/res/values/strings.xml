@@ -4,4 +4,7 @@
     <string name="keepalive_channel_name">CC Studio connection</string>
     <string name="keepalive_notification_title">CC Studio connected</string>
     <string name="keepalive_notification_text">Keeping the session alive in the background</string>
+    <string name="task_channel_name">タスク通知</string>
+    <string name="task_done_title">✅ 応答が完了しました</string>
+    <string name="task_permission_title">🔔 許可待ち</string>
 </resources>
