@@ -80,6 +80,16 @@
     <div class="pl-body">
       <button class="add" id="add">＋ Add plugin</button>
       <div class="bus" id="bus"></div>
+      <div class="sect"><p class="sect-h">通知設定</p>
+        <div class="row"><div class="ic">✅</div><div class="row-main">
+          <div class="row-t">応答完了 (Stop)</div>
+          <div class="row-d">AI が応答を終えたとき通知</div></div>
+          <button class="tgl" id="tgl-stop" aria-pressed="true" onclick="window.__ccToggleNotify('Stop')"><span class="knob"></span></button></div>
+        <div class="row"><div class="ic">🔔</div><div class="row-main">
+          <div class="row-t">許可待ち (Notification)</div>
+          <div class="row-d">入力/許可待ちのとき通知</div></div>
+          <button class="tgl" id="tgl-permission" aria-pressed="true" onclick="window.__ccToggleNotify('Notification')"><span class="knob"></span></button></div>
+      </div>
       <div class="sect"><p class="sect-h">About</p>
         <div class="row"><div class="ic">▍</div><div class="row-main">
           <div class="row-t">CC Studio</div><div class="row-d" id="about"></div></div></div>
@@ -143,9 +153,28 @@
     document.getElementById('about').textContent='build '+b;
   };
   function render(){ window.__ccRenderPlugins(); }
+
+  // ── 通知設定（種類別 ON/OFF） ──
+  function __ccReadNotifyPrefs(){
+    try{ return JSON.parse(api().getNotifyPrefs()); }catch(_){ return {stop:true, permission:true}; }
+  }
+  window.__ccRenderNotify=function(){
+    var p=__ccReadNotifyPrefs();
+    var s=document.getElementById('tgl-stop'), n=document.getElementById('tgl-permission');
+    if(s) s.setAttribute('aria-pressed', String(!!p.stop));
+    if(n) n.setAttribute('aria-pressed', String(!!p.permission));
+  };
+  window.__ccToggleNotify=function(kind){
+    var id = kind==='Stop' ? 'tgl-stop' : 'tgl-permission';
+    var elx=document.getElementById(id); if(!elx) return;
+    var next = elx.getAttribute('aria-pressed')!=='true';
+    try{ api().setNotifyPref(kind, next); }catch(_){ }
+    elx.setAttribute('aria-pressed', String(next));
+  };
+
   document.getElementById('add').addEventListener('click',function(){ try{ api().pickPlugin(); }catch(_){ } });
   document.getElementById('back').addEventListener('click',function(){ try{ api().openSwitcher(); }catch(_){ } });
-  document.addEventListener('DOMContentLoaded', window.__ccRenderPlugins);
+  document.addEventListener('DOMContentLoaded', function(){ window.__ccRenderPlugins(); window.__ccRenderNotify(); });
 </script>
 </body>
 </html>
