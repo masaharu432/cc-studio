@@ -24,7 +24,8 @@ class KeepAliveService : Service() {
     private var ws: WebSocket? = null
     @Volatile private var stopped = false
     private val handler = android.os.Handler(android.os.Looper.getMainLooper())
-    private var backoffMs = 2000L
+    @Volatile private var backoffMs = 2000L
+    private val reconnectRunnable = Runnable { connect() }
 
     override fun onCreate() {
         super.onCreate()
@@ -61,6 +62,7 @@ class KeepAliveService : Service() {
         val url = wsUrl() ?: return
         // tailnet ゲートのみ（[[cc-studio-tailnet-only]]）。cookie/トークン不要。
         val request = Request.Builder().url(url).build()
+        ws?.cancel()
         ws = client.newWebSocket(request, object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
                 backoffMs = 2000L
@@ -79,7 +81,8 @@ class KeepAliveService : Service() {
 
     private fun scheduleReconnect() {
         if (stopped) return
-        handler.postDelayed({ connect() }, backoffMs)
+        handler.removeCallbacks(reconnectRunnable)
+        handler.postDelayed(reconnectRunnable, backoffMs)
         backoffMs = (backoffMs * 2).coerceAtMost(60000L)
     }
 
@@ -123,9 +126,10 @@ class KeepAliveService : Service() {
             .setAutoCancel(true)
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .build()
-        // セッション単位で更新（積み上げない）: cwd で通知 ID を固定
-        ContextCompat.getSystemService(this, NotificationManager::class.java)
-            ?.notify(cwd.hashCode(), n)
+        // セッション単位で更新（積み上げない）: tag+id namespace で foreground id=1 と衝突しない
+        val mgr = ContextCompat.getSystemService(this, NotificationManager::class.java)
+        mgr?.notify(TASK_TAG, cwd.hashCode(), n)
+        Log.d("CcStudio", "cc_task notified: $title")
     }
 
     // ── 常駐通知 / チャンネル ────────────────────────────────────────────
@@ -162,6 +166,7 @@ class KeepAliveService : Service() {
     companion object {
         const val CHANNEL_ID = "cc_web_keepalive"
         const val TASK_CHANNEL_ID = "cc_task"
+        const val TASK_TAG = "cc_task"
         const val NOTIFICATION_ID = 1
         const val EXTRA_OPEN_CWD = "app.ccstudio.OPEN_CWD"
     }
