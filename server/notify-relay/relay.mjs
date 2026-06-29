@@ -14,6 +14,7 @@ export function normalizeEvent(raw) {
     event: "cc-notify",
     kind: asString(o.hook_event_name) || "Stop",
     project: cwd ? cwd.replace(/\/+$/, "").split("/").pop() || "" : "",
+    branch: "",
     cwd,
     sessionId: asString(o.session_id),
     message: asString(o.message),

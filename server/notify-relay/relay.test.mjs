@@ -57,9 +57,15 @@ test("POST broadcasts to a connected ws client", async () => {
         }).then((res) => res.json()).then((j) => assert.equal(j.delivered, 1)).catch(reject)
       }
       if (upgraded && buf.length >= 2) {
-        const len = buf[1] & 0x7f
-        if (buf.length >= 2 + len) {
-          resolve(JSON.parse(buf.subarray(2, 2 + len).toString("utf8")))
+        let len = buf[1] & 0x7f
+        let headerLen = 2
+        if (len === 126) {
+          if (buf.length < 4) return
+          len = buf.readUInt16BE(2)
+          headerLen = 4
+        }
+        if (buf.length >= headerLen + len) {
+          resolve(JSON.parse(buf.subarray(headerLen, headerLen + len).toString("utf8")))
         }
       }
     })
@@ -68,4 +74,5 @@ test("POST broadcasts to a connected ws client", async () => {
   await new Promise((r) => server.close(r))
   assert.equal(msg.event, "cc-notify")
   assert.equal(msg.project, "proj")
+  assert.equal(msg.branch, "")
 })
