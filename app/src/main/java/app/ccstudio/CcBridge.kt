@@ -30,6 +30,11 @@ class CcBridge(
     private val onSetNotifyPref: (kind: String, enabled: Boolean) -> Unit,
     private val onOpenNotify: () -> Unit,
     private val onCloseNotify: () -> Unit,
+    private val pluginSettingsJsonFn: () -> String,
+    private val onOpenPluginSettings: (name: String) -> Unit,
+    private val settingsViewJsonFn: () -> String,
+    private val onSetSetting: (name: String, key: String, value: Boolean) -> Unit,
+    private val onClosePluginSettings: () -> Unit,
 ) {
     /** ︙メニューに出すビルド番号（ビルド時刻）。 */
     @JavascriptInterface
@@ -101,4 +106,17 @@ class CcBridge(
     @JavascriptInterface fun openNotifySettings() = onOpenNotify()
     /** 通知設定の全画面を閉じて switcher に戻る。 */
     @JavascriptInterface fun closeNotifySettings() = onCloseNotify()
+
+    // ── プラグイン設定 ──
+    /** 設定ランタイム注入用。全プラグインの有効設定値（{"focus-hud":{"visible":true}, ...}）。 */
+    @JavascriptInterface fun getPluginSettings(): String = pluginSettingsJsonFn()
+    /** そのプラグインの専用設定スクリーン（plugin-settings.html オーバーレイ）を開く。 */
+    @JavascriptInterface fun openPluginSettings(name: String) = onOpenPluginSettings(name)
+    /** 設定スクリーンの描画素材（{name, displayName, settings:[{key,type,default,label,value}]}）。 */
+    @JavascriptInterface fun getSettingsView(): String = settingsViewJsonFn()
+    /** 設定値を保存し、全 WEB スクリーンへリロード無しでライブ反映する（v1: boolean）。 */
+    @JavascriptInterface fun setSetting(name: String, key: String, value: Boolean) =
+        onSetSetting(name, key, value)
+    /** 設定スクリーンを閉じて Plugins 画面へ戻す。 */
+    @JavascriptInterface fun closePluginSettings() = onClosePluginSettings()
 }

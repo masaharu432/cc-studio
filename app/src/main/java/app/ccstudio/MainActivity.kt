@@ -41,6 +41,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var screenStore: ScreenStore
     private var switcher: WebView? = null
     private var notifyView: WebView? = null
+    private var settingsView: WebView? = null
+    private var settingsTarget: String? = null
 
     /** プラグインの有効集合が変わるたびに +1。各 Web スクリーンの loadedGeneration と比べて stale 判定。 */
     private var pluginGeneration: Int = 0
@@ -211,6 +213,7 @@ class MainActivity : AppCompatActivity() {
                 }
                 injectAssetInto(view, "bootstrap.js")
                 if (!ExtensionRuntime.isDocumentStartSupported()) {
+                    view.evaluateJavascript("window.__ccPluginSettings = ${effectiveSettingsJson()};", null)
                     // document-start 非対応端末: 有効プラグインを全部メインフレームに注入（フォールバック）。
                     store.enabledScripts().forEach { view.evaluateJavascript(it, null) }
                 } else {
@@ -283,6 +286,14 @@ class MainActivity : AppCompatActivity() {
         onSetNotifyPref = { kind, enabled -> NotifyPrefs.setEnabled(this, kind, enabled) },
         onOpenNotify = { runOnUiThread { closeSwitcher(); openNotify() } },
         onCloseNotify = { runOnUiThread { closeNotify(); openSwitcher() } },
+        pluginSettingsJsonFn = { effectiveSettingsJson() },
+        onOpenPluginSettings = { name -> runOnUiThread { settingsTarget = name; openPluginSettings() } },
+        settingsViewJsonFn = { settingsViewJson() },
+        onSetSetting = { name, key, value ->
+            store.setSettingRaw(name, key, value.toString())
+            runOnUiThread { pushSettingLive(name, key, value) }
+        },
+        onClosePluginSettings = { runOnUiThread { closePluginSettings() } },
     )
 
     // ── スクリーン操作・プラグイン反映 ──────────────────────────────────
@@ -300,10 +311,16 @@ class MainActivity : AppCompatActivity() {
     private fun registerScreenScripts(s: Screen) {
         if (s.kind != ScreenKind.WEB) return
         if (!ExtensionRuntime.isDocumentStartSupported()) return
+        // 設定ランタイムを最初に1本だけ登録（プラグインが読む前に __ccPluginSettings を用意）。
+        if (!s.pluginHandlers.containsKey(SETTINGS_RUNTIME_KEY)) {
+            ExtensionRuntime.registerDocumentStart(s.webView, SETTINGS_RUNTIME_JS)
+                ?.let { s.pluginHandlers[SETTINGS_RUNTIME_KEY] = it }
+        }
         val enabled = store.enabled().filter { it.allFrames }.map { it.name }.toSet()
         val iter = s.pluginHandlers.iterator()
         while (iter.hasNext()) {
             val e = iter.next()
+            if (e.key == SETTINGS_RUNTIME_KEY) continue
             if (e.key !in enabled) {
                 try { e.value.remove() } catch (_: Exception) {}
                 iter.remove()
@@ -381,6 +398,70 @@ class MainActivity : AppCompatActivity() {
         screens.all().firstOrNull { it.kind == ScreenKind.SYSTEM_PLUGINS }
             ?.webView?.evaluateJavascript("window.__ccRenderPlugins && window.__ccRenderPlugins();", null)
     }
+
+    // ── プラグイン設定 ──────────────────────────────────────────────────
+
+    /** 全プラグインの有効設定値を JSON 化（設定ランタイム注入用）。 */
+    private fun effectiveSettingsJson(): String {
+        val root = JSONObject()
+        store.effectiveSettings().forEach { (plugin, kv) ->
+            val o = JSONObject()
+            kv.forEach { (k, v) -> o.put(k, v) }
+            root.put(plugin, o)
+        }
+        return root.toString()
+    }
+
+    /** 設定スクリーン描画用 JSON（現在の settingsTarget のスキーマ＋現在値）。 */
+    private fun settingsViewJson(): String {
+        val name = settingsTarget ?: return "{}"
+        val info = store.list().firstOrNull { it.name == name } ?: return "{}"
+        val arr = JSONArray()
+        info.settings.forEach { d ->
+            val value = PluginSettings.coerce(d.type, store.settingValue(name, d.key) ?: d.default)
+            arr.put(
+                JSONObject()
+                    .put("key", d.key)
+                    .put("type", d.type)
+                    .put("default", PluginSettings.coerce(d.type, d.default))
+                    .put("label", d.label)
+                    .put("value", value)
+            )
+        }
+        return JSONObject()
+            .put("name", info.name)
+            .put("displayName", info.displayName)
+            .put("settings", arr)
+            .toString()
+    }
+
+    /** 設定変更を全 WEB スクリーンへリロード無しで配信する（generation は上げない）。 */
+    private fun pushSettingLive(name: String, key: String, value: Boolean) {
+        val js = "window.__ccApplyPluginSetting && window.__ccApplyPluginSetting(" +
+            "${JSONObject.quote(name)}, ${JSONObject.quote(key)}, $value);"
+        screens.webScreens().forEach { it.webView.evaluateJavascript(js, null) }
+    }
+
+    /** プラグイン設定の全画面（plugin-settings.html）をオーバーレイ表示する（notify と同型）。 */
+    private fun openPluginSettings() {
+        val sv = settingsView ?: newConfiguredWebView().also {
+            it.webViewClient = WebViewClient()
+            it.loadUrl("file:///android_asset/plugin-settings.html")
+            root.addView(
+                it,
+                FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.MATCH_PARENT,
+                    FrameLayout.LayoutParams.MATCH_PARENT,
+                ),
+            )
+            settingsView = it
+        }
+        sv.visibility = View.VISIBLE
+        sv.bringToFront()
+        sv.evaluateJavascript("window.__ccRenderSettings && window.__ccRenderSettings();", null)
+    }
+
+    private fun closePluginSettings() { settingsView?.visibility = View.GONE }
 
     // ── 補助 ────────────────────────────────────────────────────────────
 
@@ -634,6 +715,24 @@ class MainActivity : AppCompatActivity() {
         // 既定で開くワークベンチ URL。実値は local.properties の ccstudio.targetUrl から
         // BuildConfig 経由で注入する（build.gradle 参照）。個人ホストはコミットしない。
         private val TARGET_URL = BuildConfig.TARGET_URL
+
+        private const val SETTINGS_RUNTIME_KEY = "__ccSettingsRuntime"
+
+        /** document-start で window.__ccPluginSettings を用意し、ライブ更新の受け口を定義する。 */
+        private const val SETTINGS_RUNTIME_JS = """
+(function(){
+  try { window.__ccPluginSettings = JSON.parse(window.CCStudio.getPluginSettings() || '{}'); }
+  catch(e){ window.__ccPluginSettings = {}; }
+  window.__ccApplyPluginSetting = function(plugin, key, val){
+    var p = window.__ccPluginSettings[plugin] || (window.__ccPluginSettings[plugin] = {});
+    p[key] = val;
+    try {
+      window.dispatchEvent(new CustomEvent('ccstudio:setting',
+        { detail: { plugin: plugin, key: key, value: val } }));
+    } catch(_){}
+  };
+})();
+"""
 
         /** blob: URL を fetch して base64 化し、CCStudio.saveBase64 に渡す JS。 */
         fun fetchBlobJs(url: String, name: String): String {
