@@ -414,11 +414,13 @@ class MainActivity : AppCompatActivity() {
 
     /** 設定スクリーン描画用 JSON（現在の settingsTarget のスキーマ＋現在値）。 */
     private fun settingsViewJson(): String {
-        val name = settingsTarget ?: return "{}"
-        val info = store.list().firstOrNull { it.name == name } ?: return "{}"
+        val target = settingsTarget ?: return "{}"
+        // settingsTarget はファイル名（bridge ID）。設定 namespace は displayName(@name) で揃える。
+        val info = store.list().firstOrNull { it.name == target } ?: return "{}"
+        val ns = info.displayName
         val arr = JSONArray()
         info.settings.forEach { d ->
-            val value = PluginSettings.coerce(d.type, store.settingValue(name, d.key) ?: d.default)
+            val value = PluginSettings.coerce(d.type, store.settingValue(ns, d.key) ?: d.default)
             arr.put(
                 JSONObject()
                     .put("key", d.key)
@@ -429,7 +431,7 @@ class MainActivity : AppCompatActivity() {
             )
         }
         return JSONObject()
-            .put("name", info.name)
+            .put("name", ns) // setSetting / ライブ push の namespace に使う（=@name）
             .put("displayName", info.displayName)
             .put("settings", arr)
             .toString()

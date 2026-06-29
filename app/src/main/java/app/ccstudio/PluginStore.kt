@@ -161,13 +161,17 @@ class PluginStore(private val context: Context) {
     fun settingsOf(name: String): List<SettingDef> =
         list().firstOrNull { it.name == name }?.settings ?: emptyList()
 
-    /** 設定を持つ全プラグインの「default を保存値で上書き＋型変換した」有効値マップ。 */
+    /**
+     * 設定を持つ全プラグインの「default を保存値で上書き＋型変換した」有効値マップ。
+     * namespace は displayName(@name) を使う。プラグイン本体は自分の @name で設定を参照するため、
+     * 内部IDのファイル名（focus-hud.js）ではなく @name（focus-hud）で揃える。
+     */
     fun effectiveSettings(): Map<String, Map<String, Any>> {
         val out = LinkedHashMap<String, Map<String, Any>>()
         for (p in list()) {
             if (p.settings.isEmpty()) continue
-            val raw = p.settings.associate { it.key to settingValue(p.name, it.key) }
-            out[p.name] = PluginSettings.merge(p.settings, raw)
+            val raw = p.settings.associate { it.key to settingValue(p.displayName, it.key) }
+            out[p.displayName] = PluginSettings.merge(p.settings, raw)
         }
         return out
     }
