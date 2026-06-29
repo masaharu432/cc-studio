@@ -53,7 +53,7 @@ android {
     // APK ファイル名に versionName(ビルド番号入り) を埋める。
     applicationVariants.all { variant ->
         variant.outputs.all { output ->
-            outputFileName = "cc-studio-${variant.name}-${buildLabel}.apk"
+            outputFileName = "cc-studio-${buildLabel}.apk"
         }
     }
 }
