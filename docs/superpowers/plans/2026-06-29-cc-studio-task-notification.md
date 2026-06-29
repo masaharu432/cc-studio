@@ -65,7 +65,7 @@
 `server/code-server/test/unit/node/routes/ccNotify.test.ts`:
 
 ```ts
-import { normalizeEvent } from "../../../../../src/node/routes/ccNotify"
+import { normalizeEvent } from "../../../../src/node/routes/ccNotify"
 
 describe("ccNotify.normalizeEvent", () => {
   it("maps hook fields and derives project from cwd", () => {
