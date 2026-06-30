@@ -61,16 +61,28 @@
       'position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:2147483647;' +
       'min-width:240px;max-width:90vw;background:#222;color:#fff;padding:10px 14px;' +
       'border-radius:10px;box-shadow:0 4px 16px rgba(0,0,0,.5);font:13px sans-serif;display:none;';
+    // 上段: アプリアイコン + ラベル
+    var row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:center;gap:8px;margin-bottom:8px;';
+    var icon = document.createElement('img');
+    icon.id = 'ccstudio-dl-icon';
+    icon.style.cssText = 'width:22px;height:22px;border-radius:5px;flex:0 0 auto;display:none;';
+    try {
+      var d = window.CCStudio && window.CCStudio.appIcon && window.CCStudio.appIcon();
+      if (d) { icon.src = d; icon.style.display = 'block'; }
+    } catch (_) {}
     var label = document.createElement('div');
     label.id = 'ccstudio-dl-label';
-    label.style.cssText = 'margin-bottom:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+    label.style.cssText = 'flex:1 1 auto;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+    row.appendChild(icon);
+    row.appendChild(label);
     var track = document.createElement('div');
     track.style.cssText = 'height:6px;background:#444;border-radius:3px;overflow:hidden;';
     var bar = document.createElement('div');
     bar.id = 'ccstudio-dl-bar';
     bar.style.cssText = 'height:100%;width:0%;background:#1e88e5;transition:width .12s linear;';
     track.appendChild(bar);
-    o.appendChild(label);
+    o.appendChild(row);
     o.appendChild(track);
     document.body.appendChild(o);
     return o;

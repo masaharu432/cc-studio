@@ -265,6 +265,7 @@ class MainActivity : AppCompatActivity() {
         onDlChunk = { token, b64 -> downloadChunk(token, b64) },
         onDlEnd = { token -> downloadEnd(token) },
         onDlAbort = { token -> downloadAbort(token) },
+        iconDataUriFn = { appIconDataUri() },
         buildLabel = BuildConfig.BUILD_LABEL,
         onOpenSwitcher = { runOnUiThread { openSwitcher() } },
         onCloseSwitcher = { runOnUiThread { closeSwitcher() } },
@@ -683,7 +684,7 @@ class MainActivity : AppCompatActivity() {
                     null, null
                 )
             }
-            runOnUiThread { toast("保存しました: ${sink.name}") }
+            // 完了表示は JS 側の進捗バー（オーバーレイ）に一本化。ここではトーストを出さない。
             true
         } catch (e: Exception) {
             Log.w("CcStudio", "downloadEnd failed", e)
@@ -691,7 +692,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /** 途中失敗 → 書きかけを破棄。 */
+    /** 途中失敗 → 書きかけを破棄。失敗表示も進捗バー側に任せる。 */
     private fun downloadAbort(token: String) {
         val sink = downloads.remove(token) ?: return
         try { sink.out.close() } catch (_: Exception) {}
@@ -699,7 +700,6 @@ class MainActivity : AppCompatActivity() {
             if (sink.uri != null) contentResolver.delete(sink.uri, null, null)
             else sink.file?.delete()
         } catch (_: Exception) {}
-        runOnUiThread { toast("ダウンロードに失敗しました") }
     }
 
     private fun sanitizeFilename(name: String): String {
@@ -722,6 +722,28 @@ class MainActivity : AppCompatActivity() {
             i++
         }
         return candidate
+    }
+
+    private var cachedIconDataUri: String? = null
+
+    /** アプリのランチャーアイコンを data:image/png;base64,... に変換して返す（進捗バー用、結果はキャッシュ）。 */
+    private fun appIconDataUri(): String {
+        cachedIconDataUri?.let { return it }
+        return try {
+            val d = packageManager.getApplicationIcon(packageName)
+            val size = 96
+            val bmp = android.graphics.Bitmap.createBitmap(size, size, android.graphics.Bitmap.Config.ARGB_8888)
+            val canvas = android.graphics.Canvas(bmp)
+            d.setBounds(0, 0, size, size)
+            d.draw(canvas)
+            val bos = java.io.ByteArrayOutputStream()
+            bmp.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, bos)
+            ("data:image/png;base64," + Base64.encodeToString(bos.toByteArray(), Base64.NO_WRAP))
+                .also { cachedIconDataUri = it }
+        } catch (e: Exception) {
+            Log.w("CcStudio", "appIconDataUri failed", e)
+            ""
+        }
     }
 
     companion object {

@@ -18,6 +18,7 @@ class CcBridge(
     private val onDlChunk: (token: String, base64: String) -> Boolean,
     private val onDlEnd: (token: String) -> Boolean,
     private val onDlAbort: (token: String) -> Unit,
+    private val iconDataUriFn: () -> String,
     private val buildLabel: String,
     private val onOpenSwitcher: () -> Unit,
     private val onCloseSwitcher: () -> Unit,
@@ -80,6 +81,10 @@ class CcBridge(
     /** 途中失敗時に書きかけを破棄する。 */
     @JavascriptInterface
     fun downloadAbort(token: String) = onDlAbort(token)
+
+    /** アプリのランチャーアイコンを data:image/png;base64,... で返す（進捗バー表示用）。 */
+    @JavascriptInterface
+    fun appIcon(): String = iconDataUriFn()
 
     // ── Screens（スクリーン切替） ──
     /** 左端 ︙ から全画面 switcher を開く。 */
