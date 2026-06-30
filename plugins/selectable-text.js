@@ -1,6 +1,6 @@
 // ==CCStudioPlugin==
 // @name        selectable-text
-// @version     0.8.0
+// @version     0.11.0
 // @description モバイルの画面ではチャットの返信やプレビューなど編集できない文字をうまく選択・コピーできません。このプラグインは、文字を長押しすると「コピー」ボタンを出し、ハンドルで範囲を調整してコピーできるようにします。
 // @run-at        document-start
 // @all-frames    true
@@ -23,10 +23,11 @@
   var BTN_ID = 'cc-studio-copy-btn';
   var TOAST_ID = 'cc-studio-copy-toast';
   var COPY_MSG = '__cc_st_copy';
-  var VER = '0.8.0';
+  var VER = '0.11.0';
 
   var ENABLE_COPY_UI = true;
   var BTN_TIMEOUT_MS = 9000;
+  var GRACE_MS = 600;          // 表示直後はキャンセル判定をしない(長押し自身の余波で消えるのを防ぐ)
   var DEBOUNCE_MS = 250;
   var POLL_MS = 1000;
   var POLL_FOR_MS = 15000;
@@ -40,6 +41,7 @@
   // ===== 非トップ(webview): 長押し→「コピー」ボタン =====
   var hideTimer = null;
   var lastSelText = '';
+  var shownAt = 0;
 
   function hideBtn() {
     if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }
@@ -71,9 +73,27 @@
       if (top < 6) top = (cy || 0) + gap + 22;   // 上に出せなければ指の下
       b.style.left = left + 'px';
       b.style.top = top + 'px';
+      shownAt = Date.now();
       if (hideTimer) clearTimeout(hideTimer);
       hideTimer = setTimeout(hideBtn, BTN_TIMEOUT_MS);
     } catch (_) {}
+  }
+
+  // キャンセル判定: 表示から grace 経過後、ボタン以外をタップしたら消す。
+  // ネイティブの選択ハンドルはドラッグしても page に pointerdown を出さない(native UI)ので、
+  // ここで消えるのは「実際のコンテンツを新たにタップした=やめた/別操作」時だけ。範囲調整は妨げない。
+  function onDocPointerDown(e) {
+    if (!document.getElementById(BTN_ID)) return;
+    if (Date.now() - shownAt < GRACE_MS) return;
+    var b = document.getElementById(BTN_ID);
+    if (b && (e.target === b || (b.contains && b.contains(e.target)))) return;  // ボタン操作は除外
+    hideBtn();
+  }
+  function onSelectionChange() {
+    if (!document.getElementById(BTN_ID)) return;
+    if (Date.now() - shownAt < GRACE_MS) return;
+    var s; try { s = window.getSelection(); } catch (_) { s = null; }
+    if (s && s.isCollapsed && !selText().trim()) hideBtn();
   }
 
   function doCopy() {
@@ -100,7 +120,12 @@
 
   function installCopyUI() {
     if (isTop || !ENABLE_COPY_UI) return;
-    try { window.addEventListener('contextmenu', onContextMenu, true); log('copy UI installed'); } catch (_) {}
+    try {
+      window.addEventListener('contextmenu', onContextMenu, true);
+      document.addEventListener('pointerdown', onDocPointerDown, true);
+      document.addEventListener('selectionchange', onSelectionChange, false);
+      log('copy UI installed');
+    } catch (_) {}
   }
 
   // ===== トップ: コピー依頼の保険受け口 =====
@@ -128,6 +153,10 @@
 
   function toast(msg) {
     try {
+      // 二重注入等で短時間に複数回呼ばれても1つだけ出す(早期 return せず抑止リスナ等は壊さない)。
+      var now = Date.now();
+      if (window.__ccStToastAt && now - window.__ccStToastAt < 600) return;
+      window.__ccStToastAt = now;
       var old = document.getElementById(TOAST_ID);
       if (old && old.parentNode) old.parentNode.removeChild(old);
       var body = document.body || document.documentElement;
