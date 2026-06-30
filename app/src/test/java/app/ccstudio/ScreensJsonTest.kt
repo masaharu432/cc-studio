@@ -23,4 +23,25 @@ class ScreensJsonTest {
         assertTrue(web.getBoolean("stale"))
         assertEquals(true, web.getBoolean("closeable"))
     }
+
+    @Test fun serializesBusyAndDisconnected() {
+        val json = ScreensJson.build(listOf(
+            ScreenRow(2, "a", "/a", "WEB", true, true, false, busy = true, disconnected = false),
+            ScreenRow(3, "b", "/b", "WEB", false, true, false, busy = false, disconnected = true),
+        ))
+        val arr = JSONArray(json)
+        assertEquals(true, arr.getJSONObject(0).getBoolean("busy"))
+        assertEquals(false, arr.getJSONObject(0).getBoolean("disconnected"))
+        assertEquals(false, arr.getJSONObject(1).getBoolean("busy"))
+        assertEquals(true, arr.getJSONObject(1).getBoolean("disconnected"))
+    }
+
+    @Test fun defaultsAreFalse() {
+        val json = ScreensJson.build(listOf(
+            ScreenRow(1, "p", null, "SYSTEM_PLUGINS", false, false, false),
+        ))
+        val o = JSONArray(json).getJSONObject(0)
+        assertEquals(false, o.getBoolean("busy"))
+        assertEquals(false, o.getBoolean("disconnected"))
+    }
 }

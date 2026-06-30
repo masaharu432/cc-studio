@@ -14,6 +14,10 @@ class Screen(
     var url: String = ""
     var title: String = ""
     var loadedGeneration: Int = 0
+    /** Claude Code が処理中（DOM の停止/中断ボタンを検知）。bootstrap.js が報告。 */
+    var busy: Boolean = false
+    /** code-server セッションが切断/再接続中（DOM の接続喪失オーバーレイを検知）。 */
+    var disconnected: Boolean = false
     val closeable: Boolean get() = kind == ScreenKind.WEB
     val pluginHandlers: MutableMap<String, ScriptHandler> = mutableMapOf()
     var kbHandler: ScriptHandler? = null

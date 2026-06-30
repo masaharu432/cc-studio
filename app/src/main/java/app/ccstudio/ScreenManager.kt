@@ -71,6 +71,8 @@ class ScreenManager(private val container: FrameLayout) {
             active = s.id == activeId,
             closeable = s.closeable,
             stale = s.kind == ScreenKind.WEB && s.loadedGeneration < currentGeneration,
+            busy = s.kind == ScreenKind.WEB && s.busy,
+            disconnected = s.kind == ScreenKind.WEB && s.disconnected,
         )
     }
 }

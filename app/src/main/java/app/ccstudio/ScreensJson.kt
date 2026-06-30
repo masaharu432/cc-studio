@@ -11,6 +11,8 @@ data class ScreenRow(
     val active: Boolean,
     val closeable: Boolean,
     val stale: Boolean,
+    val busy: Boolean = false,
+    val disconnected: Boolean = false,
 )
 
 object ScreensJson {
@@ -26,6 +28,8 @@ object ScreensJson {
                     .put("active", r.active)
                     .put("closeable", r.closeable)
                     .put("stale", r.stale)
+                    .put("busy", r.busy)
+                    .put("disconnected", r.disconnected)
             )
         }
         return arr.toString()
