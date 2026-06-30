@@ -1,6 +1,6 @@
 // ==CCStudioPlugin==
 // @name        state-observer
-// @version     0.2.0
+// @version     0.3.0
 // @description Claude Code が処理中か / code-server の接続が切れているかを各スクリーンで検知し、スクリーン一覧の行・常駐通知・左端の ︙ ボタンに「処理中 / 接続切れ」を表示します。停止ボタンや再接続表示を監視するだけで、操作はしません。
 // @run-at        document-start
 // @all-frames    true
@@ -92,27 +92,38 @@
     catch (_) { return false; }
   }
 
-  // ---- DIAG: このフレームの可視ボタン候補をダンプ（停止ボタンの正体を特定する） ----
+  // ---- DIAG: 入力欄(=チャット本体)まわりのボタンを狙い撃ちでダンプし停止ボタンの正体を特定する ----
+  // 停止ボタンは入力欄＝DOM 末尾にあるので、(1)入力欄直近のコンテナ内 (2)末尾から の2方向で拾う。
+  // ラベルが無いアイコンボタンに備え class と disabled も出す。
   var lastDiag = 0;
+  function btnDesc(el) {
+    var lbl = (el.getAttribute('aria-label') || el.getAttribute('title') ||
+               (el.textContent || '').replace(/\s+/g, ' ').trim() || '∅').slice(0, 16);
+    var cls = (typeof el.className === 'string' ? el.className : '').split(/\s+/).filter(Boolean).slice(0, 2).join('.');
+    return lbl + (cls ? ('#' + cls.slice(0, 22)) : '') + (el.disabled ? '!dis' : '');
+  }
+  function composerArea() {
+    var c; try { c = document.querySelector(COMPOSER_SEL); } catch (_) { c = null; }
+    if (!c) return null;
+    var p = c;
+    for (var i = 0; i < 8 && p.parentElement; i++) p = p.parentElement;
+    return p;
+  }
   function diagDump() {
     if (!diagOn()) return;
     var t = Date.now();
     if (t - lastDiag < DIAG_MS) return;
     lastDiag = t;
-    var hasComposer = false;
-    try { hasComposer = !!document.querySelector(COMPOSER_SEL); } catch (_) {}
-    var nodes = document.querySelectorAll('button,[role="button"],a[aria-label]');
-    var out = [], n = 0;
-    for (var i = 0; i < nodes.length && out.length < 10; i++) {
-      var el = nodes[i];
-      if (el.offsetParent === null) continue;
-      n++;
-      var lbl = (el.getAttribute('aria-label') || el.getAttribute('title') ||
-                 (el.textContent || '').replace(/\s+/g, ' ').trim() || '∅').slice(0, 18);
-      out.push(lbl);
-    }
-    // 入力欄のあるフレーム(=チャット本体)を優先的に見たいので印を付ける
-    emitLog('DIAG ' + frameName() + (hasComposer ? '*' : '') + ' vis=' + n + ': ' + out.join(' | '));
+    var area = composerArea();
+    if (!area) return;   // 入力欄が無いフレームはノイズなので出さない
+    // (1) 入力欄直近コンテナ内のボタン（送信/停止はここに居る）
+    var o1 = [], b1 = area.querySelectorAll('button,[role="button"]');
+    for (var i = 0; i < b1.length && o1.length < 12; i++) { if (b1[i].offsetParent === null) continue; o1.push(btnDesc(b1[i])); }
+    emitLog('DIAGC ' + frameName() + ' ' + o1.join(' | '));
+    // (2) フレーム全体の末尾から（コンテナ外に出ている場合の保険）
+    var o2 = [], all = document.querySelectorAll('button,[role="button"]');
+    for (var j = all.length - 1; j >= 0 && o2.length < 10; j--) { if (all[j].offsetParent === null) continue; o2.push(btnDesc(all[j])); }
+    emitLog('DIAGT ' + frameName() + ' ' + o2.join(' | '));
   }
 
   // ---- トップフレーム: 全フレームの状態を集約してネイティブへ報告 ----
