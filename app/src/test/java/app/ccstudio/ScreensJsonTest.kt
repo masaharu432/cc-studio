@@ -10,7 +10,7 @@ class ScreensJsonTest {
         val json = ScreensJson.build(listOf(
             ScreenRow(1, "Plugins", null, "SYSTEM_PLUGINS", false, false, false),
             ScreenRow(2, "cc-studio", "/mnt/cc-studio", "WEB", true, true, false),
-            ScreenRow(3, "cc-web", "/mnt/cc-web", "WEB", false, true, true),
+            ScreenRow(3, "old-session", "/mnt/old-session", "WEB", false, true, true),
         ))
         val arr = JSONArray(json)
         assertEquals(3, arr.length())
@@ -19,7 +19,7 @@ class ScreensJsonTest {
         assertEquals(false, plugins.getBoolean("closeable"))
         assertEquals("", plugins.getString("path"))
         val web = arr.getJSONObject(2)
-        assertEquals("cc-web", web.getString("title"))
+        assertEquals("old-session", web.getString("title"))
         assertTrue(web.getBoolean("stale"))
         assertEquals(true, web.getBoolean("closeable"))
     }

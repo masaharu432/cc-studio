@@ -140,11 +140,17 @@ class KeepAliveService : Service() {
     private fun createChannels() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val mgr = getSystemService(NotificationManager::class.java)
+            // 旧チャンネル（showBadge=true で作られていた）を削除して作り直す。
+            // チャンネル設定はアプリから後変更できないため、ID を変えるしかない。
+            mgr.deleteNotificationChannel(CHANNEL_ID_LEGACY)
             mgr.createNotificationChannel(
                 NotificationChannel(
                     CHANNEL_ID, getString(R.string.keepalive_channel_name),
                     NotificationManager.IMPORTANCE_LOW
-                )
+                ).apply {
+                    // 常駐 foreground 通知はアイコンに赤バッジ（ドット）を出さない。
+                    setShowBadge(false)
+                }
             )
             mgr.createNotificationChannel(
                 NotificationChannel(
@@ -162,10 +168,13 @@ class KeepAliveService : Service() {
             .setOngoing(true)
             .setShowWhen(false)
             .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setBadgeIconType(NotificationCompat.BADGE_ICON_NONE)
             .build()
 
     companion object {
-        const val CHANNEL_ID = "cc_web_keepalive"
+        const val CHANNEL_ID = "cc_studio_keepalive"
+        // 旧ブランド名（CC Web）時代に出荷したチャンネル。削除専用に値を保持する。
+        const val CHANNEL_ID_LEGACY = "cc_web_keepalive"
         const val TASK_CHANNEL_ID = "cc_task"
         const val TASK_TAG = "cc_task"
         const val NOTIFICATION_ID = 1
