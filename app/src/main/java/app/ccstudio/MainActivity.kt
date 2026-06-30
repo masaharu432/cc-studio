@@ -166,7 +166,7 @@ class MainActivity : AppCompatActivity() {
     // ── WebView ファクトリ ──────────────────────────────────────────────
 
     @SuppressLint("SetJavaScriptEnabled")
-    private fun newConfiguredWebView(): WebView = WebView(this).apply {
+    private fun newConfiguredWebView(screenId: Long = -1L): WebView = WebView(this).apply {
         settings.javaScriptEnabled = true
         settings.domStorageEnabled = true
         settings.databaseEnabled = true
@@ -191,12 +191,13 @@ class MainActivity : AppCompatActivity() {
         setDownloadListener { url, _, contentDisposition, mimeType, _ ->
             handleDownload(url, contentDisposition, mimeType)
         }
-        addJavascriptInterface(buildBridge(), "CCStudio")
+        addJavascriptInterface(buildBridge(screenId), "CCStudio")
     }
 
     private fun createWebScreen(url: String, reloadOnFirstLoad: Boolean = false): Screen {
-        val wv = newConfiguredWebView()
-        val screen = Screen(screens.nextId(), ScreenKind.WEB, wv)
+        val id = screens.nextId()
+        val wv = newConfiguredWebView(id)
+        val screen = Screen(id, ScreenKind.WEB, wv)
         screen.url = url
         var firstReloadDone = false
         wv.webViewClient = object : WebViewClient() {
@@ -235,8 +236,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun createSystemPluginsScreen(): Screen {
-        val wv = newConfiguredWebView()
-        val screen = Screen(screens.nextId(), ScreenKind.SYSTEM_PLUGINS, wv)
+        val id = screens.nextId()
+        val wv = newConfiguredWebView(id)
+        val screen = Screen(id, ScreenKind.SYSTEM_PLUGINS, wv)
         screen.title = "Plugins"
         wv.webViewClient = WebViewClient()
         wv.loadUrl("file:///android_asset/plugins.html")
@@ -245,7 +247,7 @@ class MainActivity : AppCompatActivity() {
 
     // ── ブリッジ ────────────────────────────────────────────────────────
 
-    private fun buildBridge(): CcBridge = CcBridge(
+    private fun buildBridge(screenId: Long): CcBridge = CcBridge(
         onPick = { runOnUiThread { pickJs.launch("*/*") } },
         listJsonFn = { pluginsJson() },
         onSetEnabled = { name, enabled ->
@@ -296,6 +298,7 @@ class MainActivity : AppCompatActivity() {
             runOnUiThread { pushSettingLive(name, key, value) }
         },
         onClosePluginSettings = { runOnUiThread { closePluginSettings() } },
+        onSessionState = { busy, disconnected -> onSessionState(screenId, busy, disconnected) },
     )
 
     // ── スクリーン操作・プラグイン反映 ──────────────────────────────────
@@ -349,9 +352,24 @@ class MainActivity : AppCompatActivity() {
         refreshKeepAliveScreenCount()
     }
 
+    /** bootstrap.js のオブザーバからの状態報告。値が変わったときだけ反映して UI を貼り直す。 */
+    private fun onSessionState(screenId: Long, busy: Boolean, disconnected: Boolean) {
+        runOnUiThread {
+            val s = screens.byId(screenId) ?: return@runOnUiThread
+            if (s.kind != ScreenKind.WEB) return@runOnUiThread
+            if (s.busy == busy && s.disconnected == disconnected) return@runOnUiThread
+            s.busy = busy
+            s.disconnected = disconnected
+            refreshSwitcher()
+            refreshKeepAliveScreenCount()
+        }
+    }
+
     /** 起動中 Web スクリーン数を共有状態に反映し、常駐通知を貼り直させる。 */
     private fun refreshKeepAliveScreenCount() {
         NotifyState.screenCount = screens.webScreens().size
+        NotifyState.busyCount = screens.webScreens().count { it.busy }
+        NotifyState.disconnectedCount = screens.webScreens().count { it.disconnected }
         ContextCompat.startForegroundService(
             this,
             Intent(this, KeepAliveService::class.java).setAction(KeepAliveService.ACTION_REFRESH),

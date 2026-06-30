@@ -36,6 +36,7 @@ class CcBridge(
     private val settingsViewJsonFn: () -> String,
     private val onSetSetting: (name: String, key: String, value: Boolean) -> Unit,
     private val onClosePluginSettings: () -> Unit,
+    private val onSessionState: (busy: Boolean, disconnected: Boolean) -> Unit,
 ) {
     /** ︙メニューに出すビルド番号（ビルド時刻）。 */
     @JavascriptInterface
@@ -124,4 +125,9 @@ class CcBridge(
         onSetSetting(name, key, value)
     /** 設定スクリーンを閉じて Plugins 画面へ戻す。 */
     @JavascriptInterface fun closePluginSettings() = onClosePluginSettings()
+
+    // ── セッション状態（処理中/接続切れ） ──
+    /** bootstrap.js のオブザーバが、このスクリーンの処理中/接続切れ状態を報告する。 */
+    @JavascriptInterface
+    fun setSessionState(busy: Boolean, disconnected: Boolean) = onSessionState(busy, disconnected)
 }
