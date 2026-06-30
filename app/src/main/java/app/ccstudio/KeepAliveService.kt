@@ -171,7 +171,11 @@ class KeepAliveService : Service() {
     private fun buildKeepAliveNotification(): Notification =
         NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle(getString(R.string.keepalive_notification_title))
-            .setContentText(getString(R.string.keepalive_screen_count, NotifyState.screenCount))
+            .setContentText(
+                KeepAliveText.statusLine(
+                    NotifyState.screenCount, NotifyState.busyCount, NotifyState.disconnectedCount
+                )
+            )
             .setSmallIcon(R.drawable.ic_keepalive)
             .setOngoing(true)
             // 起動中スクリーン数と更新時刻を表示する（[[cc-studio-terminology]] スクリーン）。
