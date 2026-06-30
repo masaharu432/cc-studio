@@ -549,9 +549,10 @@ class MainActivity : AppCompatActivity() {
         try {
             when {
                 url.startsWith("blob:") -> {
-                    runOnUiThread {
-                        screens.active().webView.evaluateJavascript(fetchBlobJs(url, "download"), null)
-                    }
+                    // blob: は bootstrap.js の JS フックが横取りして進捗バー付きで保存する。
+                    // WebView は preventDefault と無関係に DownloadListener にも blob を通すため、
+                    // ここで処理すると二重保存・二重通知になる。JS フックに一任して何もしない。
+                    Log.d("CcStudio", "blob download owned by JS hook; skip native: $url")
                 }
                 url.startsWith("data:") -> {
                     val comma = url.indexOf(',')
