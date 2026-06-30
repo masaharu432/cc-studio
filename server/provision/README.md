@@ -15,7 +15,10 @@ cp cc-studio.env.example cc-studio.env   # 必要なら編集（任意）
 
 `setup.sh` がやること:
 
-1. **install** — `code-server` が無ければ standalone install（`$CC_PREFIX`）。
+1. **install** — `code-server` が無ければ**公式プレビルド配布**を standalone install（`$CC_PREFIX`）。
+   `code-server.dev/install.sh --method standalone` で、Microsoft の VS Code をパッケージした
+   今動いているプレビルド release を入れる。**リポジトリ同梱の `../code-server` submodule は
+   このインストールには使わない**（submodule は開発中に上流ソースを読むための参照で、そこからビルドはしない）。
 2. **config** — `~/.config/code-server/config.yaml` を**無い時だけ**生成（password はその場生成、既存は保全）。
 3. **service** — systemd ユーザサービス `vsserver` を生成・有効化（linger 付きで boot 時自動）。
    systemd が無ければ `start-vsserver.sh` 案内にフォールバック。

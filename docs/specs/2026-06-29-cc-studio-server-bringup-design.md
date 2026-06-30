@@ -61,7 +61,8 @@ server/
     start-vsserver.sh      # systemd 無し環境用フォールバック（cc-web から移植・汎用化）
     cc-studio.env.example  # 調整値テンプレ（CC_PORT/CC_FOLDER/CC_BIND…）tracked
     README.md              # tailscale serve 手順を含むセットアップ手順
-  code-server/             # 既存 submodule（上流・無改変）
+  code-server/             # 既存 submodule（上流・無改変）。開発時にソースを読む参照のみで
+                           #   install には使わない（install は公式プレビルド release を入れる）
 .claude/skills/vsserver/
   SKILL.md                 # リポ同梱スキル（参照先を server/provision に）
 .gitignore                 # cc-studio.env, config.yaml, *.bak を無視（既存に追記）
