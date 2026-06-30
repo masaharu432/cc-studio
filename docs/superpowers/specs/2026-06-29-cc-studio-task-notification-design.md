@@ -54,9 +54,10 @@ cc-studio は code-server を WebView で包んだ Android アプリ。現状:
 ## コンポーネント
 
 ### 1. フックコマンド
-- `.claude/settings.json` の `Stop` と `Notification` に登録。
+- **ユーザー全体 `~/.claude/settings.json` の `Stop` と `Notification` に登録**（プロジェクト単位ではなく user スコープ）。理由: 各スクリーンは別プロジェクトで Claude が動くため、プロジェクト限定だとそのプロジェクトでしか発火しない。**全スクリーンで通知するには user スコープ必須**。
 - 役割: stdin の hook JSON を `http://127.0.0.1:${CC_NOTIFY_RELAY_PORT:-8770}/cc-notify` に curl で POST するだけ（整形はリレー側）。
 - 失敗してもフックチェーンを壊さない（常に exit 0）。
+- 二重発火を避けるため cc-studio プロジェクトの `.claude/settings.json` には通知フックを置かない（`{}`）。
 
 ### 2. notify-relay（`server/notify-relay/relay.mjs`, code-server 非依存）
 - Node 標準ライブラリのみ（`http` + `crypto`）の単体プロセス。**外部 npm 依存なし**（`ws` も使わず WS ハンドシェイク/送信フレームを最小実装）。
