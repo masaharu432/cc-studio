@@ -73,13 +73,18 @@ CC Studio（Android → code-server WebView → Claude Code）越しのセッシ
 
 SYSTEM_PLUGINS スクリーン（plugins.html）は観測対象外。報告が来ても WEB 以外は無視する。
 
-#### 3. 観測ロジック（bootstrap.js・常時注入の IIFE）
+#### 3. 観測ロジック（state-observer プラグイン・all-frames document-start）
 
-bootstrap.js はプラグインと違い ON/OFF 不可で全 WEB スクリーンに常時注入されるため、
-ここに置く。冪等（二重注入ガード）。
+**重要（iframe）**: claude-code の入力欄・停止ボタンは code-server の **webview iframe 内**に居る。
+メインフレーム専用の `evaluateJavascript`（= bootstrap.js の注入経路）では届かない。よって観測は
+selectable-text と同じ **all-frames × document-start** の作法で全フレームに注入する必要があり、
+bootstrap.js ではなく独立プラグイン `plugins/state-observer.js`（トグル可能）として実装する。
 
-- `MutationObserver(document.body, {subtree:true, childList:true, attributes:true})` ＋
-  約1秒のフォールバック `setInterval`（Observer が取りこぼす属性変化対策）。
+- 各フレームが自分の DOM を `MutationObserver`（throttle）＋約1秒ポーリングで検知。
+- 非トップフレームは結果を `window.top.postMessage({k,id,busy,disc,matched}, '*')` でトップへ送る
+  （直接 `window.top` プロパティ参照はクロスオリジンで失敗しうるため postMessage を使う）。
+- **トップフレームだけ**が `message` を受けてフレーム別レジストリに集約（staleness で除去）、
+  OR を取り、デバウンスして `CCStudio.setSessionState` を呼び ︙ボタンを塗りログを積む。
 - `detectBusy()`: **on-device で調整しやすいよう小関数に集約**。複数ヒューリスティックの OR:
   - 停止/中断ボタン: `aria-label` / `title` が `stop|interrupt|cancel|中断|停止` に一致する可視ボタン。
   - 処理中ステータス文言（"Honking…" 等の動的ステータス行）。
