@@ -30,3 +30,14 @@
 
 - 同種の突発キャンセルが再発したら、ユーザ操作と断定せず、本ノートに事象
   （日時・直前の操作・直後の再試行が通ったか）を追記して**再現条件を貯める**。
+
+## 相関ログの見方（セッション状態オブザーバ）
+
+- bootstrap.js のオブザーバが `window.top.__ccStudioFocusLog` に時刻付きで積む:
+  - `{tag:'STATE', busy, disconnected, matched}` … 処理中/接続切れの遷移。
+  - `{tag:'CANCEL'}` … "doesn't want to take this action" 相当の停止信号を検知。
+- 突発キャンセルが出たら、直前の `CANCEL` 行の時刻と、近傍の `STATE`(disconnected:true) や
+  keyboard-suppress の `blur` 行を突き合わせる。
+  - `CANCEL` 直前に `disconnected:true` があれば **接続瞬断由来**の疑い。
+  - `CANCEL` 直前に blur ログ（フォアグラウンド復帰）があれば **focus 抑制由来**の疑い。
+- 切り分けが付いたら、設計の方式B（hooks→WS）導入や keyboard-suppress の発火条件見直しへ。
