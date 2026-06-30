@@ -34,7 +34,14 @@ class KeepAliveService : Service() {
         connect()
     }
 
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int = START_STICKY
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // MainActivity からスクリーン数が変わったときに送られてくる。常駐通知を貼り直して更新。
+        // startForegroundService 契約（要 startForeground）を満たすため notify ではなく startForeground。
+        if (intent?.action == ACTION_REFRESH) {
+            startForeground(NOTIFICATION_ID, buildKeepAliveNotification())
+        }
+        return START_STICKY
+    }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -164,9 +171,12 @@ class KeepAliveService : Service() {
     private fun buildKeepAliveNotification(): Notification =
         NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle(getString(R.string.keepalive_notification_title))
+            .setContentText(getString(R.string.keepalive_screen_count, NotifyState.screenCount))
             .setSmallIcon(R.drawable.ic_keepalive)
             .setOngoing(true)
-            .setShowWhen(false)
+            // 起動中スクリーン数と更新時刻を表示する（[[cc-studio-terminology]] スクリーン）。
+            .setShowWhen(true)
+            .setWhen(System.currentTimeMillis())
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setBadgeIconType(NotificationCompat.BADGE_ICON_NONE)
             .build()
@@ -179,5 +189,6 @@ class KeepAliveService : Service() {
         const val TASK_TAG = "cc_task"
         const val NOTIFICATION_ID = 1
         const val EXTRA_OPEN_CWD = "app.ccstudio.OPEN_CWD"
+        const val ACTION_REFRESH = "app.ccstudio.REFRESH_KEEPALIVE"
     }
 }

@@ -4,4 +4,6 @@ package app.ccstudio
 object NotifyState {
     @Volatile var foreground: Boolean = false
     @Volatile var activeFolder: String? = null
+    /** 起動中の Web スクリーン数（Plugins システムスクリーンは含めない）。常駐通知に表示。 */
+    @Volatile var screenCount: Int = 0
 }

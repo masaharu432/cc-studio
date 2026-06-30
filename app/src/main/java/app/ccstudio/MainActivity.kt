@@ -108,6 +108,7 @@ class MainActivity : AppCompatActivity() {
         val webList = screens.webScreens()
         val activeWeb = webList.getOrNull(state.activeIndex) ?: webList.firstOrNull()
         activeWeb?.let { screens.select(it.id) }
+        refreshKeepAliveScreenCount()
 
         // 通知タップでアプリが起動した場合（アプリが落ちていた状態でタップ）の処理
         intent.getStringExtra(KeepAliveService.EXTRA_OPEN_CWD)?.let { openScreenForCwd(it) }
@@ -159,7 +160,7 @@ class MainActivity : AppCompatActivity() {
         val base = TARGET_URL.substring(0, schemeEnd) + "://" + host
         val url = "$base/?folder=" + java.net.URLEncoder.encode(cwd, "UTF-8")
         val s = createWebScreen(url, reloadOnFirstLoad = true)
-        screens.add(s); screens.select(s.id)
+        screens.add(s); screens.select(s.id); persistScreens()
     }
 
     // ── WebView ファクトリ ──────────────────────────────────────────────
@@ -279,7 +280,7 @@ class MainActivity : AppCompatActivity() {
         onNewScreen = {
             runOnUiThread {
                 val s = createWebScreen(TARGET_URL, reloadOnFirstLoad = true)
-                screens.add(s); screens.select(s.id); closeSwitcher()
+                screens.add(s); screens.select(s.id); persistScreens(); closeSwitcher()
             }
         },
         notifyPrefsJsonFn = { NotifyPrefs.toJson(this) },
@@ -344,6 +345,16 @@ class MainActivity : AppCompatActivity() {
         val urls = web.map { it.url }
         val activeIdx = web.indexOfFirst { it.id == screens.activeOrNull()?.id }
         screenStore.save(urls, if (activeIdx < 0) 0 else activeIdx)
+        refreshKeepAliveScreenCount()
+    }
+
+    /** 起動中 Web スクリーン数を共有状態に反映し、常駐通知を貼り直させる。 */
+    private fun refreshKeepAliveScreenCount() {
+        NotifyState.screenCount = screens.webScreens().size
+        ContextCompat.startForegroundService(
+            this,
+            Intent(this, KeepAliveService::class.java).setAction(KeepAliveService.ACTION_REFRESH),
+        )
     }
 
     // ── switcher オーバーレイ ───────────────────────────────────────────

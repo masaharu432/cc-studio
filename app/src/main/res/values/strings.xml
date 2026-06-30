@@ -3,6 +3,7 @@
     <string name="app_name">CC Studio</string>
     <string name="keepalive_channel_name">CC Studio connection</string>
     <string name="keepalive_notification_title">CC Studio</string>
+    <string name="keepalive_screen_count">スクリーン %1$d 起動中</string>
     <string name="task_channel_name">タスク通知</string>
     <string name="task_done_title">✅ 応答が完了しました</string>
     <string name="task_permission_title">🔔 許可待ち</string>
