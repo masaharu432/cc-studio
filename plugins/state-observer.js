@@ -1,6 +1,6 @@
 // ==CCStudioPlugin==
 // @name        state-observer
-// @version     0.3.0
+// @version     0.4.0
 // @description Claude Code が処理中か / code-server の接続が切れているかを各スクリーンで検知し、スクリーン一覧の行・常駐通知・左端の ︙ ボタンに「処理中 / 接続切れ」を表示します。停止ボタンや再接続表示を監視するだけで、操作はしません。
 // @run-at        document-start
 // @all-frames    true
@@ -62,15 +62,29 @@
 
   // ---- 検知ヒューリスティック（実機調整前提・matched を残す） ----
   function detectBusy() {
-    var nodes = document.querySelectorAll(
-      'button[aria-label],button[title],[role="button"][aria-label],a[aria-label]');
-    for (var i = 0; i < nodes.length; i++) {
-      var n = nodes[i];
+    // 1) Claude Code の送信ボタン（アイコンのみ・class=sendButton_*）は生成中「停止」ボタンに変わる。
+    //    送信(入力あり)と停止(生成中)はクラスが同じなので、「入力欄が空なのにボタンが有効＝生成中」で区別。
+    //    実機 DIAG: アイドル空欄=sendButton!dis(無効) / 生成中=有効。
+    try {
+      var c = document.querySelector(COMPOSER_SEL);
+      if (c) {
+        var empty = !((c.textContent || '').trim());
+        var sbs = document.querySelectorAll('button[class*="sendButton"]');
+        for (var i = 0; i < sbs.length; i++) {
+          var sb = sbs[i];
+          if (sb.offsetParent === null) continue;
+          if (!sb.disabled && empty) return 'stop:sendButton-enabled+empty';
+        }
+      }
+    } catch (_) {}
+    // 2) 明示ラベルのある停止/中断ボタン（他UI・将来用フォールバック）。
+    var nodes = document.querySelectorAll('button[aria-label],button[title],[role="button"][aria-label]');
+    for (var j = 0; j < nodes.length; j++) {
+      var n = nodes[j];
       var lbl = (n.getAttribute('aria-label') || n.getAttribute('title') || '').toLowerCase();
       if (!lbl) continue;
-      if (/\b(stop|interrupt|cancel)\b/.test(lbl) ||
-          lbl.indexOf('中断') >= 0 || lbl.indexOf('停止') >= 0) {
-        if (n.offsetParent !== null) return 'btn:' + lbl.slice(0, 30);
+      if (/\b(stop|interrupt)\b/.test(lbl) || lbl.indexOf('中断') >= 0 || lbl.indexOf('停止') >= 0) {
+        if (n.offsetParent !== null) return 'btn:' + lbl.slice(0, 24);
       }
     }
     return null;
