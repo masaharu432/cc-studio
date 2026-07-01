@@ -1,6 +1,6 @@
 // ==CCStudioPlugin==
 // @name        state-observer
-// @version     0.4.0
+// @version     0.5.0
 // @description Claude Code が処理中か / code-server の接続が切れているかを各スクリーンで検知し、スクリーン一覧の行・常駐通知・左端の ︙ ボタンに「処理中 / 接続切れ」を表示します。停止ボタンや再接続表示を監視するだけで、操作はしません。
 // @run-at        document-start
 // @all-frames    true
@@ -61,30 +61,33 @@
   }
 
   // ---- 検知ヒューリスティック（実機調整前提・matched を残す） ----
-  function detectBusy() {
-    // 1) Claude Code の送信ボタン（アイコンのみ・class=sendButton_*）は生成中「停止」ボタンに変わる。
-    //    送信(入力あり)と停止(生成中)はクラスが同じなので、「入力欄が空なのにボタンが有効＝生成中」で区別。
-    //    実機 DIAG: アイドル空欄=sendButton!dis(無効) / 生成中=有効。
+  // 生成中だけ現れる「Queue another message」欄の有無（最も安定した処理中シグナル）。
+  function hasQueueField() {
     try {
-      var c = document.querySelector(COMPOSER_SEL);
-      if (c) {
-        var empty = !((c.textContent || '').trim());
-        var sbs = document.querySelectorAll('button[class*="sendButton"]');
-        for (var i = 0; i < sbs.length; i++) {
-          var sb = sbs[i];
-          if (sb.offsetParent === null) continue;
-          if (!sb.disabled && empty) return 'stop:sendButton-enabled+empty';
-        }
+      var ph = document.querySelectorAll('[placeholder]');
+      for (var i = 0; i < ph.length; i++) {
+        if ((ph[i].getAttribute('placeholder') || '').indexOf('Queue another message') >= 0) return true;
       }
+      return ((document.body && document.body.textContent) || '').indexOf('Queue another message') >= 0;
+    } catch (_) { return false; }
+  }
+  function sendButtonEnabled() {
+    try {
+      var sbs = document.querySelectorAll('button[class*="sendButton"]');
+      for (var i = 0; i < sbs.length; i++) if (sbs[i].offsetParent !== null && !sbs[i].disabled) return true;
     } catch (_) {}
-    // 2) 明示ラベルのある停止/中断ボタン（他UI・将来用フォールバック）。
-    var nodes = document.querySelectorAll('button[aria-label],button[title],[role="button"][aria-label]');
+    return false;
+  }
+  function detectBusy() {
+    // 1) 生成中だけ「Queue another message」欄が出る＝最優先の処理中シグナル。
+    if (hasQueueField()) return 'queue-field';
+    // 2) フォールバック: ラベル付き停止/中断ボタン（他UI）。
+    var nodes = document.querySelectorAll('button[aria-label],button[title]');
     for (var j = 0; j < nodes.length; j++) {
-      var n = nodes[j];
-      var lbl = (n.getAttribute('aria-label') || n.getAttribute('title') || '').toLowerCase();
+      var lbl = (nodes[j].getAttribute('aria-label') || nodes[j].getAttribute('title') || '').toLowerCase();
       if (!lbl) continue;
       if (/\b(stop|interrupt)\b/.test(lbl) || lbl.indexOf('中断') >= 0 || lbl.indexOf('停止') >= 0) {
-        if (n.offsetParent !== null) return 'btn:' + lbl.slice(0, 24);
+        if (nodes[j].offsetParent !== null) return 'btn:' + lbl.slice(0, 20);
       }
     }
     return null;
@@ -106,38 +109,18 @@
     catch (_) { return false; }
   }
 
-  // ---- DIAG: 入力欄(=チャット本体)まわりのボタンを狙い撃ちでダンプし停止ボタンの正体を特定する ----
-  // 停止ボタンは入力欄＝DOM 末尾にあるので、(1)入力欄直近のコンテナ内 (2)末尾から の2方向で拾う。
-  // ラベルが無いアイコンボタンに備え class と disabled も出す。
+  // ---- DIAG: 処理中判定の内訳を1行で吐く（入力欄のあるチャット本体フレームのみ） ----
   var lastDiag = 0;
-  function btnDesc(el) {
-    var lbl = (el.getAttribute('aria-label') || el.getAttribute('title') ||
-               (el.textContent || '').replace(/\s+/g, ' ').trim() || '∅').slice(0, 16);
-    var cls = (typeof el.className === 'string' ? el.className : '').split(/\s+/).filter(Boolean).slice(0, 2).join('.');
-    return lbl + (cls ? ('#' + cls.slice(0, 22)) : '') + (el.disabled ? '!dis' : '');
-  }
-  function composerArea() {
-    var c; try { c = document.querySelector(COMPOSER_SEL); } catch (_) { c = null; }
-    if (!c) return null;
-    var p = c;
-    for (var i = 0; i < 8 && p.parentElement; i++) p = p.parentElement;
-    return p;
-  }
   function diagDump() {
     if (!diagOn()) return;
     var t = Date.now();
     if (t - lastDiag < DIAG_MS) return;
     lastDiag = t;
-    var area = composerArea();
-    if (!area) return;   // 入力欄が無いフレームはノイズなので出さない
-    // (1) 入力欄直近コンテナ内のボタン（送信/停止はここに居る）
-    var o1 = [], b1 = area.querySelectorAll('button,[role="button"]');
-    for (var i = 0; i < b1.length && o1.length < 12; i++) { if (b1[i].offsetParent === null) continue; o1.push(btnDesc(b1[i])); }
-    emitLog('DIAGC ' + frameName() + ' ' + o1.join(' | '));
-    // (2) フレーム全体の末尾から（コンテナ外に出ている場合の保険）
-    var o2 = [], all = document.querySelectorAll('button,[role="button"]');
-    for (var j = all.length - 1; j >= 0 && o2.length < 10; j--) { if (all[j].offsetParent === null) continue; o2.push(btnDesc(all[j])); }
-    emitLog('DIAGT ' + frameName() + ' ' + o2.join(' | '));
+    var c; try { c = document.querySelector(COMPOSER_SEL); } catch (_) { c = null; }
+    if (!c) return;   // 入力欄が無いフレームはノイズなので出さない
+    var len = ((c.textContent || '').trim()).length;
+    emitLog('BUSY? ' + frameName() + ' q=' + (hasQueueField() ? 1 : 0) +
+      ' sbEn=' + (sendButtonEnabled() ? 1 : 0) + ' len=' + len + ' => ' + (detectBusy() || 'null'));
   }
 
   // ---- トップフレーム: 全フレームの状態を集約してネイティブへ報告 ----
