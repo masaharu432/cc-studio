@@ -36,6 +36,14 @@ class ObserverRecordTest {
         assertEquals("/mnt/proj", o.getString("active"))
     }
 
+    @Test fun cancelHasFields() {
+        val o = JSONObject(ObserverRecord.cancel(1_700_000_000_000L, "cc-studio", "/mnt/x"))
+        assertEquals("cancel", o.getString("src"))
+        assertEquals("cancel", o.getString("kind"))
+        assertEquals("cc-studio", o.getString("screen"))
+        assertEquals("/mnt/x", o.getString("cwd"))
+    }
+
     @Test fun lineIsSingleLine() {
         val s = ObserverRecord.screenState(1L, "a", "/a", true, false, "x")
         assertTrue(!s.contains("\n"))

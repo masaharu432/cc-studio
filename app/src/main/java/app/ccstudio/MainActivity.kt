@@ -452,10 +452,14 @@ class MainActivity : AppCompatActivity() {
             val s = screens.byId(screenId)
             val screen = if (s?.kind == ScreenKind.WEB) ScreenUrl.folderName(s.url) else (s?.title ?: "")
             val cwd = if (s?.kind == ScreenKind.WEB) (ScreenUrl.folderPath(s.url) ?: "") else ""
-            ObserverLog.screenState(
-                this, screen, cwd,
-                o.optBoolean("busy", false), o.optBoolean("disconnected", false), o.optString("matched", ""),
-            )
+            if (o.optString("event") == "cancel") {
+                ObserverLog.cancel(this, screen, cwd)
+            } else {
+                ObserverLog.screenState(
+                    this, screen, cwd,
+                    o.optBoolean("busy", false), o.optBoolean("disconnected", false), o.optString("matched", ""),
+                )
+            }
         } catch (_: Exception) { /* ログはアプリを落とさない */ }
     }
 

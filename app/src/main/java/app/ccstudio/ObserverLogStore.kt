@@ -51,5 +51,8 @@ object ObserverLog {
     fun lifecycle(context: Context, event: String) =
         of(context).append(ObserverRecord.lifecycle(System.currentTimeMillis(), event, NotifyState.activeFolder ?: ""))
 
+    fun cancel(context: Context, screen: String, cwd: String) =
+        of(context).append(ObserverRecord.cancel(System.currentTimeMillis(), screen, cwd))
+
     fun readAll(context: Context): String = of(context).readAll()
 }

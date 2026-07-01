@@ -28,4 +28,11 @@ object ObserverRecord {
             .put("t", t).put("iso", iso(t)).put("src", "app").put("kind", "lifecycle")
             .put("event", event).put("active", active)
             .toString()
+
+    /** 突発ツールキャンセル（"doesn't want to take this action" 検知）。どのスクリーンで起きたか。 */
+    fun cancel(t: Long, screen: String, cwd: String): String =
+        JSONObject()
+            .put("t", t).put("iso", iso(t)).put("src", "cancel").put("kind", "cancel")
+            .put("screen", screen).put("cwd", cwd)
+            .toString()
 }

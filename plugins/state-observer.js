@@ -1,6 +1,6 @@
 // ==CCStudioPlugin==
 // @name        state-observer
-// @version     1.3.0
+// @version     1.4.0
 // @description Claude Code が処理中か / code-server の接続が切れているかを各スクリーンで検知し、スクリーン一覧の行・常駐通知・左端の ︙ ボタンに「処理中 / 接続切れ」を表示します。停止ボタンや再接続表示を監視するだけで、操作はしません。
 // @run-at        document-start
 // @all-frames    true
@@ -127,6 +127,10 @@
   var lastB = null, lastD = null, offTimer = null, started = false;
   // 永続ログ用: 生の遷移で即送信する（UI の doCommit とは別に、OFF もデバウンスしない）。
   var loggedB = null, loggedD = null;
+  // 突発ツールキャンセルを永続ログ/サーバへ載せる（トップフレームのみ・ネイティブが時刻/スクリーンを付与）。
+  function persistCancel() {
+    try { if (window.CCStudio && window.CCStudio.observerLog) window.CCStudio.observerLog(JSON.stringify({ event: 'cancel' })); } catch (_) {}
+  }
   function observerLog(busy, disc, matched) {
     try {
       if (window.CCStudio && window.CCStudio.observerLog)
@@ -207,7 +211,7 @@
       var m = e.data;
       if (!m || typeof m !== 'object' || m.k !== MSG) return;
       if (m.log) { hudLog(m.log); return; }
-      if (m.cancel) { hudLog('CANCEL (b=' + (lastB ? 1 : 0) + ')'); return; }
+      if (m.cancel) { hudLog('CANCEL (b=' + (lastB ? 1 : 0) + ')'); persistCancel(); return; }
       ingest(m.id, m.b, m.d, m.m);
     }, false);
     setInterval(aggregate, AGG_MS);
@@ -221,7 +225,7 @@
     else { try { window.top.postMessage({ k: MSG, id: myId, b: !!bm, d: !!dm, m: bm || dm || '' }, '*'); } catch (_) {} }
     var c = detectCancel();
     if (c && !lastCancel) {
-      if (isTop) hudLog('CANCEL (b=' + (lastB ? 1 : 0) + ')');
+      if (isTop) { hudLog('CANCEL (b=' + (lastB ? 1 : 0) + ')'); persistCancel(); }
       else { try { window.top.postMessage({ k: MSG, id: myId, cancel: true }, '*'); } catch (_) {} }
     }
     lastCancel = c;
