@@ -20,18 +20,20 @@ class ObserverRecordTest {
     }
 
     @Test fun keepaliveHasFields() {
-        val o = JSONObject(ObserverRecord.keepalive(1_700_000_000_000L, "failure", "code=1006"))
+        val o = JSONObject(ObserverRecord.keepalive(1_700_000_000_000L, "failure", "code=1006", "/mnt/proj"))
         assertEquals("keepalive", o.getString("src"))
         assertEquals("ws", o.getString("kind"))
         assertEquals("failure", o.getString("event"))
         assertEquals("code=1006", o.getString("detail"))
+        assertEquals("/mnt/proj", o.getString("active"))
     }
 
     @Test fun lifecycleHasFields() {
-        val o = JSONObject(ObserverRecord.lifecycle(1_700_000_000_000L, "foreground"))
+        val o = JSONObject(ObserverRecord.lifecycle(1_700_000_000_000L, "foreground", "/mnt/proj"))
         assertEquals("app", o.getString("src"))
         assertEquals("lifecycle", o.getString("kind"))
         assertEquals("foreground", o.getString("event"))
+        assertEquals("/mnt/proj", o.getString("active"))
     }
 
     @Test fun lineIsSingleLine() {

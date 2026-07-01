@@ -17,15 +17,15 @@ object ObserverRecord {
             .put("busy", busy).put("disconnected", disconnected).put("matched", matched)
             .toString()
 
-    fun keepalive(t: Long, event: String, detail: String): String =
+    fun keepalive(t: Long, event: String, detail: String, active: String): String =
         JSONObject()
             .put("t", t).put("iso", iso(t)).put("src", "keepalive").put("kind", "ws")
-            .put("event", event).put("detail", detail)
+            .put("event", event).put("detail", detail).put("active", active)
             .toString()
 
-    fun lifecycle(t: Long, event: String): String =
+    fun lifecycle(t: Long, event: String, active: String): String =
         JSONObject()
             .put("t", t).put("iso", iso(t)).put("src", "app").put("kind", "lifecycle")
-            .put("event", event)
+            .put("event", event).put("active", active)
             .toString()
 }

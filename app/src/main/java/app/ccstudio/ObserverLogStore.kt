@@ -46,10 +46,10 @@ object ObserverLog {
         of(context).append(ObserverRecord.screenState(System.currentTimeMillis(), screen, cwd, busy, disc, matched))
 
     fun keepalive(context: Context, event: String, detail: String) =
-        of(context).append(ObserverRecord.keepalive(System.currentTimeMillis(), event, detail))
+        of(context).append(ObserverRecord.keepalive(System.currentTimeMillis(), event, detail, NotifyState.activeFolder ?: ""))
 
     fun lifecycle(context: Context, event: String) =
-        of(context).append(ObserverRecord.lifecycle(System.currentTimeMillis(), event))
+        of(context).append(ObserverRecord.lifecycle(System.currentTimeMillis(), event, NotifyState.activeFolder ?: ""))
 
     fun readAll(context: Context): String = of(context).readAll()
 }

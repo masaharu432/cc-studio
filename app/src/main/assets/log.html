@@ -55,6 +55,7 @@
   function api(){ return window.CCStudio || {}; }
   function el(t,c){ var e=document.createElement(t); if(c) e.className=c; return e; }
 
+  function base(p){ try{ var s=String(p).replace(/\/+$/,''); return s.split('/').filter(Boolean).pop()||s; }catch(_){ return String(p||''); } }
   function timeOf(o){
     // iso の時刻部を優先。無ければ t から。
     if(o.iso){ var m=String(o.iso).match(/T(\d{2}:\d{2}:\d{2}(?:\.\d+)?)/); if(m) return m[1]; }
@@ -66,14 +67,15 @@
     var src=o.src||'?', kind=o.kind||'', k=src, m='', cls='';
     if(src==='screen'){
       var b=!!o.busy, d=!!o.disconnected;
-      if(d){ m='接続切れ'+(o.matched?(' '+o.matched):''); cls='bad'; }
-      else if(b){ m='処理中'; cls='on'; }
-      else { m='アイドル'; cls='off'; }
+      var fol=o.screen?(' @'+o.screen):(o.cwd?(' @'+base(o.cwd)):'');
+      if(d){ m='接続切れ'+fol+(o.matched?(' '+o.matched):''); cls='bad'; }
+      else if(b){ m='処理中'+fol; cls='on'; }
+      else { m='アイドル'+fol; cls='off'; }
     } else if(src==='keepalive'){
-      k='keepalive'; m=(o.event||'')+(o.detail?(' '+o.detail):'');
+      k='keepalive'; m=(o.event||'')+(o.detail?(' '+o.detail):'')+(o.active?(' @'+base(o.active)):'');
       cls=(o.event==='failure'||o.event==='closed')?'bad':(o.event==='open'?'on':'');
     } else if(src==='app'){
-      k='app'; m='lifecycle: '+(o.event||'');
+      k='app'; m='lifecycle: '+(o.event||'')+(o.active?(' @'+base(o.active)):'');
     } else {
       m=JSON.stringify(o);
     }
