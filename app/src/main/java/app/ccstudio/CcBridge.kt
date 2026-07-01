@@ -38,6 +38,7 @@ class CcBridge(
     private val onClosePluginSettings: () -> Unit,
     private val onSessionState: (busy: Boolean, disconnected: Boolean) -> Unit,
     private val onMarkdownPreview: () -> Unit,
+    private val onObserverLog: (json: String) -> Unit,
 ) {
     /** ︙メニューに出すビルド番号（ビルド時刻）。 */
     @JavascriptInterface
@@ -139,4 +140,8 @@ class CcBridge(
      */
     @JavascriptInterface
     fun markdownPreview() = onMarkdownPreview()
+
+    /** 観測ログ（生の状態遷移）をネイティブへ。JSON: {"busy":bool,"disconnected":bool,"matched":str}。 */
+    @JavascriptInterface
+    fun observerLog(json: String) = onObserverLog(json)
 }

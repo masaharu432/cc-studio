@@ -80,6 +80,7 @@ class MainActivity : AppCompatActivity() {
 
         requestNotificationPermissionIfNeeded()
         ContextCompat.startForegroundService(this, Intent(this, KeepAliveService::class.java))
+        ObserverLog.lifecycle(this, "start")
 
         store = PluginStore(this)
         store.ensureBundledInstalled()
@@ -138,11 +139,13 @@ class MainActivity : AppCompatActivity() {
         NotifyState.activeFolder = screens.activeOrNull()
             ?.takeIf { it.kind == ScreenKind.WEB }
             ?.let { ScreenUrl.folderPath(it.url) }
+        ObserverLog.lifecycle(this, "foreground")
     }
 
     override fun onPause() {
         super.onPause()
         NotifyState.foreground = false
+        ObserverLog.lifecycle(this, "background")
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -336,6 +339,7 @@ class MainActivity : AppCompatActivity() {
         onClosePluginSettings = { runOnUiThread { closePluginSettings() } },
         onSessionState = { busy, disconnected -> onSessionState(screenId, busy, disconnected) },
         onMarkdownPreview = { runOnUiThread { dispatchMarkdownPreviewKey() } },
+        onObserverLog = { json -> onObserverLog(screenId, json) },
     )
 
     /**
@@ -430,6 +434,20 @@ class MainActivity : AppCompatActivity() {
             // 変化が無くても押す: 起動直後の表示中スクリーンの ︙ボタンにも集約状態を反映するため。
             pushMenuState()
         }
+    }
+
+    /** プラグインからの生の状態遷移を、スクリーン情報＋端末時刻を付けて永続ログへ書く。 */
+    private fun onObserverLog(screenId: Long, json: String) {
+        try {
+            val o = org.json.JSONObject(json)
+            val s = screens.byId(screenId)
+            val screen = if (s?.kind == ScreenKind.WEB) ScreenUrl.folderName(s.url) else (s?.title ?: "")
+            val cwd = if (s?.kind == ScreenKind.WEB) (ScreenUrl.folderPath(s.url) ?: "") else ""
+            ObserverLog.screenState(
+                this, screen, cwd,
+                o.optBoolean("busy", false), o.optBoolean("disconnected", false), o.optString("matched", ""),
+            )
+        } catch (_: Exception) { /* ログはアプリを落とさない */ }
     }
 
     /** 全 Web スクリーンの集約状態（どれか処理中/接続切れ）を、表示中スクリーンの ︙ボタンへ反映する。 */
