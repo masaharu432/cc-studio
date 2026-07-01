@@ -76,3 +76,34 @@ test("POST broadcasts to a connected ws client", async () => {
   assert.equal(msg.project, "proj")
   assert.equal(msg.branch, "")
 })
+
+import { isObserverBatch, formatBatchRecords, serverKeepaliveLine } from "./relay.mjs"
+
+test("isObserverBatch detects observer batch bodies", () => {
+  assert.equal(isObserverBatch({ type: "cc-observer", lines: "{}\n" }), true)
+  assert.equal(isObserverBatch({ hook_event_name: "Stop" }), false)
+  assert.equal(isObserverBatch(null), false)
+  assert.equal(isObserverBatch({ type: "cc-observer" }), false)
+})
+
+test("formatBatchRecords appends lines then a server batch marker", () => {
+  const out = formatBatchRecords({ type: "cc-observer", device: "d1", sentAt: 111, lines: '{"t":1}\n{"t":2}' }, 999)
+  const lines = out.trim().split("\n")
+  assert.equal(lines[0], '{"t":1}')
+  assert.equal(lines[1], '{"t":2}')
+  const marker = JSON.parse(lines[2])
+  assert.equal(marker.src, "server")
+  assert.equal(marker.kind, "batch")
+  assert.equal(marker.t_server, 999)
+  assert.equal(marker.device, "d1")
+  assert.equal(marker.count, 2)
+  assert.equal(marker.sentAt, 111)
+})
+
+test("serverKeepaliveLine builds connect/disconnect line", () => {
+  const o = JSON.parse(serverKeepaliveLine("disconnect", 555).trim())
+  assert.equal(o.src, "server")
+  assert.equal(o.kind, "keepalive")
+  assert.equal(o.event, "disconnect")
+  assert.equal(o.t_server, 555)
+})

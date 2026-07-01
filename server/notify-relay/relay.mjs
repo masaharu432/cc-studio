@@ -1,11 +1,47 @@
 import http from "node:http"
 import crypto from "node:crypto"
+import fs from "node:fs"
+import path from "node:path"
+import { fileURLToPath } from "node:url"
 
 const PORT = parseInt(process.env.CC_NOTIFY_RELAY_PORT || "8770", 10)
 const HOST = "127.0.0.1"
 const WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 
 const asString = (v) => (typeof v === "string" ? v : "")
+
+const DATA_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "data")
+const DATA_FILE = path.join(DATA_DIR, "observer.jsonl")
+
+/** 観測ログのアップロード本文か（type=cc-observer かつ lines 文字列）。 */
+export function isObserverBatch(o) {
+  return !!(o && typeof o === "object" && o.type === "cc-observer" && typeof o.lines === "string")
+}
+
+/** 端末の JSONL 行群＋サーバ受信マーカー1行を追記用テキストに整形する。 */
+export function formatBatchRecords(o, tServer) {
+  const raw = String(o.lines || "")
+  const lines = raw.split("\n").filter((s) => s.trim())
+  const marker = JSON.stringify({
+    src: "server", kind: "batch", t_server: tServer,
+    device: asString(o.device), count: lines.length, sentAt: Number(o.sentAt) || 0,
+  })
+  return lines.concat(marker).join("\n") + "\n"
+}
+
+/** サーバ視点の keepalive 接続/切断1行。 */
+export function serverKeepaliveLine(event, tServer) {
+  return JSON.stringify({ src: "server", kind: "keepalive", event, t_server: tServer }) + "\n"
+}
+
+function appendObserver(text) {
+  try {
+    fs.mkdirSync(DATA_DIR, { recursive: true })
+    fs.appendFileSync(DATA_FILE, text)
+  } catch (e) {
+    console.error("observer append failed:", e.message)
+  }
+}
 
 export function normalizeEvent(raw) {
   const o = raw && typeof raw === "object" ? raw : {}
@@ -66,14 +102,16 @@ function handleUpgrade(req, socket) {
   const accept = crypto.createHash("sha1").update(key + WS_GUID).digest("base64")
   // Register client BEFORE writing 101 so any POST fired immediately after 101 sees the client.
   clients.add(socket)
+  appendObserver(serverKeepaliveLine("connect", Date.now()))
   socket.write(
     "HTTP/1.1 101 Switching Protocols\r\n" +
     "Upgrade: websocket\r\n" +
     "Connection: Upgrade\r\n" +
     `Sec-WebSocket-Accept: ${accept}\r\n\r\n`,
   )
+  // disconnect は close の1箇所だけで記録（error/end→drop→destroy でも最終的に close が発火する）。
   const drop = () => { clients.delete(socket); try { socket.destroy() } catch {} }
-  socket.on("close", () => clients.delete(socket))
+  socket.on("close", () => { clients.delete(socket); appendObserver(serverKeepaliveLine("disconnect", Date.now())) })
   socket.on("error", drop)
   socket.on("end", drop)
   socket.on("data", (buf) => {
@@ -94,6 +132,12 @@ export function createServer() {
       req.on("end", () => {
         let parsed
         try { parsed = body ? JSON.parse(body) : {} } catch { parsed = {} }
+        if (isObserverBatch(parsed)) {
+          appendObserver(formatBatchRecords(parsed, Date.now()))
+          res.writeHead(200, { "Content-Type": "application/json" })
+          res.end(JSON.stringify({ saved: true }))
+          return
+        }
         const delivered = broadcast(normalizeEvent(parsed))
         res.writeHead(200, { "Content-Type": "application/json" })
         res.end(JSON.stringify({ delivered }))
