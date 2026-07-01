@@ -37,6 +37,7 @@ class CcBridge(
     private val onSetSetting: (name: String, key: String, value: Boolean) -> Unit,
     private val onClosePluginSettings: () -> Unit,
     private val onSessionState: (busy: Boolean, disconnected: Boolean) -> Unit,
+    private val onMarkdownPreview: () -> Unit,
 ) {
     /** ︙メニューに出すビルド番号（ビルド時刻）。 */
     @JavascriptInterface
@@ -130,4 +131,12 @@ class CcBridge(
     /** bootstrap.js のオブザーバが、このスクリーンの処理中/接続切れ状態を報告する。 */
     @JavascriptInterface
     fun setSessionState(busy: Boolean, disconnected: Boolean) = onSessionState(busy, disconnected)
+
+    /**
+     * .md をテキストで開いた直後に呼ばれ、アクティブな WebView へ Ctrl+Shift+V
+     * (markdown.togglePreview) をトラステッドなキーイベントとして送ってプレビュー化する。
+     * 合成 JS イベントは VS Code のキーバインドサービスが無視するため、ネイティブ送出が必須。
+     */
+    @JavascriptInterface
+    fun markdownPreview() = onMarkdownPreview()
 }

@@ -14,6 +14,7 @@ import android.provider.MediaStore
 import android.provider.OpenableColumns
 import android.util.Base64
 import android.util.Log
+import android.view.KeyEvent
 import android.view.View
 import android.webkit.CookieManager
 import android.webkit.URLUtil
@@ -299,7 +300,33 @@ class MainActivity : AppCompatActivity() {
         },
         onClosePluginSettings = { runOnUiThread { closePluginSettings() } },
         onSessionState = { busy, disconnected -> onSessionState(screenId, busy, disconnected) },
+        onMarkdownPreview = { runOnUiThread { dispatchMarkdownPreviewKey() } },
     )
+
+    /**
+     * アクティブな WebView へ Ctrl+Shift+V（markdown.togglePreview）をトラステッドなキーイベントとして
+     * 送る。プラグインが .md をテキストで開いた直後に呼ばれ、エディタをプレビュー表示へトグルする。
+     * 修飾キーを押下→V→離す、の順で本物のキー入力を再現する（VS Code は isTrusted=false を無視するため）。
+     */
+    private fun dispatchMarkdownPreviewKey() {
+        val wv = screens.activeOrNull()?.webView ?: return
+        toast("MDPV: プレビュー化キー送出")
+        wv.requestFocus()
+        // focus が落ち着いてから送る。
+        wv.postDelayed({
+            val ctrl = KeyEvent.META_CTRL_ON or KeyEvent.META_CTRL_LEFT_ON
+            val ctrlShift = ctrl or KeyEvent.META_SHIFT_ON or KeyEvent.META_SHIFT_LEFT_ON
+            fun ev(action: Int, code: Int, meta: Int) =
+                KeyEvent(SystemClock.uptimeMillis(), SystemClock.uptimeMillis(), action, code, 0, meta)
+            // 押下: Ctrl, Shift, V → 離す: V, Shift, Ctrl
+            wv.dispatchKeyEvent(ev(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_CTRL_LEFT, ctrl))
+            wv.dispatchKeyEvent(ev(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_SHIFT_LEFT, ctrlShift))
+            wv.dispatchKeyEvent(ev(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_V, ctrlShift))
+            wv.dispatchKeyEvent(ev(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_V, ctrlShift))
+            wv.dispatchKeyEvent(ev(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_SHIFT_LEFT, ctrl))
+            wv.dispatchKeyEvent(ev(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_CTRL_LEFT, 0))
+        }, 120)
+    }
 
     // ── スクリーン操作・プラグイン反映 ──────────────────────────────────
 
@@ -332,8 +359,9 @@ class MainActivity : AppCompatActivity() {
             }
         }
         for (name in enabled) {
-            if (s.pluginHandlers.containsKey(name)) continue
             val js = store.script(name) ?: continue
+            // 同名でも毎回、古いハンドラを外して現在の内容で登録し直す（再取り込みを確実に反映）。
+            s.pluginHandlers.remove(name)?.let { try { it.remove() } catch (_: Exception) {} }
             ExtensionRuntime.registerDocumentStart(s.webView, js)?.let { h -> s.pluginHandlers[name] = h }
         }
     }
@@ -342,6 +370,7 @@ class MainActivity : AppCompatActivity() {
         pluginGeneration++
         screens.webScreens().forEach { registerScreenScripts(it) }
         refreshSwitcher()
+        // 反映は各スクリーンの手動リロードで（他セッションに影響しないよう自動リロードはしない）。
     }
 
     private fun persistScreens() {

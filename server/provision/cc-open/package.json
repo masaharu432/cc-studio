@@ -1,0 +1,15 @@
+{
+  "name": "cc-open",
+  "displayName": "CC Open",
+  "description": "チャットのファイルリンクを Explorer と同じ既定エディタ(関連付け尊重=.md はプレビュー)で開く補助拡張。URI ハンドラ(vscode.open)＋テキストで開かれた .md の自動プレビュー化。",
+  "publisher": "ccstudio",
+  "version": "0.0.4",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "main": "./extension.js",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "contributes": {}
+}
