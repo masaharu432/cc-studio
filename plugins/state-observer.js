@@ -1,6 +1,6 @@
 // ==CCStudioPlugin==
 // @name        state-observer
-// @version     0.9.0
+// @version     1.0.0
 // @description Claude Code が処理中か / code-server の接続が切れているかを各スクリーンで検知し、スクリーン一覧の行・常駐通知・左端の ︙ ボタンに「処理中 / 接続切れ」を表示します。停止ボタンや再接続表示を監視するだけで、操作はしません。
 // @run-at        document-start
 // @all-frames    true
@@ -61,23 +61,17 @@
   }
 
   // ---- 検知ヒューリスティック（実機調整前提・matched を残す） ----
-  // 送信/停止ボタン(class=sendButton_*)。生成中は「停止＝四角(rect)」アイコン、
-  // 通常は「送信＝矢印(path)」。disabled 状態は生成後も有効に残ることがあり不安定なので、
-  // アイコン形状(rect の有無)で「生成中の停止ボタン」を判定する。
-  function stopButtonPresent() {
-    try {
-      var sbs = document.querySelectorAll('button[class*="sendButton"]');
-      for (var i = 0; i < sbs.length; i++) {
-        var sb = sbs[i];
-        if (sb.offsetParent === null) continue;
-        if (sb.querySelector('rect')) return true;
-      }
-    } catch (_) {}
-    return false;
+  // 送信/停止ボタン(class=sendButton_*)は生成中(busy.value)だけ子に stopIcon を描く。
+  //   拡張ソース: p = e.busy.value && !o ? b(KG,{className:stopIcon}) : b(uXe,{className:sendIcon})
+  //   → 子孫に class*="stopIcon" があれば処理中。生成が終わると sendIcon に戻り消える＝自動解除。
+  //   stopIcon は SVG のため offsetParent が使えず、親 sendButton の中に在るかで判定する。
+  function stopIconPresent() {
+    try { return !!document.querySelector('button[class*="sendButton"] [class*="stopIcon"]'); }
+    catch (_) { return false; }
   }
   function detectBusy() {
-    // 1) 停止ボタン(四角 rect)が出ている＝生成中。終われば送信矢印に戻り rect が消える＝解除。
-    if (stopButtonPresent()) return 'stop-rect';
+    // 1) sendButton 内に stopIcon＝生成中（拡張の busy フラグの DOM 表現）。
+    if (stopIconPresent()) return 'stopIcon';
     // 2) フォールバック: ラベル付き停止/中断ボタン（他UI）。
     var nodes = document.querySelectorAll('button[aria-label],button[title]');
     for (var j = 0; j < nodes.length; j++) {
@@ -125,18 +119,7 @@
     lastDiag = t;
     var c; try { c = document.querySelector(COMPOSER_SEL); } catch (_) { c = null; }
     if (c) {   // 入力欄のあるチャット本体フレームだけ busy 内訳を出す
-      var sbDis = -1, rect = 0, path = 0, tag = '';
-      try {
-        var sb = document.querySelector('button[class*="sendButton"]');
-        if (sb) {
-          sbDis = sb.disabled ? 1 : 0;
-          rect = sb.querySelectorAll('rect').length;
-          path = sb.querySelectorAll('path').length;
-          tag = (sb.outerHTML || '').split('>')[0].slice(0, 60);
-        }
-      } catch (_) {}
-      emitLog('BUSY? ' + frameName() + ' sbDis=' + sbDis + ' rect=' + rect + ' path=' + path +
-        ' => ' + (detectBusy() || 'null') + ' | ' + tag);
+      emitLog('BUSY? ' + frameName() + ' stop=' + (stopIconPresent() ? 1 : 0) + ' => ' + (detectBusy() || 'null'));
     }
     // 切断オーバーレイは top ワークベンチ側に出るので、フレームを問わずマッチ内容を吐く。
     if (detectDisconnected()) emitLog('DISC? ' + frameName() + ' ' + discMatch);
