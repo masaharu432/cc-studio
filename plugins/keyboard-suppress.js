@@ -1,6 +1,6 @@
 // ==CCStudioPlugin==
 // @name        keyboard-suppress
-// @version     1.2.15
+// @version     1.2.16
 // @description ソフトキーボードの自動表示を抑制する。チャット入力欄やテキストエディタへ自動フォーカスが移ってもソフトキーボードを勝手に開かせない（枠をタップした時だけ出す）。全フレームに document-start で常駐する。
 // ==/CCStudioPlugin==
 // keyboard-suppress.js — CC Studio 組込み機能（assets同梱）
@@ -43,7 +43,7 @@
 
   // ---- 診断: focus-hud 共有ログ(window.top.__ccStudioFocusLog)へ「KB …」行を出す ----
   // focus-hud が無くても害は無い（配列に積むだけ）。原因切り分けが済んだら DIAG=false に。
-  var KB_VER = '1.2.15';
+  var KB_VER = '1.2.16';
   var DIAG = true;
   function kbTopWin() { try { return window.top || window; } catch (_) { return window; } }
   function kbFrame() {
@@ -115,8 +115,10 @@
     catch (_) { return false; }
   }
   // 今フォーカスされているのが「枠内タップ由来でない」編集領域なら blur。
+  // ただし engaged（＝枠内タップで正規にフォーカス済み。タイピング中）なら絶対に触らない。
   function blurIfUnauthorized(doc) {
     try {
+      if (doc.__ccStudioEngaged) return; // 正規フォーカス中はタイピングを壊さない
       var a = doc.activeElement;
       var box = suppressBox(a);
       if (box && isBoxVisible(box) && !tapInBox(doc, box)) {
@@ -209,8 +211,18 @@
           kbLog('blur1 ' + kbFrame());
           try { t.blur(); } catch (_) { /* ignore */ }
         } else {
+          doc.__ccStudioEngaged = true; // 枠内タップで正規フォーカス＝以後 recheck では触らない
           kbLog('allow1 ' + kbFrame());
         }
+      },
+      true
+    );
+
+    // フォーカスが編集領域から外れたら engaged 解除（次の自動フォーカスは再び抑制対象になる）。
+    doc.addEventListener(
+      'focusout',
+      function (e) {
+        if (suppressBox(e.target)) doc.__ccStudioEngaged = false;
       },
       true
     );
