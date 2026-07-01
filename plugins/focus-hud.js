@@ -1,6 +1,6 @@
 // ==CCStudioPlugin==
 // @name        focus-hud
-// @version     1.5.0
+// @version     1.6.0
 // @description フォーカス診断オーバーレイ。どの要素・どのフレームにフォーカス/タップが入ったかを画面上部に時系列表示する（スクショで状況共有する用）。全フレームに document-start で常駐し、表示は最前面フレームのみ。
 // @run-at      document-start
 // @all-frames  true
@@ -207,7 +207,7 @@
       el.style.top = Math.round((vv && vv.offsetTop) || 0) + 'px';
       var kbv = '';
       try { kbv = topWin().__ccStudioKbVer || ''; } catch (_) {}
-      var head = 'FOCUS-HUD v1.5.0  KB:' + (kbv ? 'v' + kbv : 'none') +
+      var head = 'FOCUS-HUD v1.6.0  KB:' + (kbv ? 'v' + kbv : 'none') +
         '  vvH:' + (vv ? Math.round(vv.height) : '?') +
         (el.__ccExpanded ? '  (tap=畳む)' : '  (tap=開く)');
       if (!el.__ccExpanded) {
@@ -217,19 +217,21 @@
         el.textContent = head;
         return;
       }
-      // 展開状態：フレーム木＋ログを全部出す。
+      // 展開状態：フレーム木＋KB専用ログ＋共有ログを出す。
       el.style.maxHeight = '46vh';
       el.style.overflow = 'auto';
-      var frames = '', log = [];
+      var frames = '', log = [], kbown = [];
       try {
         frames = Object.keys(topWin().__ccStudioFocusFrames || {}).join(',');
         log = topWin().__ccStudioFocusLog || [];
+        kbown = topWin().__ccStudioKbOwn || []; // keyboard-suppress 専用ログ（他プラグインに埋もれない）
       } catch (_) {}
       var active = '';
       try { active = elemDesc(document.activeElement); } catch (_) {}
       el.textContent = head + '  frames[' + frames + ']  active:' + active +
         '\n-- iframe tree (SO=届く/XO=届かない) --\n' + frameTree() +
-        '\n-- log --\n' + log.join('\n');
+        '\n-- KB (keyboard-suppress) --\n' + kbown.join('\n') +
+        '\n-- log (shared) --\n' + log.join('\n');
     } catch (_) { /* ignore */ }
   }
 

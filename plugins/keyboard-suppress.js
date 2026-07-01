@@ -1,6 +1,6 @@
 // ==CCStudioPlugin==
 // @name        keyboard-suppress
-// @version     1.2.18
+// @version     1.2.19
 // @description ソフトキーボードの自動表示を抑制する。チャット入力欄やテキストエディタへ自動フォーカスが移ってもソフトキーボードを勝手に開かせない（枠をタップした時だけ出す）。全フレームに document-start で常駐する。
 // ==/CCStudioPlugin==
 // keyboard-suppress.js — CC Studio 組込み機能（assets同梱）
@@ -43,7 +43,7 @@
 
   // ---- 診断: focus-hud 共有ログ(window.top.__ccStudioFocusLog)へ「KB …」行を出す ----
   // focus-hud が無くても害は無い（配列に積むだけ）。原因切り分けが済んだら DIAG=false に。
-  var KB_VER = '1.2.18';
+  var KB_VER = '1.2.19';
   var DIAG = true;
   function kbTopWin() { try { return window.top || window; } catch (_) { return window; } }
   function kbFrame() {
@@ -57,11 +57,11 @@
     if (!DIAG) return;
     try {
       var t = kbTopWin();
-      var a = t.__ccStudioFocusLog || (t.__ccStudioFocusLog = []);
-      var line = 'KB ' + s;
-      if (a[a.length - 1] === line) return;
-      a.push(line);
-      while (a.length > 16) a.shift();
+      // 専用バッファ（focus-hud や他プラグインの共有ログに埋もれないよう分離）。focus-hud が「-- KB --」で表示。
+      var a = t.__ccStudioKbOwn || (t.__ccStudioKbOwn = []);
+      if (a[a.length - 1] === s) return;
+      a.push(s);
+      while (a.length > 24) a.shift();
     } catch (_) { /* ignore */ }
   }
 
