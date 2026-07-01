@@ -73,14 +73,17 @@ class KeepAliveService : Service() {
         ws = client.newWebSocket(request, object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
                 backoffMs = 2000L
+                ObserverLog.keepalive(this@KeepAliveService, "open", "")
             }
             override fun onMessage(webSocket: WebSocket, text: String) {
                 handleEvent(text)
             }
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+                ObserverLog.keepalive(this@KeepAliveService, "failure", (t.message ?: "").take(80))
                 scheduleReconnect()
             }
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+                ObserverLog.keepalive(this@KeepAliveService, "closed", "code=$code $reason".take(80))
                 scheduleReconnect()
             }
         })
