@@ -54,3 +54,13 @@
   実行中の Claude ターンが破棄される**。VS Code は最大3時間 自動再接続でゼロロス復帰するのでリロードしないのが安全。
   → cc-studio に reconnectguard 相当（Reload を隠す/リロードさせない）の移植を別途検討。
 - フェーズ2 でこの永続ログを本 repo の cc-notify サーバ `server/notify-relay/relay.mjs` へ送り、サーバ側 WS 断と時刻突合する。
+
+## サーバ取得（フェーズ2）
+
+- アプリが未送信分(t>lastUploadedT)を `POST https://host/cc-notify`（body type=cc-observer）で自動送信
+  （keepalive 復帰・60s定期・前面復帰）。relay が `server/notify-relay/data/observer.jsonl` へ追記（gitignore）。
+- サーバ視点の keepalive（`src:"server" kind:"keepalive" connect/disconnect`）とバッチ受信時刻
+  （`kind:"batch" t_server/sentAt`）も残るので、端末側の断と**サーバ側の断**を時刻突合できる。
+- Claude 解析: `server/notify-relay/data/observer.jsonl` を直接 grep/cat。突発キャンセル時刻の近傍で
+  端末 `keepalive failure` / サーバ `keepalive disconnect` / `screen disconnected @<folder>` を並べる。
+  例: `grep -nE '"disconnected":true|keepalive.*failure|"src":"server"' server/notify-relay/data/observer.jsonl | tail -30`
