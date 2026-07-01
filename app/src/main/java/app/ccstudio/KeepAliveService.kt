@@ -134,7 +134,9 @@ class KeepAliveService : Service() {
             .setSmallIcon(R.drawable.ic_keepalive)
             .setContentIntent(pi)
             .setAutoCancel(true)
-            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)      // Android 7 以下でのヘッドアップ用
+            .setCategory(NotificationCompat.CATEGORY_MESSAGE)
+            .setDefaults(NotificationCompat.DEFAULT_ALL)
             .build()
         // セッション単位で更新（積み上げない）: tag+id namespace で foreground id=1 と衝突しない
         val mgr = ContextCompat.getSystemService(this, NotificationManager::class.java)
@@ -159,11 +161,17 @@ class KeepAliveService : Service() {
                     setShowBadge(false)
                 }
             )
+            // 旧 cc_task は IMPORTANCE_DEFAULT で作成済み（フロート表示されない）。
+            // チャンネル設定は後変更できないため ID を変えて HIGH で作り直す。
+            mgr.deleteNotificationChannel(TASK_CHANNEL_ID_LEGACY)
             mgr.createNotificationChannel(
                 NotificationChannel(
                     TASK_CHANNEL_ID, getString(R.string.task_channel_name),
-                    NotificationManager.IMPORTANCE_DEFAULT
-                )
+                    NotificationManager.IMPORTANCE_HIGH  // 他アプリ表示中でもヘッドアップ（フロート）表示
+                ).apply {
+                    enableVibration(true)
+                    enableLights(true)
+                }
             )
         }
     }
@@ -189,7 +197,9 @@ class KeepAliveService : Service() {
         const val CHANNEL_ID = "cc_studio_keepalive"
         // 旧ブランド名（CC Web）時代に出荷したチャンネル。削除専用に値を保持する。
         const val CHANNEL_ID_LEGACY = "cc_web_keepalive"
-        const val TASK_CHANNEL_ID = "cc_task"
+        // 旧タスクチャンネル（IMPORTANCE_DEFAULT）。削除専用に値を保持。
+        const val TASK_CHANNEL_ID_LEGACY = "cc_task"
+        const val TASK_CHANNEL_ID = "cc_task_alerts"
         const val TASK_TAG = "cc_task"
         const val NOTIFICATION_ID = 1
         const val EXTRA_OPEN_CWD = "app.ccstudio.OPEN_CWD"
