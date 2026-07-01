@@ -1,7 +1,7 @@
 // ==CCStudioPlugin==
 // @name        keyboard-suppress
-// @version     1.2.12
-// @description ソフトキーボードの自動表示を抑制する。入力欄やターミナルへ自動フォーカスが移っても、ソフトキーボードを勝手に開かせない。全フレームに document-start で常駐する。
+// @version     1.2.13
+// @description ソフトキーボードの自動表示を抑制する。チャット入力欄やテキストエディタへ自動フォーカスが移ってもソフトキーボードを勝手に開かせない（枠をタップした時だけ出す）。全フレームに document-start で常駐する。
 // ==/CCStudioPlugin==
 // keyboard-suppress.js — CC Studio 組込み機能（assets同梱）
 // claude-code チャットの入力欄が「自動フォーカス（ページ読込/送信後/遷移/タブ切替）」された
@@ -43,7 +43,7 @@
 
   // ---- 診断: focus-hud 共有ログ(window.top.__ccStudioFocusLog)へ「KB …」行を出す ----
   // focus-hud が無くても害は無い（配列に積むだけ）。原因切り分けが済んだら DIAG=false に。
-  var KB_VER = '1.2.12';
+  var KB_VER = '1.2.13';
   var DIAG = true;
   function kbTopWin() { try { return window.top || window; } catch (_) { return window; } }
   function kbFrame() {
@@ -65,28 +65,34 @@
     } catch (_) { /* ignore */ }
   }
 
-  // el が composer か（monaco 配下は composer 扱いしない）。
-  function isComposer(el) {
+  // el が「自動フォーカスでキーボードが出る編集領域」なら、タップ許可判定に使う“枠”要素を返す（else null）。
+  // 対象: (1) Claude チャット composer（role=textbox aria-multiline）… 枠は composer 自身
+  //       (2) テキストエディタ monaco の入力 … 枠は .monaco-editor 全体（入力は 1px の textarea のため）
+  // 単行 <input>（検索/リネーム等）は role=textbox でも aria-multiline でないので対象外。
+  function suppressBox(el) {
     try {
-      if (!el || !el.closest) return false;
-      if (el.closest(MONACO_SEL)) return false;
-      return !!el.closest(COMPOSER_SEL);
+      if (!el || !el.closest) return null;
+      var mon = el.closest(MONACO_SEL);
+      if (mon) return mon;                 // テキストエディタ: 枠はエディタ全体
+      var cmp = el.closest(COMPOSER_SEL);
+      if (cmp) return cmp;                 // チャット入力: 枠は composer
+      return null;
     } catch (_) {
-      return false;
+      return null;
     }
   }
 
-  // 直近タップが「その composer の枠内」だったか（時間窓内）。
-  // 「フレーム内のどこかでタップ」では緩すぎる（新セッションの「+」ボタンのタップが composer と
-  // 同フレームで起き、直後の自動フォーカスを誤許可してキーボードが出ていた）。座標で枠内判定する。
+  // 直近タップが「その枠内」だったか（時間窓内）。座標で判定する。
+  // 「フレーム内のどこかでタップ」では緩すぎる（新セッションの「+」等のタップが同フレームで起き、
+  // 直後の自動フォーカスを誤許可してキーボードが出ていた）。
   var TAP_PAD_PX = 40; // 枠の外側この幅まではタップ許可（コンテナ/プレースホルダの余白を吸収）
-  function tapOnComposer(doc, el) {
+  function tapInBox(doc, box) {
     var t = doc.__ccStudioLastTapTime;
     if (typeof t !== 'number' || Date.now() - t >= ACTIVITY_WINDOW_MS) return false;
     var x = doc.__ccStudioLastTapX, y = doc.__ccStudioLastTapY;
-    if (typeof x !== 'number' || !el) return false;
+    if (typeof x !== 'number' || !box) return false;
     try {
-      var r = el.getBoundingClientRect();
+      var r = box.getBoundingClientRect();
       return x >= r.left - TAP_PAD_PX && x <= r.right + TAP_PAD_PX &&
         y >= r.top - TAP_PAD_PX && y <= r.bottom + TAP_PAD_PX;
     } catch (_) {
@@ -119,14 +125,15 @@
     doc.addEventListener('pointerdown', mark, true);
     doc.addEventListener('touchstart', mark, true);
 
-    // composer の focusin。タップが「その composer の枠内」だったら通す（ユーザー起点）。
-    // 枠外タップ（新セッションの「+」等）や、タップ無し（自動フォーカス）→ blur。
+    // 編集領域(composer / テキストエディタ)の focusin。タップが「その枠内」なら通す（ユーザー起点）。
+    // 枠外タップ（新セッションの「+」/ファイルを開く等）や、タップ無し（自動フォーカス）→ blur。
     doc.addEventListener(
       'focusin',
       function (e) {
         var t = e.target;
-        if (!isComposer(t)) return; // composer 以外は一切触らない
-        if (!tapOnComposer(doc, t)) {
+        var box = suppressBox(t);
+        if (!box) return; // 対象外は一切触らない
+        if (!tapInBox(doc, box)) {
           kbLog('blur1 ' + kbFrame());
           try { t.blur(); } catch (_) { /* ignore */ }
         } else {
@@ -136,12 +143,13 @@
       true
     );
 
-    // 設置時の一発チェック: 既に composer がフォーカス済み（＝リスナ設置“前”に自動フォーカスされた。
-    // 新規セッション作成時など。一度フォーカスされると focusin は再発火しないので focusin では拾えない）
-    // かつ「枠内タップ」でなければ blur。設置時の1回だけ＝連続 poll ではないので誤爆/争奪は起こさない。
+    // 設置時の一発チェック: 既に編集領域がフォーカス済み（＝リスナ設置“前”に自動フォーカスされた。
+    // 新規セッション作成やファイルを開いた直後など。一度フォーカスされると focusin は再発火しないので
+    // focusin では拾えない）かつ「枠内タップ」でなければ blur。設置時1回だけ＝連続 poll ではない。
     try {
       var a = doc.activeElement;
-      if (a && isComposer(a) && !tapOnComposer(doc, a)) {
+      var box0 = suppressBox(a);
+      if (box0 && !tapInBox(doc, box0)) {
         kbLog('blur0 install-active ' + kbFrame());
         a.blur();
       }
