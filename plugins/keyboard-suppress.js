@@ -1,6 +1,6 @@
 // ==CCStudioPlugin==
 // @name        keyboard-suppress
-// @version     1.2.17
+// @version     1.2.18
 // @description ソフトキーボードの自動表示を抑制する。チャット入力欄やテキストエディタへ自動フォーカスが移ってもソフトキーボードを勝手に開かせない（枠をタップした時だけ出す）。全フレームに document-start で常駐する。
 // ==/CCStudioPlugin==
 // keyboard-suppress.js — CC Studio 組込み機能（assets同梱）
@@ -43,7 +43,7 @@
 
   // ---- 診断: focus-hud 共有ログ(window.top.__ccStudioFocusLog)へ「KB …」行を出す ----
   // focus-hud が無くても害は無い（配列に積むだけ）。原因切り分けが済んだら DIAG=false に。
-  var KB_VER = '1.2.17';
+  var KB_VER = '1.2.18';
   var DIAG = true;
   function kbTopWin() { try { return window.top || window; } catch (_) { return window; } }
   function kbFrame() {
@@ -116,15 +116,17 @@
   }
   // 今フォーカスされているのが「枠内タップ由来でない」編集領域なら blur。
   // ただし engaged（＝枠内タップで正規にフォーカス済み。タイピング中）なら絶対に触らない。
+  // 診断: 編集領域がフォーカスされている時に「なぜ blur しない/する」かを毎回ログ（kbLog は連続重複を省く）。
   function blurIfUnauthorized(doc) {
     try {
-      if (doc.__ccStudioEngaged) return; // 正規フォーカス中はタイピングを壊さない
       var a = doc.activeElement;
       var box = suppressBox(a);
-      if (box && isBoxVisible(box) && !tapInBox(doc, box)) {
-        kbLog('blur2 recheck ' + kbFrame());
-        a.blur();
-      }
+      if (!box) return; // 編集領域にフォーカスしていない＝無関係（ログも出さない）
+      if (!isBoxVisible(box)) { kbLog('skip invisible ' + kbFrame()); return; }
+      if (doc.__ccStudioEngaged) { kbLog('skip engaged ' + kbFrame()); return; } // タイピング中は触らない
+      if (tapInBox(doc, box)) { kbLog('skip tap ' + kbFrame()); return; }
+      kbLog('blur2 poll ' + kbFrame());
+      a.blur();
     } catch (_) { /* ignore */ }
   }
   var POLL_MS = 300; // 継続ポーリング間隔。focusin を伴わない自動フォーカスを拾う（engaged 中は触らない）。
