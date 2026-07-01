@@ -1,6 +1,6 @@
 // ==CCStudioPlugin==
 // @name        keyboard-suppress
-// @version     1.2.16
+// @version     1.2.17
 // @description ソフトキーボードの自動表示を抑制する。チャット入力欄やテキストエディタへ自動フォーカスが移ってもソフトキーボードを勝手に開かせない（枠をタップした時だけ出す）。全フレームに document-start で常駐する。
 // ==/CCStudioPlugin==
 // keyboard-suppress.js — CC Studio 組込み機能（assets同梱）
@@ -43,7 +43,7 @@
 
   // ---- 診断: focus-hud 共有ログ(window.top.__ccStudioFocusLog)へ「KB …」行を出す ----
   // focus-hud が無くても害は無い（配列に積むだけ）。原因切り分けが済んだら DIAG=false に。
-  var KB_VER = '1.2.16';
+  var KB_VER = '1.2.17';
   var DIAG = true;
   function kbTopWin() { try { return window.top || window; } catch (_) { return window; } }
   function kbFrame() {
@@ -127,23 +127,7 @@
       }
     } catch (_) { /* ignore */ }
   }
-  // 操作(タップ/スクロール)後の限定的な再確認。focusin を伴わない自動フォーカス
-  // （例: AskUserQuestion の選択肢をタップ→少し遅れて composer が自動フォーカス）を拾う。
-  // 連続 poll ではなく、直近操作から一定時間だけ数回。token で最新操作のぶんだけ有効。
-  function scheduleRecheck(doc) {
-    var win = doc.defaultView || window;
-    var token = (doc.__ccStudioRecheckToken = (doc.__ccStudioRecheckToken || 0) + 1);
-    var delays = [150, 400, 900, 1600, 2500];
-    for (var i = 0; i < delays.length; i++) {
-      (function (d) {
-        try {
-          win.setTimeout(function () {
-            if (doc.__ccStudioRecheckToken === token) blurIfUnauthorized(doc);
-          }, d);
-        } catch (_) { /* ignore */ }
-      })(delays[i]);
-    }
-  }
+  var POLL_MS = 300; // 継続ポーリング間隔。focusin を伴わない自動フォーカスを拾う（engaged 中は触らない）。
   // 1つの document に capture リスナを設置（設置済みなら何もしない＝冪等）。
   // 方式は focusin のみ（#1 タップ入力＋#2 自動フォーカス抑制を両立する想定）。
   // 【重要】VS Code webview は fake.html を作った後 document.open()/write() で中身を流し込み、
@@ -185,12 +169,7 @@
         }
       } catch (_) { /* ignore */ }
     };
-    var markUp = function () {
-      try {
-        doc.__ccStudioGActive = false;
-        scheduleRecheck(doc); // 操作後の遅延再確認（focusin を伴わない自動フォーカスを拾う）
-      } catch (_) { /* ignore */ }
-    };
+    var markUp = function () { try { doc.__ccStudioGActive = false; } catch (_) { /* ignore */ } };
     doc.addEventListener('pointerdown', markDown, true);
     doc.addEventListener('touchstart', markDown, true);
     doc.addEventListener('pointermove', markMove, true);
@@ -226,6 +205,23 @@
       },
       true
     );
+
+    // 入力(keydown/beforeinput/input)でも engaged を維持 → 継続ポーリングでタイピングを絶対に壊さない。
+    var activity = function (e) {
+      try { if (suppressBox(e.target)) doc.__ccStudioEngaged = true; } catch (_) { /* ignore */ }
+    };
+    doc.addEventListener('keydown', activity, true);
+    doc.addEventListener('beforeinput', activity, true);
+    doc.addEventListener('input', activity, true);
+
+    // 継続ポーリング（フレームに1本だけ）。focusin を伴わない自動フォーカス（AskUserQuestion 回答後・
+    // パネル復帰・遅延など）を拾う。blurIfUnauthorized は engaged 中／枠内タップ由来／不可視なら触らない。
+    if (!doc.__ccStudioPollTimer) {
+      try {
+        var win = doc.defaultView || window;
+        doc.__ccStudioPollTimer = win.setInterval(function () { blurIfUnauthorized(doc); }, POLL_MS);
+      } catch (_) { /* ignore */ }
+    }
 
     // 設置時の一発チェック: 既に編集領域がフォーカス済み（＝リスナ設置“前”に自動フォーカスされた。
     // 新規セッション作成やファイルを開いた直後など。一度フォーカスされると focusin は再発火しないので
