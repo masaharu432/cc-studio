@@ -12,7 +12,9 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import okhttp3.OkHttpClient
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
@@ -27,11 +29,29 @@ class KeepAliveService : Service() {
     @Volatile private var backoffMs = 2000L
     private val reconnectRunnable = Runnable { connect() }
 
+    @Volatile private var uploading = false
+    private val uploadRunnable = object : Runnable {
+        override fun run() {
+            triggerUpload()
+            if (!stopped) handler.postDelayed(this, 60_000L)
+        }
+    }
+    private val prefs by lazy { getSharedPreferences("cc_observer", MODE_PRIVATE) }
+    private fun deviceId(): String {
+        var id = prefs.getString("device_id", null)
+        if (id == null) {
+            id = java.util.UUID.randomUUID().toString().take(12)
+            prefs.edit().putString("device_id", id).apply()
+        }
+        return id
+    }
+
     override fun onCreate() {
         super.onCreate()
         createChannels()
         startForeground(NOTIFICATION_ID, buildKeepAliveNotification())
         connect()
+        handler.postDelayed(uploadRunnable, 15_000L)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -40,6 +60,7 @@ class KeepAliveService : Service() {
         if (intent?.action == ACTION_REFRESH) {
             startForeground(NOTIFICATION_ID, buildKeepAliveNotification())
         }
+        if (intent?.action == ACTION_UPLOAD) triggerUpload()
         return START_STICKY
     }
 
@@ -47,6 +68,7 @@ class KeepAliveService : Service() {
 
     override fun onDestroy() {
         stopped = true
+        handler.removeCallbacks(uploadRunnable)
         try { ws?.close(1000, null) } catch (_: Exception) {}
         super.onDestroy()
     }
@@ -64,6 +86,39 @@ class KeepAliveService : Service() {
         return "$wsScheme://$host/cc-notify/ws"
     }
 
+    /** TARGET_URL から https://host/cc-notify を作る（ログアップロード先）。 */
+    private fun postUrl(): String? {
+        val base = BuildConfig.TARGET_URL.ifEmpty { return null }
+        val schemeEnd = base.indexOf("://")
+        if (schemeEnd < 0) return null
+        val host = base.substring(schemeEnd + 3).substringBefore('/')
+        return "https://$host/cc-notify"
+    }
+
+    /** 未送信分(t>lastUploadedT)を relay へ POST。成功で lastUploadedT を更新。失敗は次回再試行。 */
+    private fun triggerUpload() {
+        if (uploading || stopped) return
+        val url = postUrl() ?: return
+        uploading = true
+        try {
+            val lastT = prefs.getLong("last_uploaded_t", 0L)
+            val delta = UploadDelta.select(ObserverLog.readAll(this), lastT)
+            if (delta.count == 0) { uploading = false; return }
+            val payload = JSONObject()
+                .put("type", "cc-observer").put("device", deviceId())
+                .put("sentAt", System.currentTimeMillis()).put("lines", delta.lines).toString()
+            val req = Request.Builder().url(url)
+                .post(payload.toRequestBody("application/json".toMediaType())).build()
+            client.newCall(req).enqueue(object : okhttp3.Callback {
+                override fun onFailure(call: okhttp3.Call, e: java.io.IOException) { uploading = false }
+                override fun onResponse(call: okhttp3.Call, response: Response) {
+                    try { if (response.isSuccessful) prefs.edit().putLong("last_uploaded_t", delta.maxT).apply() }
+                    finally { response.close(); uploading = false }
+                }
+            })
+        } catch (e: Exception) { uploading = false }
+    }
+
     private fun connect() {
         if (stopped) return
         val url = wsUrl() ?: return
@@ -74,6 +129,7 @@ class KeepAliveService : Service() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
                 backoffMs = 2000L
                 ObserverLog.keepalive(this@KeepAliveService, "open", "")
+                triggerUpload()
             }
             override fun onMessage(webSocket: WebSocket, text: String) {
                 handleEvent(text)
@@ -207,5 +263,6 @@ class KeepAliveService : Service() {
         const val NOTIFICATION_ID = 1
         const val EXTRA_OPEN_CWD = "app.ccstudio.OPEN_CWD"
         const val ACTION_REFRESH = "app.ccstudio.REFRESH_KEEPALIVE"
+        const val ACTION_UPLOAD = "app.ccstudio.UPLOAD_OBSERVER_LOG"
     }
 }

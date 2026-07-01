@@ -141,6 +141,10 @@ class MainActivity : AppCompatActivity() {
             ?.takeIf { it.kind == ScreenKind.WEB }
             ?.let { ScreenUrl.folderPath(it.url) }
         ObserverLog.lifecycle(this, "foreground")
+        ContextCompat.startForegroundService(
+            this,
+            Intent(this, KeepAliveService::class.java).setAction(KeepAliveService.ACTION_UPLOAD),
+        )
     }
 
     override fun onPause() {
