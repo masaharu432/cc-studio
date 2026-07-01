@@ -1,6 +1,6 @@
 // ==CCStudioPlugin==
 // @name        state-observer
-// @version     0.5.0
+// @version     0.6.0
 // @description Claude Code が処理中か / code-server の接続が切れているかを各スクリーンで検知し、スクリーン一覧の行・常駐通知・左端の ︙ ボタンに「処理中 / 接続切れ」を表示します。停止ボタンや再接続表示を監視するだけで、操作はしません。
 // @run-at        document-start
 // @all-frames    true
@@ -92,15 +92,25 @@
     }
     return null;
   }
+  var discMatch = '';
   function detectDisconnected() {
-    var texts = ['Disconnected', 'Reconnecting', 'reconnect', 'Connection lost', '接続が切断', '再接続'];
+    discMatch = '';
+    // 単独で拾うと誤検知しやすい 'reconnect'/'Connection' は避け、切断UIに出る明確な語のみ。
+    var texts = ['Disconnected', 'Reconnecting', 'Cannot reconnect', 'lost connection', '接続が切断', '再接続'];
+    // 個々の可視トースト/ダイアログのみ（コンテナ全体でなく item 単位）。
     var scopes = document.querySelectorAll(
-      '.monaco-dialog-box, .notifications-toasts, .monaco-workbench .dialog-message, [role="dialog"], [role="alertdialog"]');
+      '.monaco-dialog-box, .notifications-toasts .notification-list-item, [role="dialog"], [role="alertdialog"]');
     for (var i = 0; i < scopes.length; i++) {
       var el = scopes[i];
       if (el.offsetParent === null) continue;
       var tx = el.textContent || '';
-      for (var j = 0; j < texts.length; j++) if (tx.indexOf(texts[j]) >= 0) return 'overlay:' + texts[j];
+      for (var j = 0; j < texts.length; j++) {
+        if (tx.indexOf(texts[j]) >= 0) {
+          var cls = (typeof el.className === 'string' && el.className.split(/\s+/)[0]) || (el.tagName || '?').toLowerCase();
+          discMatch = cls + ' «' + texts[j] + '» ' + tx.replace(/\s+/g, ' ').slice(0, 40);
+          return 'overlay:' + texts[j];
+        }
+      }
     }
     return null;
   }
@@ -117,10 +127,13 @@
     if (t - lastDiag < DIAG_MS) return;
     lastDiag = t;
     var c; try { c = document.querySelector(COMPOSER_SEL); } catch (_) { c = null; }
-    if (!c) return;   // 入力欄が無いフレームはノイズなので出さない
-    var len = ((c.textContent || '').trim()).length;
-    emitLog('BUSY? ' + frameName() + ' q=' + (hasQueueField() ? 1 : 0) +
-      ' sbEn=' + (sendButtonEnabled() ? 1 : 0) + ' len=' + len + ' => ' + (detectBusy() || 'null'));
+    if (c) {   // 入力欄のあるチャット本体フレームだけ busy 内訳を出す
+      var len = ((c.textContent || '').trim()).length;
+      emitLog('BUSY? ' + frameName() + ' q=' + (hasQueueField() ? 1 : 0) +
+        ' sbEn=' + (sendButtonEnabled() ? 1 : 0) + ' len=' + len + ' => ' + (detectBusy() || 'null'));
+    }
+    // 切断オーバーレイは top ワークベンチ側に出るので、フレームを問わずマッチ内容を吐く。
+    if (detectDisconnected()) emitLog('DISC? ' + frameName() + ' ' + discMatch);
   }
 
   // ---- トップフレーム: 全フレームの状態を集約してネイティブへ報告 ----
