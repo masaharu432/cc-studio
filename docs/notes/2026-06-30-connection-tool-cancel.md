@@ -41,3 +41,16 @@
   - `CANCEL` 直前に `disconnected:true` があれば **接続瞬断由来**の疑い。
   - `CANCEL` 直前に blur ログ（フォアグラウンド復帰）があれば **focus 抑制由来**の疑い。
 - 切り分けが付いたら、設計の方式B（hooks→WS）導入や keyboard-suppress の発火条件見直しへ。
+
+## 永続ログ（フェーズ1）
+
+- 保存先: `/sdcard/Android/data/app.ccstudio/files/observer/observer.log`（JSONL, アプリ更新で消えない）。
+  回収例: `adb exec-out cat /sdcard/Android/data/app.ccstudio/files/observer/observer.log | tail -40`
+- `src:"screen"`（処理中/接続切れ遷移, matched 付き）と `src:"keepalive"`（WS open/closed/failure）、
+  `src:"app"`（lifecycle）を**同一端末クロック(t=epoch ms, iso)**で記録。突発キャンセル発生時は、近傍の
+  `keepalive failure` と `screen disconnected` の t を突き合わせる。
+- 接続断は cc-web `reconnectguard.js` 準拠で `"attempting to reconnect"`/`"cannot reconnect"` を検知。
+- 真因候補（cc-web reconnectguard の知見）: 再接続トーストの **Reload Window を押す（誤タップ含む）と
+  実行中の Claude ターンが破棄される**。VS Code は最大3時間 自動再接続でゼロロス復帰するのでリロードしないのが安全。
+  → cc-studio に reconnectguard 相当（Reload を隠す/リロードさせない）の移植を別途検討。
+- フェーズ2 でこの永続ログを agent1 の cc-notify サーバ(claude-code-config)へ送り、サーバ側 WS 断と時刻突合する。
