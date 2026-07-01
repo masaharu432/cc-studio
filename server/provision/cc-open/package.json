@@ -1,9 +1,9 @@
 {
   "name": "cc-open",
   "displayName": "CC Open",
-  "description": "チャットのファイルリンクを Explorer と同じ既定エディタ(関連付け尊重=.md はプレビュー)で開く補助拡張。URI ハンドラ(vscode.open)＋テキストで開かれた .md の自動プレビュー化。",
+  "description": "チャットのファイルリンクから開いた .md を editorAssociations のプレビュー(vscode.markdown.preview.editor)へ toggleEditorType でその場切替する補助拡張。HTML は専用拡張 aios-html-auto-preview が担当。",
   "publisher": "ccstudio",
-  "version": "0.0.4",
+  "version": "0.0.8",
   "engines": {
     "vscode": "^1.80.0"
   },
@@ -11,5 +11,16 @@
   "activationEvents": [
     "onStartupFinished"
   ],
-  "contributes": {}
+  "contributes": {
+    "configuration": {
+      "title": "CC Open",
+      "properties": {
+        "cc-open.autoPreview.markdown": {
+          "type": "boolean",
+          "default": true,
+          "description": "テキストで開かれた .md を自動でプレビュー(vscode.markdown.preview.editor)に切り替える"
+        }
+      }
+    }
+  }
 }

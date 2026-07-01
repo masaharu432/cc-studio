@@ -34,20 +34,25 @@ function activate(context) {
     },
   }));
 
-  // (2) 自動変換（保険）: .md テキストエディタ → 閉じてプレビューで開き直す。
+  // (2) 自動変換: .md テキストエディタ → その場でプレビュー（既定エディタ）へ切替。
+  //   toggleEditorType は同一タブを text↔custom editor で切り替える 1 操作なので、close+open より滑らか
+  //   （タブが消えて再オープンしない）。プレビュー(custom editor)になれば onDidChangeActiveTextEditor は
+  //   undefined になり再入しない。保険で busy ガードも持つ。
+  // cc-open は markdown 専用。HTML は専用拡張 aios-html-auto-preview が担当する
+  //   （htmlPreview.enabled 設定 / "AIOS: Toggle HTML Auto-Preview" コマンドで ON/OFF）。二重処理を避ける。
   const busy = new Set();
   async function toPreview(editor) {
     try {
       if (!editor || !editor.document) return;
       const doc = editor.document;
       if (doc.languageId !== 'markdown') return;
+      if (!vscode.workspace.getConfiguration('cc-open').get('autoPreview.markdown', true)) return;   // 既定 ON
       if (doc.uri.scheme !== 'file' && doc.uri.scheme !== 'vscode-remote') return;
       const key = doc.uri.toString();
       if (busy.has(key)) return;
       busy.add(key);
       try {
-        await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
-        await vscode.commands.executeCommand('vscode.open', doc.uri);
+        await vscode.commands.executeCommand('workbench.action.toggleEditorType');
       } finally { setTimeout(() => busy.delete(key), 1000); }
     } catch (e) { /* noop */ }
   }
