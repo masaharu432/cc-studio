@@ -1,6 +1,6 @@
 // ==CCStudioPlugin==
 // @name        state-observer
-// @version     1.0.2
+// @version     1.1.0
 // @description Claude Code が処理中か / code-server の接続が切れているかを各スクリーンで検知し、スクリーン一覧の行・常駐通知・左端の ︙ ボタンに「処理中 / 接続切れ」を表示します。停止ボタンや再接続表示を監視するだけで、操作はしません。
 // @run-at        document-start
 // @all-frames    true
@@ -162,7 +162,8 @@
   function doCommit(busy, disc, matched) {
     if (busy === lastB && disc === lastD) return;
     lastB = busy; lastD = disc;
-    paintButton(busy, disc);
+    // ︙ボタンの描画はネイティブが全スクリーン集約状態で行う(__ccPaintMenu)。ここでは塗らない
+    // （このスクリーン単独の状態で塗ると、別スクリーン処理中に光らないため）。
     hudLog('STATE b=' + (busy ? 1 : 0) + ' d=' + (disc ? 1 : 0) + ' ' + (matched || ''));
     try { if (window.CCStudio && window.CCStudio.setSessionState) window.CCStudio.setSessionState(busy, disc); } catch (_) {}
   }
@@ -192,6 +193,8 @@
 
   function startTop() {
     ensureKeyframes();
+    // ネイティブが全スクリーン集約状態(anyBusy,anyDisc)をここへ push して ︙ボタンを塗る。
+    window.__ccPaintMenu = function (b, d) { try { paintButton(!!b, !!d); } catch (_) {} };
     window.addEventListener('message', function (e) {
       var m = e.data;
       if (!m || typeof m !== 'object' || m.k !== MSG) return;

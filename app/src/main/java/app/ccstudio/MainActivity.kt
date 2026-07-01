@@ -91,6 +91,8 @@ class MainActivity : AppCompatActivity() {
         screens.onActiveChanged = { s ->
             NotifyState.activeFolder =
                 if (s != null && s.kind == ScreenKind.WEB) ScreenUrl.folderPath(s.url) else null
+            // 表示スクリーンが変わったら、その ︙ボタンに全体の集約状態を塗り直す。
+            pushMenuState()
         }
 
         // 1) Plugins システムスクリーン（先頭・固定）
@@ -419,12 +421,24 @@ class MainActivity : AppCompatActivity() {
         runOnUiThread {
             val s = screens.byId(screenId) ?: return@runOnUiThread
             if (s.kind != ScreenKind.WEB) return@runOnUiThread
-            if (s.busy == busy && s.disconnected == disconnected) return@runOnUiThread
-            s.busy = busy
-            s.disconnected = disconnected
-            refreshSwitcher()
-            refreshKeepAliveScreenCount()
+            if (s.busy != busy || s.disconnected != disconnected) {
+                s.busy = busy
+                s.disconnected = disconnected
+                refreshSwitcher()
+                refreshKeepAliveScreenCount()
+            }
+            // 変化が無くても押す: 起動直後の表示中スクリーンの ︙ボタンにも集約状態を反映するため。
+            pushMenuState()
         }
+    }
+
+    /** 全 Web スクリーンの集約状態（どれか処理中/接続切れ）を、表示中スクリーンの ︙ボタンへ反映する。 */
+    private fun pushMenuState() {
+        val anyBusy = screens.webScreens().any { it.busy }
+        val anyDisc = screens.webScreens().any { it.disconnected }
+        screens.activeOrNull()?.webView?.evaluateJavascript(
+            "window.__ccPaintMenu && window.__ccPaintMenu($anyBusy, $anyDisc);", null,
+        )
     }
 
     /** 起動中 Web スクリーン数を共有状態に反映し、常駐通知を貼り直させる。 */
