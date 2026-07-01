@@ -1,6 +1,6 @@
 // ==CCStudioPlugin==
 // @name        keyboard-suppress
-// @version     1.2.20
+// @version     1.2.21
 // @description ソフトキーボードの自動表示を抑制する。チャット入力欄やテキストエディタへ自動フォーカスが移ってもソフトキーボードを勝手に開かせない（枠をタップした時だけ出す）。全フレームに document-start で常駐する。
 // ==/CCStudioPlugin==
 // keyboard-suppress.js — CC Studio 組込み機能（assets同梱）
@@ -43,7 +43,7 @@
 
   // ---- 診断: focus-hud 共有ログ(window.top.__ccStudioFocusLog)へ「KB …」行を出す ----
   // focus-hud が無くても害は無い（配列に積むだけ）。原因切り分けが済んだら DIAG=false に。
-  var KB_VER = '1.2.20';
+  var KB_VER = '1.2.21';
   var DIAG = true;
   function kbTopWin() { try { return window.top || window; } catch (_) { return window; } }
   function kbFrame() {
@@ -96,18 +96,33 @@
     } catch (_) { /* ignore */ }
     return null;
   }
+  function inPad(r, x, y) {
+    return x >= r.left - TAP_PAD_PX && x <= r.right + TAP_PAD_PX &&
+      y >= r.top - TAP_PAD_PX && y <= r.bottom + TAP_PAD_PX;
+  }
+  // タップが「実際に係わった枠」を返す（else null）。座標だけでは AskUserQuestion の回答カード等の
+  // オーバーレイが枠に重なって誤許可されるため、当たった要素の関係で判定する:
+  //  (1) タップ先が枠の内側 → その枠
+  //  (2) タップ先が枠を“内包する”要素（コンテナ余白タップ）で、座標がその枠内 → その枠
+  // 別要素（回答カード等）へのタップは (1)(2) どちらにも該当せず null＝許可しない。
+  function tapEngagedBox(target, x, y) {
+    try {
+      var direct = suppressBox(target);
+      if (direct) return direct;
+      if (target && target.querySelectorAll) {
+        var cand = target.querySelectorAll(COMPOSER_SEL + ', ' + MONACO_SEL);
+        for (var i = 0; i < cand.length; i++) {
+          if (inPad(cand[i].getBoundingClientRect(), x, y)) return cand[i];
+        }
+      }
+    } catch (_) { /* ignore */ }
+    return null;
+  }
+  // 直近タップが「その枠」に係わったか（時間窓内）。枠は要素同一性で判定（座標だけの誤許可を防ぐ）。
   function tapInBox(doc, box) {
     var t = doc.__ccStudioLastTapTime;
     if (typeof t !== 'number' || Date.now() - t >= ACTIVITY_WINDOW_MS) return false;
-    var x = doc.__ccStudioLastTapX, y = doc.__ccStudioLastTapY;
-    if (typeof x !== 'number' || !box) return false;
-    try {
-      var r = box.getBoundingClientRect();
-      return x >= r.left - TAP_PAD_PX && x <= r.right + TAP_PAD_PX &&
-        y >= r.top - TAP_PAD_PX && y <= r.bottom + TAP_PAD_PX;
-    } catch (_) {
-      return false;
-    }
+    return !!box && doc.__ccStudioTapBoxEl === box;
   }
 
   function isBoxVisible(box) {
@@ -185,8 +200,10 @@
           doc.__ccStudioLastTapX = p.x; doc.__ccStudioLastTapY = p.y;
           doc.__ccStudioGX = p.x; doc.__ccStudioGY = p.y; doc.__ccStudioGActive = true;
         }
-        // 枠内タップなら、フォーカスが入る前にキーボード禁止を解除しておく（タップで普通に出す）。
-        var boxD = suppressBox(e.target);
+        // タップが実際に係わった枠（オーバーレイ＝回答カード等は除外）。許可判定に使う。
+        var boxD = tapEngagedBox(e.target, p ? p.x : -1, p ? p.y : -1);
+        doc.__ccStudioTapBoxEl = boxD;
+        // 枠タップなら、フォーカスが入る前にキーボード禁止を解除しておく（タップで普通に出す）。
         if (boxD) allowKb(editableIn(boxD));
       } catch (_) { /* ignore */ }
     };
