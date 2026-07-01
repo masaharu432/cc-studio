@@ -7,8 +7,9 @@
   - `cc-web/cc-web-keepalive/src/reconnectguard.js` … code-server 再接続トーストの DOM 事実
     （`.notification-toast/.notification-list-item` の `"attempting to reconnect"`/`"cannot reconnect"`）。
     **突発キャンセルの真因＝再接続トーストの Reload Window でターン破棄**、VS Code は最大3時間 自動再接続。
-  - cc-notify WS サーバ本体は **`claude-code-config`**（listener server, code-server サブモジュール外）。
-    フェーズ2 のサーバ側キープアライブ記録・突合はここに足す。
+  - cc-notify WS サーバ本体は **本 repo 独自の `server/notify-relay/relay.mjs`**（素の Node http+WS、
+    POST `/cc-notify`・WS `/cc-notify/ws`、既定ポート 8770。`server/provision/install-notify.sh` で常駐化。
+    code-server サブモジュールの外）。フェーズ2 のサーバ側キープアライブ記録・突合はここに足す。
 
 ## 目的
 

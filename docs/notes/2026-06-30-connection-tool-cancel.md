@@ -53,4 +53,4 @@
 - 真因候補（cc-web reconnectguard の知見）: 再接続トーストの **Reload Window を押す（誤タップ含む）と
   実行中の Claude ターンが破棄される**。VS Code は最大3時間 自動再接続でゼロロス復帰するのでリロードしないのが安全。
   → cc-studio に reconnectguard 相当（Reload を隠す/リロードさせない）の移植を別途検討。
-- フェーズ2 でこの永続ログを agent1 の cc-notify サーバ(claude-code-config)へ送り、サーバ側 WS 断と時刻突合する。
+- フェーズ2 でこの永続ログを本 repo の cc-notify サーバ `server/notify-relay/relay.mjs` へ送り、サーバ側 WS 断と時刻突合する。
