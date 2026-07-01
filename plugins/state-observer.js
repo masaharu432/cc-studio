@@ -1,6 +1,6 @@
 // ==CCStudioPlugin==
 // @name        state-observer
-// @version     1.1.0
+// @version     1.2.0
 // @description Claude Code が処理中か / code-server の接続が切れているかを各スクリーンで検知し、スクリーン一覧の行・常駐通知・左端の ︙ ボタンに「処理中 / 接続切れ」を表示します。停止ボタンや再接続表示を監視するだけで、操作はしません。
 // @run-at        document-start
 // @all-frames    true
@@ -86,22 +86,17 @@
   var discMatch = '';
   function detectDisconnected() {
     discMatch = '';
-    // 単独で拾うと誤検知しやすい 'reconnect'/'Connection' は避け、切断UIに出る明確な語のみ。
-    var texts = ['Disconnected', 'Reconnecting', 'Cannot reconnect', 'lost connection', '接続が切断', '再接続'];
-    // 個々の可視トースト/ダイアログのみ（コンテナ全体でなく item 単位）。
-    var scopes = document.querySelectorAll(
-      '.monaco-dialog-box, .notifications-toasts .notification-list-item, [role="dialog"], [role="alertdialog"]');
-    for (var i = 0; i < scopes.length; i++) {
-      var el = scopes[i];
+    // code-server の再接続トーストを正確に拾う（cc-web reconnectguard.js の DOM 事実に準拠）:
+    //   再接続中 = ".notification-toast/.notification-list-item" の文言に "attempting to reconnect"
+    //   恒久失敗 = "cannot reconnect"
+    // 広い 'Disconnected'/'Connection' 等は誤検知・張り付きの元なので使わない。
+    var toasts = document.querySelectorAll('.notification-toast, .notification-list-item');
+    for (var i = 0; i < toasts.length; i++) {
+      var el = toasts[i];
       if (el.offsetParent === null) continue;
-      var tx = el.textContent || '';
-      for (var j = 0; j < texts.length; j++) {
-        if (tx.indexOf(texts[j]) >= 0) {
-          var cls = (typeof el.className === 'string' && el.className.split(/\s+/)[0]) || (el.tagName || '?').toLowerCase();
-          discMatch = cls + ' «' + texts[j] + '» ' + tx.replace(/\s+/g, ' ').slice(0, 40);
-          return 'overlay:' + texts[j];
-        }
-      }
+      var tx = (el.textContent || '').toLowerCase();
+      if (tx.indexOf('cannot reconnect') >= 0) { discMatch = 'cannot-reconnect'; return 'overlay:cannot-reconnect'; }
+      if (tx.indexOf('attempting to reconnect') >= 0) { discMatch = 'reconnecting'; return 'overlay:reconnecting'; }
     }
     return null;
   }
