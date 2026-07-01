@@ -122,7 +122,10 @@ class MainActivity : AppCompatActivity() {
                 val sw = switcher
                 if (sw != null && sw.visibility == View.VISIBLE) { closeSwitcher(); return }
                 val a = screens.activeOrNull()
-                if (a != null && a.webView.canGoBack()) a.webView.goBack() else finish()
+                // WebView に戻る履歴があれば戻る。無い場合は finish() せず
+                // ホームボタン同等にバックグラウンドへ送る（moveTaskToBack）。
+                // finish() すると Activity/WebView が破棄され、次回起動でリロードが走るため。
+                if (a != null && a.webView.canGoBack()) a.webView.goBack() else moveTaskToBack(true)
             }
         })
     }
