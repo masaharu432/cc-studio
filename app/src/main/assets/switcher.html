@@ -146,7 +146,7 @@
 
   function makeSysBand(s){
     var band=el('div','band sys');
-    band.innerHTML='<div class="sic">⌁</div><div class="band-main"><div class="band-name">'+s.title+'</div></div><div class="anchor">⚓</div>';
+    band.innerHTML='<div class="sic">⌁</div><div class="band-main"><div class="band-name">'+s.title+'</div></div><div class="anchor" style="border:0;color:var(--brand-soft);font-size:18px">›</div>';
     band.addEventListener('click',function(){ try{ api().selectScreen(String(s.id)); }catch(_){ } });
     return band;
   }
