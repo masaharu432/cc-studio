@@ -1,6 +1,6 @@
 // ==CCStudioPlugin==
 // @name        state-observer
-// @version     0.7.0
+// @version     0.8.0
 // @description Claude Code が処理中か / code-server の接続が切れているかを各スクリーンで検知し、スクリーン一覧の行・常駐通知・左端の ︙ ボタンに「処理中 / 接続切れ」を表示します。停止ボタンや再接続表示を監視するだけで、操作はしません。
 // @run-at        document-start
 // @all-frames    true
@@ -132,7 +132,9 @@
 
   // ---- トップフレーム: 全フレームの状態を集約してネイティブへ報告 ----
   var registry = {};   // frameId -> {b,d,m,t}
-  var lastB = false, lastD = false, offTimer = null, started = false;
+  // null = 未送信のセンチネル。起動後の初回集約で必ず1回ネイティブへ現在値を送り、
+  // リロード前に残った stale な処理中/接続切れをクリアする。
+  var lastB = null, lastD = null, offTimer = null, started = false;
 
   function ingest(id, b, d, m) { registry[id] = { b: !!b, d: !!d, m: m || '', t: Date.now() }; }
 
