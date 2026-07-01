@@ -43,6 +43,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var screenStore: ScreenStore
     private var switcher: WebView? = null
     private var notifyView: WebView? = null
+    private var logView: WebView? = null
     private var settingsView: WebView? = null
     private var settingsTarget: String? = null
 
@@ -340,6 +341,10 @@ class MainActivity : AppCompatActivity() {
         onSessionState = { busy, disconnected -> onSessionState(screenId, busy, disconnected) },
         onMarkdownPreview = { runOnUiThread { dispatchMarkdownPreviewKey() } },
         onObserverLog = { json -> onObserverLog(screenId, json) },
+        onOpenLog = { runOnUiThread { closeSwitcher(); openLog() } },
+        onCloseLog = { runOnUiThread { closeLog(); openSwitcher() } },
+        observerLogTextFn = { observerLogForDisplay() },
+        onDownloadObserverLog = { downloadObserverLog() },
     )
 
     /**
@@ -512,6 +517,46 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun closeNotify() { notifyView?.visibility = View.GONE }
+
+    // ── ログビューア（log.html オーバーレイ・notify と同型） ──
+    private fun openLog() {
+        val lv = logView ?: newConfiguredWebView().also {
+            it.webViewClient = WebViewClient()
+            it.loadUrl("file:///android_asset/log.html")
+            root.addView(
+                it,
+                FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.MATCH_PARENT,
+                    FrameLayout.LayoutParams.MATCH_PARENT,
+                ),
+            )
+            logView = it
+        }
+        lv.visibility = View.VISIBLE
+        lv.bringToFront()
+        lv.evaluateJavascript("window.__ccRenderLog && window.__ccRenderLog();", null)
+    }
+
+    private fun closeLog() { logView?.visibility = View.GONE }
+
+    /** 表示用ログ本文（末尾を上限で切る。ダウンロードは全文）。 */
+    private fun observerLogForDisplay(): String {
+        val text = ObserverLog.readAll(this)
+        val max = 200_000
+        return if (text.length > max) text.substring(text.length - max) else text
+    }
+
+    /** 永続ログ全文を端末の Downloads へ保存する。 */
+    private fun downloadObserverLog() {
+        try {
+            val text = ObserverLog.readAll(this)
+            val b64 = android.util.Base64.encodeToString(text.toByteArray(Charsets.UTF_8), android.util.Base64.NO_WRAP)
+            saveBase64Download("cc-studio-observer.log", "application/json", b64)
+        } catch (e: Exception) {
+            runOnUiThread { toast("ログの保存に失敗しました") }
+            Log.w("CcStudio", "downloadObserverLog failed", e)
+        }
+    }
 
     private fun refreshSwitcher() {
         switcher?.evaluateJavascript("window.__ccRenderScreens && window.__ccRenderScreens();", null)

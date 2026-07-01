@@ -22,6 +22,14 @@ class ObserverLogStore(private val dir: File, private val maxBytes: Long = 512L 
             cur.appendText(line + "\n", Charsets.UTF_8)
         } catch (_: Exception) { /* ログ機能はアプリを落とさない */ }
     }
+
+    /** ローテート分（observer.1.log）＋現行（observer.log）を古い順に連結して返す。 */
+    fun readAll(): String = synchronized(lock) {
+        val sb = StringBuilder()
+        try { File(dir, "observer.1.log").takeIf { it.exists() }?.let { sb.append(it.readText(Charsets.UTF_8)) } } catch (_: Exception) {}
+        try { File(dir, "observer.log").takeIf { it.exists() }?.let { sb.append(it.readText(Charsets.UTF_8)) } } catch (_: Exception) {}
+        sb.toString()
+    }
 }
 
 /** アプリ全体で共有する単一ストア。MainActivity と KeepAliveService の両方から使う。 */
@@ -42,4 +50,6 @@ object ObserverLog {
 
     fun lifecycle(context: Context, event: String) =
         of(context).append(ObserverRecord.lifecycle(System.currentTimeMillis(), event))
+
+    fun readAll(context: Context): String = of(context).readAll()
 }

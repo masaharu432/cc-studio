@@ -39,6 +39,10 @@ class CcBridge(
     private val onSessionState: (busy: Boolean, disconnected: Boolean) -> Unit,
     private val onMarkdownPreview: () -> Unit,
     private val onObserverLog: (json: String) -> Unit,
+    private val onOpenLog: () -> Unit,
+    private val onCloseLog: () -> Unit,
+    private val observerLogTextFn: () -> String,
+    private val onDownloadObserverLog: () -> Unit,
 ) {
     /** ︙メニューに出すビルド番号（ビルド時刻）。 */
     @JavascriptInterface
@@ -144,4 +148,14 @@ class CcBridge(
     /** 観測ログ（生の状態遷移）をネイティブへ。JSON: {"busy":bool,"disconnected":bool,"matched":str}。 */
     @JavascriptInterface
     fun observerLog(json: String) = onObserverLog(json)
+
+    // ── ログビューア ──
+    /** 永続ログの全画面ビューア（log.html オーバーレイ）を開く。 */
+    @JavascriptInterface fun openLogViewer() = onOpenLog()
+    /** ログビューアを閉じて switcher に戻る。 */
+    @JavascriptInterface fun closeLogViewer() = onCloseLog()
+    /** ログ本文（JSONL, 古い順連結）を返す。表示用に末尾を上限で切る。 */
+    @JavascriptInterface fun getObserverLog(): String = observerLogTextFn()
+    /** ログを端末の Downloads へ保存する。 */
+    @JavascriptInterface fun downloadObserverLog() = onDownloadObserverLog()
 }

@@ -19,6 +19,15 @@ class ObserverLogStoreTest {
         assertEquals("""{"a":2}""", lines[1])
     }
 
+    @Test fun readAllConcatsRotatedThenCurrentOldestFirst() {
+        val store = ObserverLogStore(tmp.root, maxBytes = 40)
+        store.append("""{"i":0}""")            // これで observer.log
+        repeat(5) { store.append("""{"i":${it + 1}}""") } // 途中でローテート発生
+        val all = store.readAll()
+        // 最初の行(古い=1.log 側)が、最後の行(新しい=log 側)より前に出る
+        assertTrue(all.indexOf("\"i\":0") < all.indexOf("\"i\":5"))
+    }
+
     @Test fun rotatesWhenOverSize() {
         val store = ObserverLogStore(tmp.root, maxBytes = 64)
         repeat(20) { store.append("""{"i":$it,"pad":"xxxxxxxxxx"}""") }

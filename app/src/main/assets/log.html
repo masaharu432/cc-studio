@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Log</title>
+<style>
+  :root{
+    --chassis:#11151C; --module:#1B222E; --line:#2A3342; --ink:#E8EDF4; --dim:#7C8694;
+    --brand:#2E90E8; --brand-soft:#8FC2F2; --live:#3FD79A; --warn:#e8b07e; --err:#e5533b;
+    --sans:-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+    --mono:ui-monospace,"Roboto Mono","JetBrains Mono",Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{background:var(--chassis);color:var(--ink);font-family:var(--sans)}
+  .screen{height:100%;display:flex;flex-direction:column}
+  .bar{display:flex;align-items:center;gap:10px;padding:14px 14px 12px;border-bottom:1px solid var(--line);flex:0 0 auto;
+    padding-top:calc(14px + env(safe-area-inset-top))}
+  .back{width:34px;height:34px;border-radius:9px;border:1px solid var(--line);background:#161b24;color:var(--brand-soft);
+    font-size:17px;display:grid;place-items:center;cursor:pointer;flex:0 0 auto}
+  .title{font:600 13px/1 var(--mono);letter-spacing:.22em;color:var(--dim);text-transform:uppercase}
+  .count{margin-left:auto;font:500 10px/1 var(--mono);color:var(--brand-soft);background:#0e1620;
+    border:1px solid var(--line);padding:6px 8px;border-radius:7px;white-space:nowrap}
+  .actions{display:flex;gap:8px;padding:10px 14px;border-bottom:1px solid var(--line);flex:0 0 auto}
+  .btn{flex:1;border-radius:9px;padding:11px;border:1px solid var(--line);background:#141a24;color:var(--ink);
+    font:600 12px var(--sans);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px}
+  .btn.primary{border-color:#1c6fc0;background:var(--brand);color:#fff}
+  .body{flex:1;overflow:auto;padding:6px 10px calc(14px + env(safe-area-inset-bottom));
+    font:11px/1.5 var(--mono);-webkit-user-select:text;user-select:text}
+  .row{display:flex;gap:8px;padding:2px 4px;border-bottom:1px solid rgba(42,51,66,.4);white-space:pre-wrap;overflow-wrap:anywhere}
+  .row .t{color:var(--dim);flex:0 0 auto}
+  .row .k{flex:0 0 auto;font-weight:700}
+  .row .m{flex:1;min-width:0}
+  .k.screen{color:var(--brand-soft)} .k.keepalive{color:var(--warn)} .k.app{color:var(--dim)}
+  .row.on .m{color:var(--live)} .row.off .m{color:var(--dim)}
+  .row.bad .m{color:var(--err)} .row.bad .k{color:var(--err)}
+  .empty{padding:30px 14px;color:var(--dim);font:500 12px/1.7 var(--sans);text-align:center}
+</style>
+</head>
+<body>
+  <div class="screen">
+    <div class="bar">
+      <button class="back" id="back">‹</button>
+      <span class="title">Observer Log</span>
+      <span class="count" id="count"></span>
+    </div>
+    <div class="actions">
+      <button class="btn" id="reload">↻ 更新</button>
+      <button class="btn primary" id="download">⬇ ダウンロード</button>
+    </div>
+    <div class="body" id="body"></div>
+  </div>
+<script>
+  function api(){ return window.CCStudio || {}; }
+  function el(t,c){ var e=document.createElement(t); if(c) e.className=c; return e; }
+
+  function timeOf(o){
+    // iso の時刻部を優先。無ければ t から。
+    if(o.iso){ var m=String(o.iso).match(/T(\d{2}:\d{2}:\d{2}(?:\.\d+)?)/); if(m) return m[1]; }
+    if(typeof o.t==='number'){ try{ return new Date(o.t).toTimeString().slice(0,8); }catch(_){ } }
+    return '';
+  }
+  // 1レコード→{cls, k(種別), m(要約)}
+  function fmt(o){
+    var src=o.src||'?', kind=o.kind||'', k=src, m='', cls='';
+    if(src==='screen'){
+      var b=!!o.busy, d=!!o.disconnected;
+      if(d){ m='接続切れ'+(o.matched?(' '+o.matched):''); cls='bad'; }
+      else if(b){ m='処理中'; cls='on'; }
+      else { m='アイドル'; cls='off'; }
+    } else if(src==='keepalive'){
+      k='keepalive'; m=(o.event||'')+(o.detail?(' '+o.detail):'');
+      cls=(o.event==='failure'||o.event==='closed')?'bad':(o.event==='open'?'on':'');
+    } else if(src==='app'){
+      k='app'; m='lifecycle: '+(o.event||'');
+    } else {
+      m=JSON.stringify(o);
+    }
+    return { k:k, m:m, cls:cls };
+  }
+
+  window.__ccRenderLog=function(){
+    var body=document.getElementById('body'); body.innerHTML='';
+    var text=''; try{ text=api().getObserverLog ? (api().getObserverLog()||'') : ''; }catch(_){ text=''; }
+    var lines=text.split('\n').filter(function(s){ return s.trim(); });
+    if(!lines.length){
+      var e=el('div','empty'); e.textContent='まだログがありません。\n処理を走らせる/接続を切って戻す/背面↔前面 で記録されます。';
+      body.appendChild(e);
+      document.getElementById('count').textContent='0';
+      return;
+    }
+    var n=0;
+    lines.forEach(function(line){
+      var o; try{ o=JSON.parse(line); }catch(_){ o=null; }
+      var row=el('div','row');
+      if(o){
+        var f=fmt(o);
+        if(f.cls) row.className='row '+f.cls;
+        var t=el('span','t'); t.textContent=timeOf(o); row.appendChild(t);
+        var k=el('span','k '+(o.src||'')); k.textContent='['+f.k+']'; row.appendChild(k);
+        var m=el('span','m'); m.textContent=f.m; row.appendChild(m);
+      } else {
+        var raw=el('span','m'); raw.textContent=line; row.appendChild(raw);
+      }
+      body.appendChild(row); n++;
+    });
+    document.getElementById('count').textContent=String(n);
+    // 新しいものが下。最下部へスクロール。
+    body.scrollTop=body.scrollHeight;
+  };
+
+  document.getElementById('back').addEventListener('click', function(){ try{ api().closeLogViewer(); }catch(_){ } });
+  document.getElementById('reload').addEventListener('click', function(){ window.__ccRenderLog(); });
+  document.getElementById('download').addEventListener('click', function(){ try{ api().downloadObserverLog(); }catch(_){ } });
+  document.addEventListener('DOMContentLoaded', window.__ccRenderLog);
+</script>
+</body>
+</html>
