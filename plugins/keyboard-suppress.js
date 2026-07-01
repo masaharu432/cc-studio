@@ -1,6 +1,6 @@
 // ==CCStudioPlugin==
 // @name        keyboard-suppress
-// @version     1.2.13
+// @version     1.2.14
 // @description ソフトキーボードの自動表示を抑制する。チャット入力欄やテキストエディタへ自動フォーカスが移ってもソフトキーボードを勝手に開かせない（枠をタップした時だけ出す）。全フレームに document-start で常駐する。
 // ==/CCStudioPlugin==
 // keyboard-suppress.js — CC Studio 組込み機能（assets同梱）
@@ -43,7 +43,7 @@
 
   // ---- 診断: focus-hud 共有ログ(window.top.__ccStudioFocusLog)へ「KB …」行を出す ----
   // focus-hud が無くても害は無い（配列に積むだけ）。原因切り分けが済んだら DIAG=false に。
-  var KB_VER = '1.2.13';
+  var KB_VER = '1.2.14';
   var DIAG = true;
   function kbTopWin() { try { return window.top || window; } catch (_) { return window; } }
   function kbFrame() {
@@ -86,6 +86,16 @@
   // 「フレーム内のどこかでタップ」では緩すぎる（新セッションの「+」等のタップが同フレームで起き、
   // 直後の自動フォーカスを誤許可してキーボードが出ていた）。
   var TAP_PAD_PX = 40; // 枠の外側この幅まではタップ許可（コンテナ/プレースホルダの余白を吸収）
+  var GESTURE_MOVE_PX = 10; // この距離を超えて指が動いたら「スクロール」＝タップ扱いしない
+  // イベントから座標を取り出す（pointer / touch 両対応）。
+  function pointOf(e) {
+    try {
+      if (e && e.touches && e.touches[0]) return { x: e.touches[0].clientX, y: e.touches[0].clientY };
+      if (e && e.changedTouches && e.changedTouches[0]) return { x: e.changedTouches[0].clientX, y: e.changedTouches[0].clientY };
+      if (e && typeof e.clientX === 'number') return { x: e.clientX, y: e.clientY };
+    } catch (_) { /* ignore */ }
+    return null;
+  }
   function tapInBox(doc, box) {
     var t = doc.__ccStudioLastTapTime;
     if (typeof t !== 'number' || Date.now() - t >= ACTIVITY_WINDOW_MS) return false;
@@ -111,19 +121,43 @@
     root.__ccStudioKbSup = true;
     kbLog('install ' + kbFrame()); // 設置/再設置を可視化（write 後に再設置されれば再度出る）
 
-    // タップの「時刻」と「座標」を記録（pointerdown/touchstart 両対応）。座標で composer 枠内判定する。
-    var mark = function (e) {
+    // タップの「時刻」と「座標」を記録。ただし指が動いたら（スクロール）タップ扱いを取り消す。
+    var markDown = function (e) {
       try {
-        var x, y;
-        if (e && e.touches && e.touches[0]) { x = e.touches[0].clientX; y = e.touches[0].clientY; }
-        else if (e && e.changedTouches && e.changedTouches[0]) { x = e.changedTouches[0].clientX; y = e.changedTouches[0].clientY; }
-        else if (e) { x = e.clientX; y = e.clientY; }
+        var p = pointOf(e);
         doc.__ccStudioLastTapTime = Date.now();
-        if (typeof x === 'number') { doc.__ccStudioLastTapX = x; doc.__ccStudioLastTapY = y; }
+        if (p) {
+          doc.__ccStudioLastTapX = p.x; doc.__ccStudioLastTapY = p.y;
+          doc.__ccStudioGX = p.x; doc.__ccStudioGY = p.y; doc.__ccStudioGActive = true;
+        }
       } catch (_) { /* ignore */ }
     };
-    doc.addEventListener('pointerdown', mark, true);
-    doc.addEventListener('touchstart', mark, true);
+    var markMove = function (e) {
+      try {
+        if (!doc.__ccStudioGActive) return;
+        var p = pointOf(e);
+        if (!p) return;
+        var dx = p.x - doc.__ccStudioGX, dy = p.y - doc.__ccStudioGY;
+        if (dx * dx + dy * dy > GESTURE_MOVE_PX * GESTURE_MOVE_PX) {
+          // スクロール等のドラッグ → タップ許可を無効化し、フォーカス済みの編集領域を blur（キーボードを閉じる）。
+          doc.__ccStudioGActive = false;
+          doc.__ccStudioLastTapTime = 0;
+          var a = doc.activeElement;
+          if (a && suppressBox(a)) {
+            kbLog('blur-scroll ' + kbFrame());
+            try { a.blur(); } catch (_) { /* ignore */ }
+          }
+        }
+      } catch (_) { /* ignore */ }
+    };
+    var markUp = function () { try { doc.__ccStudioGActive = false; } catch (_) { /* ignore */ } };
+    doc.addEventListener('pointerdown', markDown, true);
+    doc.addEventListener('touchstart', markDown, true);
+    doc.addEventListener('pointermove', markMove, true);
+    doc.addEventListener('touchmove', markMove, true);
+    doc.addEventListener('pointerup', markUp, true);
+    doc.addEventListener('touchend', markUp, true);
+    doc.addEventListener('touchcancel', markUp, true);
 
     // 編集領域(composer / テキストエディタ)の focusin。タップが「その枠内」なら通す（ユーザー起点）。
     // 枠外タップ（新セッションの「+」/ファイルを開く等）や、タップ無し（自動フォーカス）→ blur。
