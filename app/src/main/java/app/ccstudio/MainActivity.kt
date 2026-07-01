@@ -20,6 +20,7 @@ import android.webkit.CookieManager
 import android.webkit.URLUtil
 import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
+import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.FrameLayout
@@ -202,6 +203,11 @@ class MainActivity : AppCompatActivity() {
         screen.url = url
         var firstReloadDone = false
         wv.webViewClient = object : WebViewClient() {
+            override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
+                // 外部サイト（調査リンク・ホームページ等）は外部ブラウザで開き、workbench を離れない。
+                if (isExternalHttp(request.url)) { openExternalUrl(request.url); return true }
+                return false
+            }
             override fun doUpdateVisitedHistory(view: WebView, newUrl: String?, isReload: Boolean) {
                 if (newUrl != null) { screen.url = newUrl; persistScreens() }
             }
@@ -234,6 +240,30 @@ class MainActivity : AppCompatActivity() {
         registerScreenScripts(screen)
         wv.loadUrl(url)
         return screen
+    }
+
+    /** workbench（アプリが開く code-server）のホスト。これ以外の http(s) ホストは「外部」とみなす。 */
+    private val workbenchHost: String? by lazy {
+        try { Uri.parse(TARGET_URL).host } catch (_: Exception) { null }
+    }
+
+    /** workbench 以外の http(s) ホストへのナビゲーションか（＝外部ブラウザで開くべきか）。 */
+    private fun isExternalHttp(uri: Uri): Boolean {
+        val scheme = uri.scheme?.lowercase() ?: return false
+        if (scheme != "http" && scheme != "https") return false
+        val host = uri.host ?: return false
+        val wh = workbenchHost ?: return false
+        return !host.equals(wh, ignoreCase = true)
+    }
+
+    /** URL を Android の外部ブラウザ（既定ブラウザ）で開く。 */
+    private fun openExternalUrl(uri: Uri) {
+        try {
+            startActivity(Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        } catch (e: Exception) {
+            Log.w("CcStudio", "openExternalUrl failed: $uri", e)
+            runOnUiThread { toast("外部リンクを開けませんでした") }
+        }
     }
 
     private fun createSystemPluginsScreen(): Screen {
