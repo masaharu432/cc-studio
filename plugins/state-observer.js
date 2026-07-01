@@ -1,6 +1,6 @@
 // ==CCStudioPlugin==
 // @name        state-observer
-// @version     1.2.0
+// @version     1.3.0
 // @description Claude Code が処理中か / code-server の接続が切れているかを各スクリーンで検知し、スクリーン一覧の行・常駐通知・左端の ︙ ボタンに「処理中 / 接続切れ」を表示します。停止ボタンや再接続表示を監視するだけで、操作はしません。
 // @run-at        document-start
 // @all-frames    true
@@ -125,6 +125,14 @@
   // null = 未送信のセンチネル。起動後の初回集約で必ず1回ネイティブへ現在値を送り、
   // リロード前に残った stale な処理中/接続切れをクリアする。
   var lastB = null, lastD = null, offTimer = null, started = false;
+  // 永続ログ用: 生の遷移で即送信する（UI の doCommit とは別に、OFF もデバウンスしない）。
+  var loggedB = null, loggedD = null;
+  function observerLog(busy, disc, matched) {
+    try {
+      if (window.CCStudio && window.CCStudio.observerLog)
+        window.CCStudio.observerLog(JSON.stringify({ busy: !!busy, disconnected: !!disc, matched: matched || '' }));
+    } catch (_) {}
+  }
 
   function ingest(id, b, d, m) { registry[id] = { b: !!b, d: !!d, m: m || '', t: Date.now() }; }
 
@@ -164,6 +172,11 @@
   }
   function aggregate() {
     var s = computeState();
+    // ログ: 生の遷移で即記録（OFF もデバウンスしない。UI は下の doCommit 側でデバウンス）。
+    if (s.busy !== loggedB || s.disc !== loggedD) {
+      loggedB = s.busy; loggedD = s.disc;
+      observerLog(s.busy, s.disc, s.matched);
+    }
     // 変化なし: 保留中の off タイマーがあれば取り消して安定状態に戻す。
     if (s.busy === lastB && s.disc === lastD) {
       if (offTimer) { clearTimeout(offTimer); offTimer = null; }
