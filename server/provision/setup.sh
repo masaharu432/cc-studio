@@ -141,6 +141,10 @@ cat <<EOF
   WSL の場合 serve は Windows 側で実行する（mirrored networking で loopback 共有）。
 EOF
 
+# ---- 6.5) 通知機能（notify-relay 常駐 + user フック + tailscale パス公開） ----
+log "通知機能をインストール（install-notify.sh）..."
+"$HERE/install-notify.sh" || warn "install-notify.sh でエラー（あとで手動実行可: server/provision/install-notify.sh）"
+
 # ---- 7) summary ----
 log "done. settings: $US"
 if [[ ${#ext_failed[@]} -gt 0 ]]; then

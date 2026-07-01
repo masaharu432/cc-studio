@@ -1,0 +1,15 @@
+# systemd user unit テンプレ。install-notify.sh が @...@ を実値で置換して
+# ~/.config/systemd/user/notify-relay.service を生成する。直接は使わない。
+[Unit]
+Description=cc-studio notify-relay (task notification broadcaster)
+After=network.target
+
+[Service]
+Type=exec
+Environment=CC_NOTIFY_RELAY_PORT=@RELAY_PORT@
+ExecStart=@NODE_BIN@ @RELAY_JS@
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=default.target
