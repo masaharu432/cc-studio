@@ -148,7 +148,7 @@
     (document.head || document.documentElement).appendChild(st);
   }
 
-  function aggregate() {
+  function computeState() {
     var t = Date.now(), busy = false, disc = false, matched = '';
     for (var k in registry) {
       if (!registry.hasOwnProperty(k)) continue;
@@ -157,16 +157,37 @@
       if (f.b) { busy = true; if (!matched) matched = f.m; }
       if (f.d) { disc = true; matched = f.m; }
     }
-    var goingOff = (lastB && !busy) || (lastD && !disc);
-    function commit() {
-      if (busy === lastB && disc === lastD) return;
-      lastB = busy; lastD = disc;
-      paintButton(busy, disc);
-      hudLog('STATE b=' + (busy ? 1 : 0) + ' d=' + (disc ? 1 : 0) + ' ' + (matched || ''));
-      try { if (window.CCStudio && window.CCStudio.setSessionState) window.CCStudio.setSessionState(busy, disc); } catch (_) {}
+    return { busy: busy, disc: disc, matched: matched };
+  }
+  function doCommit(busy, disc, matched) {
+    if (busy === lastB && disc === lastD) return;
+    lastB = busy; lastD = disc;
+    paintButton(busy, disc);
+    hudLog('STATE b=' + (busy ? 1 : 0) + ' d=' + (disc ? 1 : 0) + ' ' + (matched || ''));
+    try { if (window.CCStudio && window.CCStudio.setSessionState) window.CCStudio.setSessionState(busy, disc); } catch (_) {}
+  }
+  function aggregate() {
+    var s = computeState();
+    // 変化なし: 保留中の off タイマーがあれば取り消して安定状態に戻す。
+    if (s.busy === lastB && s.disc === lastD) {
+      if (offTimer) { clearTimeout(offTimer); offTimer = null; }
+      return;
     }
-    if (offTimer) { clearTimeout(offTimer); offTimer = null; }
-    if (goingOff) offTimer = setTimeout(commit, OFF_DEBOUNCE_MS); else commit();
+    // on 方向（初回含む）は即時。off だけのときのみデバウンス。
+    var goingOn = (lastB !== true && s.busy) || (lastD !== true && s.disc);
+    if (goingOn) {
+      if (offTimer) { clearTimeout(offTimer); offTimer = null; }
+      doCommit(s.busy, s.disc, s.matched);
+      return;
+    }
+    // off 方向: タイマーは「一度だけ」張る（毎tick貼り直すと 400ms<800ms で永遠に発火しないバグになる）。
+    if (!offTimer) {
+      offTimer = setTimeout(function () {
+        offTimer = null;
+        var s2 = computeState();          // 発火時点の最新値で確定
+        doCommit(s2.busy, s2.disc, s2.matched);
+      }, OFF_DEBOUNCE_MS);
+    }
   }
 
   function startTop() {
