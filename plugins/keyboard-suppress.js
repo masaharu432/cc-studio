@@ -1,6 +1,6 @@
 // ==CCStudioPlugin==
 // @name        keyboard-suppress
-// @version     1.2.19
+// @version     1.2.20
 // @description ソフトキーボードの自動表示を抑制する。チャット入力欄やテキストエディタへ自動フォーカスが移ってもソフトキーボードを勝手に開かせない（枠をタップした時だけ出す）。全フレームに document-start で常駐する。
 // ==/CCStudioPlugin==
 // keyboard-suppress.js — CC Studio 組込み機能（assets同梱）
@@ -43,7 +43,7 @@
 
   // ---- 診断: focus-hud 共有ログ(window.top.__ccStudioFocusLog)へ「KB …」行を出す ----
   // focus-hud が無くても害は無い（配列に積むだけ）。原因切り分けが済んだら DIAG=false に。
-  var KB_VER = '1.2.19';
+  var KB_VER = '1.2.20';
   var DIAG = true;
   function kbTopWin() { try { return window.top || window; } catch (_) { return window; } }
   function kbFrame() {
@@ -114,19 +114,53 @@
     try { var r = box.getBoundingClientRect(); return r.width > 0 && r.height > 0; }
     catch (_) { return false; }
   }
-  // 今フォーカスされているのが「枠内タップ由来でない」編集領域なら blur。
-  // ただし engaged（＝枠内タップで正規にフォーカス済み。タイピング中）なら絶対に触らない。
-  // 診断: 編集領域がフォーカスされている時に「なぜ blur しない/する」かを毎回ログ（kbLog は連続重複を省く）。
+  // ---- キーボードを「出させない」制御。blur で殴る争奪を避け、inputmode=none で抑える ----
+  // 未許可フォーカス: inputmode="none" を付与（フォーカスされてもキーボードが出ない）＋一度 blur で今出てるのを閉じる。
+  function denyKb(el) {
+    try {
+      if (!el || !el.setAttribute) return;
+      if (el.getAttribute('inputmode') !== 'none') {
+        if (typeof el.__ccKbPrevIM === 'undefined') el.__ccKbPrevIM = el.getAttribute('inputmode');
+        el.setAttribute('inputmode', 'none');
+        el.__ccKbNone = true;
+      }
+      try { el.blur(); } catch (_) { /* ignore */ }
+    } catch (_) { /* ignore */ }
+  }
+  // 許可: 自分が付けた inputmode="none" を外す。外したら true（＝キーボード再トリガが必要）。
+  function allowKb(el) {
+    try {
+      if (el && el.__ccKbNone) {
+        if (el.__ccKbPrevIM) el.setAttribute('inputmode', el.__ccKbPrevIM);
+        else el.removeAttribute('inputmode');
+        el.__ccKbNone = false;
+        el.__ccKbPrevIM = undefined;
+        return true;
+      }
+    } catch (_) { /* ignore */ }
+    return false;
+  }
+  // 枠(box)に対応する「実際の編集要素」。composer は box 自身、monaco は中の textarea。
+  function editableIn(box) {
+    try {
+      if (box.matches && box.matches(COMPOSER_SEL)) return box;
+      var ta = box.querySelector && box.querySelector('textarea');
+      return ta || box;
+    } catch (_) { return box; }
+  }
+
+  // 今フォーカスされているのが「枠内タップ由来でない」編集領域なら、キーボードを出させない（denyKb）。
+  // engaged（タイピング中）／枠内タップ由来／不可視 は触らない。診断ログ付き（kbLog は連続重複を省く）。
   function blurIfUnauthorized(doc) {
     try {
       var a = doc.activeElement;
       var box = suppressBox(a);
-      if (!box) return; // 編集領域にフォーカスしていない＝無関係（ログも出さない）
+      if (!box) return; // 編集領域にフォーカスしていない＝無関係
       if (!isBoxVisible(box)) { kbLog('skip invisible ' + kbFrame()); return; }
       if (doc.__ccStudioEngaged) { kbLog('skip engaged ' + kbFrame()); return; } // タイピング中は触らない
       if (tapInBox(doc, box)) { kbLog('skip tap ' + kbFrame()); return; }
-      kbLog('blur2 poll ' + kbFrame());
-      a.blur();
+      kbLog('deny-poll ' + kbFrame());
+      denyKb(a);
     } catch (_) { /* ignore */ }
   }
   var POLL_MS = 300; // 継続ポーリング間隔。focusin を伴わない自動フォーカスを拾う（engaged 中は触らない）。
@@ -151,6 +185,9 @@
           doc.__ccStudioLastTapX = p.x; doc.__ccStudioLastTapY = p.y;
           doc.__ccStudioGX = p.x; doc.__ccStudioGY = p.y; doc.__ccStudioGActive = true;
         }
+        // 枠内タップなら、フォーカスが入る前にキーボード禁止を解除しておく（タップで普通に出す）。
+        var boxD = suppressBox(e.target);
+        if (boxD) allowKb(editableIn(boxD));
       } catch (_) { /* ignore */ }
     };
     var markMove = function (e) {
@@ -160,13 +197,13 @@
         if (!p) return;
         var dx = p.x - doc.__ccStudioGX, dy = p.y - doc.__ccStudioGY;
         if (dx * dx + dy * dy > GESTURE_MOVE_PX * GESTURE_MOVE_PX) {
-          // スクロール等のドラッグ → タップ許可を無効化し、フォーカス済みの編集領域を blur（キーボードを閉じる）。
+          // スクロール等のドラッグ → タップ許可を無効化し、フォーカス済みの編集領域はキーボードを閉じる。
           doc.__ccStudioGActive = false;
           doc.__ccStudioLastTapTime = 0;
           var a = doc.activeElement;
           if (a && suppressBox(a)) {
-            kbLog('blur-scroll ' + kbFrame());
-            try { a.blur(); } catch (_) { /* ignore */ }
+            kbLog('deny-scroll ' + kbFrame());
+            denyKb(a);
           }
         }
       } catch (_) { /* ignore */ }
@@ -189,11 +226,14 @@
         var box = suppressBox(t);
         if (!box) return; // 対象外は一切触らない
         if (!tapInBox(doc, box)) {
-          kbLog('blur1 ' + kbFrame());
-          try { t.blur(); } catch (_) { /* ignore */ }
+          kbLog('deny1 ' + kbFrame());
+          denyKb(t); // inputmode=none＋blur。再フォーカスされてもキーボードは出ない（争奪回避）。
         } else {
-          doc.__ccStudioEngaged = true; // 枠内タップで正規フォーカス＝以後 recheck では触らない
+          doc.__ccStudioEngaged = true; // 枠内タップで正規フォーカス＝以後 poll では触らない
+          var changed = allowKb(t);
           kbLog('allow1 ' + kbFrame());
+          // 直前まで inputmode=none だった場合、フォーカス中に外してもキーボードが出ないことがあるので再トリガ。
+          if (changed) { try { t.blur(); t.focus(); } catch (_) { /* ignore */ } }
         }
       },
       true
