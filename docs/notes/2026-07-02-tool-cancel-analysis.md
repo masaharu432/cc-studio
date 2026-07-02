@@ -258,6 +258,52 @@ observer ログと突合した確定タイムライン:
    `~/.claude/projects/*/**.jsonl` のトランスクリプトから拒否メッセージ（uQ）を走査して
    observer.jsonl と自動突合する方式を検討（正確・遅延なし・アプリ非依存）。
 
+## 最終確定（6回目）: 根本原因 = VS Code 拡張の Edit/Write 権限プロンプト（bypass 無視バグ）＋約11分の自動 deny
+
+### 証拠の連鎖（transcript キャンセル 8/8 が同一原因）
+
+1. **exthost ログ一致**: 全キャンセルの瞬間、Claude 拡張ログ
+   （`~/.local/share/code-server/logs/*/exthost*/Anthropic.claude-code/`）に
+   `PreToolUse hook timed out (per-hook abort)` がミリ秒単位で一致
+   （例: 16:03:05.519 timeout → 16:03:05.523 uQ 注入）。
+2. **ユーザ定義 PreToolUse フックは不存在**（user/project/managed/全プラグイン確認。
+   superpowers は SessionStart のみ）→ CLI が **UI への権限確認を内部的に PreToolUse フックとして
+   実装**しているものが正体。
+3. **タイムアウト長の実測**: tool_use 発行 → uQ 拒否 = 626〜668 秒。うち **3件が 668.2 秒で
+   0.1 秒まで一致**（≈11分の固定定数）。
+4. **全件 bypassPermissions 中に発生**（transcript の permissionMode 記録で確認。当初の
+   「bypass でなかった」推定は誤り）。対象ツールは**全て Write/Edit**。
+5. 既知バグと合致: [anthropics/claude-code#36219](https://github.com/anthropics/claude-code/issues/36219)
+   — VS Code 拡張では **bypassPermissions でも Edit/Write だけ権限プロンプトが出る**
+   （Bash/Read は正しく bypass。closed as not planned）。
+
+### 確定した因果
+
+```
+Write/Edit 発行（bypass でも拡張バグでプロンプト生成 #36219）
+ → プロンプトは webview UI へ（内部 PreToolUse フック）
+ → phone 背面で WebView 凍結 ＝ 誰にも見えない・答えられない
+ → ~668 秒（≈11分）で per-hook abort → 自動 deny
+ → uQ「The user doesn't want to take this action…」＝ 突発キャンセル
+```
+
+- 「背面化から12.5〜14分後」の謎: 背面化 → 数分でターンが Write に到達 → **+11分**で一致。
+- code-server は無実（両時刻ともログ沈黙・3h グレース健在）。レンダラ死・プロセス死も無し。
+- webview 破棄→stream close の経路も実在するが（AskUserQuestion の stream-closed で実測）、
+  記録済み 8 件の主因は全てタイムアウト経路。
+- 前面で使用中でも発生しうる（19:27 の1件は本セッションの Edit。発行が11分前なら前面復帰後に拒否が届く）。
+
+### 対策（bypass では防げないことが確定したため更新）
+
+1. **通知で11分以内に応答**（現実的な第一防衛線）: 既存「🔔許可待ち」＋「⚠️中断」通知
+   （Cancel 専用枠は APK 260702-1908。Stop 通知による上書き対策済み）。
+2. **背面でも webview を生かす**（無音オーディオ keepalive 移植）: プロンプトが phone に
+   表示され続ければ答えられる。優先度が上がった。
+3. **上流バグ報告/追跡**: #36219 に「≈668s で自動 deny され 'The user doesn't want...' に化ける」
+   という本調査の実測を添えて報告する価値あり（bypass の約束が破れている）。
+4. 回避案の検証: 拡張パネルではなく**ターミナルで claude を走らせる**（拡張の Edit/Write
+   プロンプト経路を通らない）が確実な回避になるか要検証。
+
 ## 次の一手（優先度順）
 
 1. **CANCEL を永続ログに載せる（最小・低リスク・推奨）**
