@@ -1,24 +1,18 @@
 package app.ccstudio
 
 import android.annotation.SuppressLint
-import android.app.DownloadManager
-import android.content.ContentValues
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.os.Environment
 import android.os.SystemClock
-import android.provider.MediaStore
 import android.provider.OpenableColumns
 import android.util.Base64
 import android.util.Log
 import android.view.KeyEvent
 import android.view.View
-import android.webkit.CookieManager
 import android.webkit.RenderProcessGoneDetail
-import android.webkit.URLUtil
 import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
@@ -31,10 +25,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
-import org.json.JSONArray
 import org.json.JSONObject
-import java.io.File
-import java.io.FileOutputStream
 
 class MainActivity : AppCompatActivity() {
 
@@ -42,6 +33,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var screens: ScreenManager
     private lateinit var store: PluginStore
     private lateinit var screenStore: ScreenStore
+    private val downloader = DownloadController(this) { toast(it) }
     private var switcher: WebView? = null
     private var notifyView: WebView? = null
     private var logView: WebView? = null
@@ -245,7 +237,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
         setDownloadListener { url, _, contentDisposition, mimeType, _ ->
-            handleDownload(url, contentDisposition, mimeType)
+            downloader.handleDownload(url, contentDisposition, mimeType)
         }
         addJavascriptInterface(buildBridge(screenId), "CCStudio")
     }
@@ -338,15 +330,15 @@ class MainActivity : AppCompatActivity() {
             store.remove(name)
             runOnUiThread { bumpGenerationAndSync(); refreshActivePanel() }
         },
-        onSave = { name, mime, b64 -> saveBase64Download(name, mime, b64) },
+        onSave = { name, mime, b64 -> downloader.saveBase64(name, mime, b64) },
         onSaveFailed = { msg ->
             runOnUiThread { toast("ダウンロードに失敗しました") }
             Log.w("CcStudio", "download failed in JS: $msg")
         },
-        onDlBegin = { name, mime -> downloadBegin(name, mime) },
-        onDlChunk = { token, b64 -> downloadChunk(token, b64) },
-        onDlEnd = { token -> downloadEnd(token) },
-        onDlAbort = { token -> downloadAbort(token) },
+        onDlBegin = { name, mime -> downloader.begin(name, mime) },
+        onDlChunk = { token, b64 -> downloader.chunk(token, b64) },
+        onDlEnd = { token -> downloader.end(token) },
+        onDlAbort = { token -> downloader.abort(token) },
         iconDataUriFn = { appIconDataUri() },
         buildLabel = BuildConfig.BUILD_LABEL,
         onOpenSwitcher = { runOnUiThread { openSwitcher() } },
@@ -687,7 +679,7 @@ class MainActivity : AppCompatActivity() {
         try {
             val text = ObserverLog.readAll(this)
             val b64 = android.util.Base64.encodeToString(text.toByteArray(Charsets.UTF_8), android.util.Base64.NO_WRAP)
-            saveBase64Download("cc-studio-observer.log", "application/json", b64)
+            downloader.saveBase64("cc-studio-observer.log", "application/json", b64)
         } catch (e: Exception) {
             runOnUiThread { toast("ログの保存に失敗しました") }
             Log.w("CcStudio", "downloadObserverLog failed", e)
@@ -787,190 +779,6 @@ class MainActivity : AppCompatActivity() {
     private fun toast(msg: String) =
         Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
 
-    /**
-     * WebView の DownloadListener フォールバック。blob:/data: は bootstrap.js のフックが横取りするので
-     * ここに来るのは主に http(s) の直リンク。
-     */
-    private fun handleDownload(url: String, contentDisposition: String?, mimeType: String?) {
-        try {
-            when {
-                url.startsWith("blob:") -> {
-                    // blob: は bootstrap.js の JS フックが横取りして進捗バー付きで保存する。
-                    // WebView は preventDefault と無関係に DownloadListener にも blob を通すため、
-                    // ここで処理すると二重保存・二重通知になる。JS フックに一任して何もしない。
-                    Log.d("CcStudio", "blob download owned by JS hook; skip native: $url")
-                }
-                url.startsWith("data:") -> {
-                    val comma = url.indexOf(',')
-                    val meta = url.substring(5, if (comma >= 0) comma else 5)
-                    val mime = meta.substringBefore(';').ifEmpty { mimeType ?: "application/octet-stream" }
-                    val data = if (comma >= 0) url.substring(comma + 1) else ""
-                    saveBase64Download("download", mime, data)
-                }
-                else -> {
-                    val request = DownloadManager.Request(Uri.parse(url)).apply {
-                        val name = URLUtil.guessFileName(url, contentDisposition, mimeType)
-                        setMimeType(mimeType)
-                        CookieManager.getInstance().getCookie(url)?.let { addRequestHeader("Cookie", it) }
-                        setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-                        setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, name)
-                    }
-                    (getSystemService(DOWNLOAD_SERVICE) as DownloadManager).enqueue(request)
-                    runOnUiThread { toast("ダウンロードを開始しました") }
-                }
-            }
-        } catch (e: Exception) {
-            Log.w("CcStudio", "handleDownload failed: $url", e)
-            runOnUiThread { toast("ダウンロードに失敗しました") }
-        }
-    }
-
-    /** base64 のダウンロードデータを端末の Downloads フォルダへ保存する。JS スレッドから呼ばれる。 */
-    private fun saveBase64Download(name: String, mime: String, base64: String) {
-        var err: String? = null
-        val ok = try {
-            val bytes = Base64.decode(base64, Base64.DEFAULT)
-            val filename = sanitizeFilename(name)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                val values = ContentValues().apply {
-                    put(MediaStore.Downloads.DISPLAY_NAME, filename)
-                    if (mime.isNotEmpty()) put(MediaStore.Downloads.MIME_TYPE, mime)
-                    put(MediaStore.Downloads.IS_PENDING, 1)
-                }
-                val resolver = contentResolver
-                val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
-                    ?: error("MediaStore insert failed")
-                resolver.openOutputStream(uri).use { out ->
-                    (out ?: error("openOutputStream null")).write(bytes)
-                }
-                values.clear()
-                values.put(MediaStore.Downloads.IS_PENDING, 0)
-                resolver.update(uri, values, null, null)
-            } else {
-                val dir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-                if (!dir.exists()) dir.mkdirs()
-                FileOutputStream(uniqueFile(dir, filename)).use { it.write(bytes) }
-            }
-            true
-        } catch (e: Exception) {
-            Log.w("CcStudio", "saveBase64Download failed: $name", e)
-            err = e.message
-            false
-        }
-        runOnUiThread {
-            if (ok) toast("保存しました: $name") else toast("保存に失敗しました")
-        }
-        if (!ok) Log.w("CcStudio", "save failed reason: $err")
-    }
-
-    // ── ダウンロード（チャンク・ストリーミング） ──────────────────────────
-    // 大きいファイルでも巨大 base64 を一括で持たず、JS から少しずつ受けて追記する。
-    // 進捗バーは JS 側（blob.size 基準）で描く。ここは保存先の生成・追記・確定のみ。
-
-    private class DownloadSink(
-        val uri: Uri?,            // MediaStore（API29+）
-        val file: File?,          // legacy（API<29）
-        val out: java.io.OutputStream,
-        val name: String
-    )
-
-    private val downloads = java.util.concurrent.ConcurrentHashMap<String, DownloadSink>()
-    private val downloadSeq = java.util.concurrent.atomic.AtomicInteger(0)
-
-    /** 保存先を開いて token を返す。失敗時は空文字。JS スレッドから呼ばれる。 */
-    private fun downloadBegin(name: String, mime: String): String {
-        return try {
-            val filename = sanitizeFilename(name)
-            val token = "dl${downloadSeq.incrementAndGet()}"
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                val values = ContentValues().apply {
-                    put(MediaStore.Downloads.DISPLAY_NAME, filename)
-                    if (mime.isNotEmpty()) put(MediaStore.Downloads.MIME_TYPE, mime)
-                    put(MediaStore.Downloads.IS_PENDING, 1)
-                }
-                val uri = contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
-                    ?: return ""
-                val out = contentResolver.openOutputStream(uri) ?: run {
-                    contentResolver.delete(uri, null, null); return ""
-                }
-                downloads[token] = DownloadSink(uri, null, out, filename)
-            } else {
-                val dir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-                if (!dir.exists()) dir.mkdirs()
-                val file = uniqueFile(dir, filename)
-                downloads[token] = DownloadSink(null, file, FileOutputStream(file), filename)
-            }
-            token
-        } catch (e: Exception) {
-            Log.w("CcStudio", "downloadBegin failed: $name", e)
-            ""
-        }
-    }
-
-    /** base64 のチャンクを追記。JS スレッドから順に呼ばれる。 */
-    private fun downloadChunk(token: String, base64: String): Boolean {
-        val sink = downloads[token] ?: return false
-        return try {
-            sink.out.write(Base64.decode(base64, Base64.DEFAULT))
-            true
-        } catch (e: Exception) {
-            Log.w("CcStudio", "downloadChunk failed", e)
-            false
-        }
-    }
-
-    /** 書き込み完了 → 保存確定。 */
-    private fun downloadEnd(token: String): Boolean {
-        val sink = downloads.remove(token) ?: return false
-        return try {
-            sink.out.flush(); sink.out.close()
-            if (sink.uri != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                contentResolver.update(
-                    sink.uri,
-                    ContentValues().apply { put(MediaStore.Downloads.IS_PENDING, 0) },
-                    null, null
-                )
-            }
-            // 完了表示は JS 側の進捗バー（オーバーレイ）に一本化。ここではトーストを出さない。
-            true
-        } catch (e: Exception) {
-            Log.w("CcStudio", "downloadEnd failed", e)
-            false
-        }
-    }
-
-    /** 途中失敗 → 書きかけを破棄。失敗表示も進捗バー側に任せる。 */
-    private fun downloadAbort(token: String) {
-        val sink = downloads.remove(token) ?: return
-        try { sink.out.close() } catch (_: Exception) {}
-        try {
-            if (sink.uri != null) contentResolver.delete(sink.uri, null, null)
-            else sink.file?.delete()
-        } catch (_: Exception) {}
-    }
-
-    private fun sanitizeFilename(name: String): String {
-        val cleaned = name.substringAfterLast('/').substringAfterLast('\\')
-            .replace(Regex("[\\\\/:*?\"<>|\\x00-\\x1F]"), "_")
-            .trim()
-        return cleaned.ifEmpty { "download_${SystemClock.elapsedRealtime()}" }
-    }
-
-    /** 同名ファイルが存在する場合に name(1).ext のような一意名を返す（API<29 用）。 */
-    private fun uniqueFile(dir: File, name: String): File {
-        var candidate = File(dir, name)
-        if (!candidate.exists()) return candidate
-        val dot = name.lastIndexOf('.')
-        val base = if (dot > 0) name.substring(0, dot) else name
-        val ext = if (dot > 0) name.substring(dot) else ""
-        var i = 1
-        while (candidate.exists()) {
-            candidate = File(dir, "$base($i)$ext")
-            i++
-        }
-        return candidate
-    }
-
     private var cachedIconDataUri: String? = null
 
     /** アプリのランチャーアイコンを data:image/png;base64,... に変換して返す（進捗バー用、結果はキャッシュ）。 */
@@ -1016,24 +824,5 @@ class MainActivity : AppCompatActivity() {
 })();
 """
 
-        /** blob: URL を fetch して base64 化し、CCStudio.saveBase64 に渡す JS。 */
-        fun fetchBlobJs(url: String, name: String): String {
-            val u = url.replace("\\", "\\\\").replace("'", "\\'")
-            val n = name.replace("\\", "\\\\").replace("'", "\\'")
-            return """
-                (function(){
-                  fetch('$u').then(function(r){return r.blob();}).then(function(b){
-                    var fr=new FileReader();
-                    fr.onload=function(){
-                      var res=fr.result; var c=res.indexOf(',');
-                      var mime=(res.substring(5,c).split(';')[0])||b.type||'application/octet-stream';
-                      window.CCStudio.saveBase64('$n', mime, res.substring(c+1));
-                    };
-                    fr.onerror=function(){ window.CCStudio.saveFailed('read error'); };
-                    fr.readAsDataURL(b);
-                  }).catch(function(e){ window.CCStudio.saveFailed(String(e)); });
-                })();
-            """.trimIndent()
-        }
     }
 }
