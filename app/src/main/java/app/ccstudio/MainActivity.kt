@@ -641,24 +641,10 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /** 設定側の一覧（switcher が描く）。項目追加はここに1エントリ足すだけで済ませる。 */
+    /** 設定側の一覧（switcher が描く）。 */
     private fun settingsListJson(): String {
         val plugins = store.list()
-        val arr = JSONArray()
-        arr.put(
-            JSONObject().put("id", "plugins").put("group", "プラグイン").put("icon", "🧩")
-                .put("label", "プラグイン管理")
-                .put("sub", "${plugins.size} 個インストール · ${plugins.count { it.enabled }} 有効")
-        )
-        arr.put(
-            JSONObject().put("id", "notify").put("group", "システム").put("icon", "🔔")
-                .put("label", "通知").put("sub", "Stop / Notification フック")
-        )
-        arr.put(
-            JSONObject().put("id", "log").put("group", "システム").put("icon", "📋")
-                .put("label", "ログ").put("sub", "オブザーバーログを表示")
-        )
-        return arr.toString()
+        return PanelJson.settingsList(plugins.size, plugins.count { it.enabled })
     }
 
     /** 設定エントリのタップ。遷移の実体はここで解決する（switcher は id を渡すだけ）。 */
@@ -751,39 +737,14 @@ class MainActivity : AppCompatActivity() {
     // ── プラグイン設定 ──────────────────────────────────────────────────
 
     /** 全プラグインの有効設定値を JSON 化（設定ランタイム注入用）。 */
-    private fun effectiveSettingsJson(): String {
-        val root = JSONObject()
-        store.effectiveSettings().forEach { (plugin, kv) ->
-            val o = JSONObject()
-            kv.forEach { (k, v) -> o.put(k, v) }
-            root.put(plugin, o)
-        }
-        return root.toString()
-    }
+    private fun effectiveSettingsJson(): String =
+        PanelJson.effectiveSettings(store.effectiveSettings())
 
     /** 設定スクリーン描画用 JSON（現在の settingsTarget のスキーマ＋現在値）。 */
     private fun settingsViewJson(): String {
-        val target = settingsTarget ?: return "{}"
         // settingsTarget はファイル名（bridge ID）。設定 namespace は displayName(@name) で揃える。
-        val info = store.list().firstOrNull { it.name == target } ?: return "{}"
-        val ns = info.displayName
-        val arr = JSONArray()
-        info.settings.forEach { d ->
-            val value = PluginSettings.coerce(d.type, store.settingValue(ns, d.key) ?: d.default)
-            arr.put(
-                JSONObject()
-                    .put("key", d.key)
-                    .put("type", d.type)
-                    .put("default", PluginSettings.coerce(d.type, d.default))
-                    .put("label", d.label)
-                    .put("value", value)
-            )
-        }
-        return JSONObject()
-            .put("name", ns) // setSetting / ライブ push の namespace に使う（=@name）
-            .put("displayName", info.displayName)
-            .put("settings", arr)
-            .toString()
+        val info = settingsTarget?.let { t -> store.list().firstOrNull { it.name == t } }
+        return PanelJson.settingsView(info) { ns, key -> store.settingValue(ns, key) }
     }
 
     /** 設定変更を全 WEB スクリーンへリロード無しで配信する（generation は上げない）。 */
@@ -841,30 +802,8 @@ class MainActivity : AppCompatActivity() {
         view.evaluateJavascript(js, null)
     }
 
-    /**
-     * インストール済みプラグインを JSON 化する。
-     * name=ファイル名(=bridge のID), displayName=@name(表示用), 他に version/description/
-     * hasSettings/bundled/runAt/allFrames。UI はタイトルに displayName、操作キーに name を使う。
-     */
-    private fun pluginsJson(): String {
-        val arr = JSONArray()
-        store.list().forEach {
-            arr.put(
-                JSONObject()
-                    .put("name", it.name)
-                    .put("displayName", it.displayName)
-                    .put("size", it.size)
-                    .put("enabled", it.enabled)
-                    .put("version", it.version ?: "")
-                    .put("description", it.description ?: "")
-                    .put("hasSettings", it.hasSettings)
-                    .put("bundled", it.bundled)
-                    .put("runAt", it.runAt)
-                    .put("allFrames", it.allFrames)
-            )
-        }
-        return arr.toString()
-    }
+    /** インストール済みプラグインの一覧 JSON。 */
+    private fun pluginsJson(): String = PanelJson.plugins(store.list())
 
     /** content:// の表示名（ファイル名）を取得する。取れなければ null。 */
     private fun queryDisplayName(uri: Uri): String? = try {
