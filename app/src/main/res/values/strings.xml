@@ -8,4 +8,6 @@
     <string name="task_done_title">✅ 応答が完了しました</string>
     <string name="task_permission_title">🔔 許可待ち</string>
     <string name="task_cancel_title">⚠️ ツールが中断されました</string>
+    <string name="lang_dialog_title">Display language</string>
+    <string name="lang_follow_device">Follow device</string>
 </resources>

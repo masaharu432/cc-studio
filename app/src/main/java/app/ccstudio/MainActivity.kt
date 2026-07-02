@@ -341,6 +341,7 @@ class MainActivity : AppCompatActivity() {
         onOpenSettingsEntry = { id -> runOnUiThread { openSettingsEntry(id) } },
         onSwitcherTabChanged = { tab -> runOnUiThread { onSwitcherTabChanged(tab) } },
         onNavBack = { runOnUiThread { popBack() } },
+        uiLangFn = { if (AppLang.isJa(this)) "ja" else "en" },
     )
 
     /**
@@ -528,7 +529,33 @@ class MainActivity : AppCompatActivity() {
             }
             "notify" -> { closeSwitcher(); nav.push(Nav.Notify); openNotify() }
             "log" -> { closeSwitcher(); nav.push(Nav.Log); openLog() }
+            "lang" -> openLanguageDialog()   // ダイアログ表示のみ。switcher は裏に残す
         }
+    }
+
+    /**
+     * 表示言語の選択ダイアログ。選択は AppCompatDelegate の per-app language に永続化される。
+     * この Activity は configChanges=locale で自動再生成されないため、変更時は明示的に
+     * recreate() して新しい言語で作り直す（全スクリーンがリロードされる点は言語変更の明示操作
+     * なので許容。実行中ターンがある場合は中断されうる）。
+     */
+    private fun openLanguageDialog() {
+        val current = AppLang.current()
+        val choices = arrayOf("system", "ja", "en")
+        val labels = arrayOf(getString(R.string.lang_follow_device), "日本語", "English")
+        val checked = choices.indexOf(current).let { if (it < 0) 0 else it }
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle(getString(R.string.lang_dialog_title))
+            .setSingleChoiceItems(labels, checked) { dialog, which ->
+                dialog.dismiss()
+                val choice = choices[which]
+                if (choice != current) {
+                    AppLang.set(choice)
+                    recreate()
+                }
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
     }
 
     /** 通知設定の全画面（notify.html）をオーバーレイ表示する（switcher と同型）。 */

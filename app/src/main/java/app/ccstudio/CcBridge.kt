@@ -47,7 +47,12 @@ class CcBridge(
     private val onOpenSettingsEntry: (id: String) -> Unit,
     private val onSwitcherTabChanged: (tab: String) -> Unit,
     private val onNavBack: () -> Unit,
+    private val uiLangFn: () -> String,
 ) {
+    /** 表示言語（"ja" / "en"）。管理系 HTML と bootstrap.js が文言辞書の切替に使う。 */
+    @JavascriptInterface
+    fun getUiLang(): String = uiLangFn()
+
     /** ︙メニューに出すビルド番号（ビルド時刻）。 */
     @JavascriptInterface
     fun getBuild(): String = buildLabel
