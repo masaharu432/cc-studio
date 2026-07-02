@@ -243,7 +243,8 @@ class KeepAliveService : Service() {
             .setContentTitle(getString(R.string.keepalive_notification_title))
             .setContentText(
                 KeepAliveText.statusLine(
-                    NotifyState.screenCount, NotifyState.busyCount, NotifyState.disconnectedCount
+                    NotifyState.screenCount, NotifyState.busyCount, NotifyState.disconnectedCount,
+                    AppLang.isJa(this)
                 )
             )
             .setSmallIcon(R.drawable.ic_keepalive)

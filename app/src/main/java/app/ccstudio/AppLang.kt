@@ -10,9 +10,17 @@ import androidx.core.os.LocaleListCompat
  * Android 13+ は OS のアプリ別言語設定にも露出する）。
  */
 object AppLang {
-    /** 現在の解決済みロケールが日本語か。Activity 再生成後の resources に反映されている値を見る。 */
-    fun isJa(context: Context): Boolean =
-        context.resources.configuration.locales[0].language == "ja"
+    /**
+     * 現在の表示言語が日本語か。
+     * アプリ内で明示選択があればそれを優先する（Service など AppCompat が resources を
+     * 上書きしないコンテキスト（API<33）でも正しく判定できるように）。未選択なら
+     * コンテキストの解決済みロケール（=端末追従）を見る。
+     */
+    fun isJa(context: Context): Boolean {
+        val app = AppCompatDelegate.getApplicationLocales()
+        if (!app.isEmpty) return app[0]?.language == "ja"
+        return context.resources.configuration.locales[0].language == "ja"
+    }
 
     /** choice: "system" | "ja" | "en" */
     fun set(choice: String) {

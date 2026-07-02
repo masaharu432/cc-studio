@@ -3,11 +3,20 @@
     <string name="app_name">CC Studio</string>
     <string name="keepalive_channel_name">CC Studio connection</string>
     <string name="keepalive_notification_title">CC Studio</string>
-    <string name="keepalive_screen_count">スクリーン %1$d 起動中</string>
-    <string name="task_channel_name">タスク通知</string>
-    <string name="task_done_title">✅ 応答が完了しました</string>
-    <string name="task_permission_title">🔔 許可待ち</string>
-    <string name="task_cancel_title">⚠️ ツールが中断されました</string>
+    <string name="task_channel_name">Task alerts</string>
+    <string name="task_done_title">✅ Response finished</string>
+    <string name="task_permission_title">🔔 Waiting for permission</string>
+    <string name="task_cancel_title">⚠️ Tool interrupted</string>
+    <string name="toast_plugin_added">Plugin added: %1$s</string>
+    <string name="toast_plugin_load_failed">Failed to load the JS file</string>
+    <string name="toast_file_chooser_failed">Could not open the file picker</string>
+    <string name="toast_external_link_failed">Could not open the external link</string>
+    <string name="toast_download_started">Download started</string>
+    <string name="toast_download_failed">Download failed</string>
+    <string name="toast_saved">Saved: %1$s</string>
+    <string name="toast_save_failed">Failed to save</string>
+    <string name="toast_log_save_failed">Failed to save the log</string>
+    <string name="toast_mdpv">MDPV: sending preview toggle key</string>
     <string name="lang_dialog_title">Display language</string>
     <string name="lang_follow_device">Follow device</string>
 </resources>

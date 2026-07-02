@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="keepalive_channel_name">CC Studio 接続維持</string>
+    <string name="task_channel_name">タスク通知</string>
+    <string name="task_done_title">✅ 応答が完了しました</string>
+    <string name="task_permission_title">🔔 許可待ち</string>
+    <string name="task_cancel_title">⚠️ ツールが中断されました</string>
+    <string name="toast_plugin_added">プラグインを追加しました: %1$s</string>
+    <string name="toast_plugin_load_failed">JSの読み込みに失敗しました</string>
+    <string name="toast_file_chooser_failed">ファイル選択を開けませんでした</string>
+    <string name="toast_external_link_failed">外部リンクを開けませんでした</string>
+    <string name="toast_download_started">ダウンロードを開始しました</string>
+    <string name="toast_download_failed">ダウンロードに失敗しました</string>
+    <string name="toast_saved">保存しました: %1$s</string>
+    <string name="toast_save_failed">保存に失敗しました</string>
+    <string name="toast_log_save_failed">ログの保存に失敗しました</string>
+    <string name="toast_mdpv">MDPV: プレビュー化キー送出</string>
+    <string name="lang_dialog_title">表示言語</string>
+    <string name="lang_follow_device">端末に合わせる</string>
+</resources>

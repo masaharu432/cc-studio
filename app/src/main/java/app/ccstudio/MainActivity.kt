@@ -64,7 +64,8 @@ class MainActivity : AppCompatActivity() {
         val saved = store.installFromUri(uri, queryDisplayName(uri))
         Toast.makeText(
             this,
-            if (saved != null) "プラグインを追加しました: $saved" else "JSの読み込みに失敗しました",
+            if (saved != null) getString(R.string.toast_plugin_added, saved)
+            else getString(R.string.toast_plugin_load_failed),
             Toast.LENGTH_SHORT
         ).show()
         if (saved != null) { bumpGenerationAndSync(); refreshActivePanel() }
@@ -244,7 +245,7 @@ class MainActivity : AppCompatActivity() {
         } catch (e: Exception) {
             Log.w("CcStudio", "onShowFileChooser failed", e)
             fileChooserCallback = null
-            toast("ファイル選択を開けませんでした"); false
+            toast(getString(R.string.toast_file_chooser_failed)); false
         }
     }
 
@@ -266,7 +267,7 @@ class MainActivity : AppCompatActivity() {
             startActivity(Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         } catch (e: Exception) {
             Log.w("CcStudio", "openExternalUrl failed: $uri", e)
-            runOnUiThread { toast("外部リンクを開けませんでした") }
+            runOnUiThread { toast(getString(R.string.toast_external_link_failed)) }
         }
     }
 
@@ -285,7 +286,7 @@ class MainActivity : AppCompatActivity() {
         },
         onSave = { name, mime, b64 -> downloader.saveBase64(name, mime, b64) },
         onSaveFailed = { msg ->
-            runOnUiThread { toast("ダウンロードに失敗しました") }
+            runOnUiThread { toast(getString(R.string.toast_download_failed)) }
             Log.w("CcStudio", "download failed in JS: $msg")
         },
         onDlBegin = { name, mime -> downloader.begin(name, mime) },
@@ -351,7 +352,7 @@ class MainActivity : AppCompatActivity() {
      */
     private fun dispatchMarkdownPreviewKey() {
         val wv = screens.activeOrNull()?.webView ?: return
-        toast("MDPV: プレビュー化キー送出")
+        toast(getString(R.string.toast_mdpv))
         wv.requestFocus()
         // focus が落ち着いてから送る。
         wv.postDelayed({
@@ -582,7 +583,7 @@ class MainActivity : AppCompatActivity() {
             val b64 = android.util.Base64.encodeToString(text.toByteArray(Charsets.UTF_8), android.util.Base64.NO_WRAP)
             downloader.saveBase64("cc-studio-observer.log", "application/json", b64)
         } catch (e: Exception) {
-            runOnUiThread { toast("ログの保存に失敗しました") }
+            runOnUiThread { toast(getString(R.string.toast_log_save_failed)) }
             Log.w("CcStudio", "downloadObserverLog failed", e)
         }
     }

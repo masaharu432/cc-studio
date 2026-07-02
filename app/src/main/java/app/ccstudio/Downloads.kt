@@ -81,12 +81,12 @@ class DownloadController(
                         setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, name)
                     }
                     (activity.getSystemService(Activity.DOWNLOAD_SERVICE) as DownloadManager).enqueue(request)
-                    activity.runOnUiThread { onToast("ダウンロードを開始しました") }
+                    activity.runOnUiThread { onToast(activity.getString(R.string.toast_download_started)) }
                 }
             }
         } catch (e: Exception) {
             Log.w("CcStudio", "handleDownload failed: $url", e)
-            activity.runOnUiThread { onToast("ダウンロードに失敗しました") }
+            activity.runOnUiThread { onToast(activity.getString(R.string.toast_download_failed)) }
         }
     }
 
@@ -123,7 +123,8 @@ class DownloadController(
             false
         }
         activity.runOnUiThread {
-            if (ok) onToast("保存しました: $name") else onToast("保存に失敗しました")
+            if (ok) onToast(activity.getString(R.string.toast_saved, name))
+            else onToast(activity.getString(R.string.toast_save_failed))
         }
         if (!ok) Log.w("CcStudio", "save failed reason: $err")
     }
