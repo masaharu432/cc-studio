@@ -3,16 +3,20 @@ package app.ccstudio
 import org.json.JSONArray
 import org.json.JSONObject
 
-/** ネイティブ→WebView パネルへ渡す JSON の純粋ビルダー群（MainActivity から抽出）。 */
+/**
+ * ネイティブ→WebView パネルへ渡す JSON の純粋ビルダー群（MainActivity から抽出）。
+ * ja=true なら日本語（無ければ英語へフォールバック）、false なら英語で文言を解決する。
+ */
 object PanelJson {
     /**
      * インストール済みプラグイン一覧の JSON。
      * name=ファイル名(=bridge のID), displayName=@name(表示用)。UI はタイトルに displayName、
-     * 操作キーに name を使う。
+     * 操作キーに name を使う。description は言語解決済みの 1 本を渡す（HTML 側は選ばない）。
      */
-    fun plugins(list: List<PluginInfo>): String {
+    fun plugins(list: List<PluginInfo>, ja: Boolean): String {
         val arr = JSONArray()
         list.forEach {
+            val desc = if (ja) it.descriptionJa ?: it.description else it.description
             arr.put(
                 JSONObject()
                     .put("name", it.name)
@@ -20,7 +24,7 @@ object PanelJson {
                     .put("size", it.size)
                     .put("enabled", it.enabled)
                     .put("version", it.version ?: "")
-                    .put("description", it.description ?: "")
+                    .put("description", desc ?: "")
                     .put("hasSettings", it.hasSettings)
                     .put("bundled", it.bundled)
                     .put("runAt", it.runAt)
@@ -31,20 +35,27 @@ object PanelJson {
     }
 
     /** 設定側の一覧（switcher が描く）。項目追加はここに1エントリ足すだけで済ませる。 */
-    fun settingsList(total: Int, enabled: Int): String {
+    fun settingsList(total: Int, enabled: Int, ja: Boolean): String {
+        fun t(en: String, jp: String) = if (ja) jp else en
         val arr = JSONArray()
         arr.put(
-            JSONObject().put("id", "plugins").put("group", "プラグイン").put("icon", "🧩")
-                .put("label", "プラグイン管理")
-                .put("sub", "$total 個インストール · $enabled 有効")
+            JSONObject().put("id", "plugins").put("group", t("Plugins", "プラグイン")).put("icon", "🧩")
+                .put("label", t("Plugin manager", "プラグイン管理"))
+                .put("sub", t("$total installed · $enabled enabled", "$total 個インストール · $enabled 有効"))
         )
         arr.put(
-            JSONObject().put("id", "notify").put("group", "システム").put("icon", "🔔")
-                .put("label", "通知").put("sub", "Stop / Notification フック")
+            JSONObject().put("id", "notify").put("group", t("System", "システム")).put("icon", "🔔")
+                .put("label", t("Notifications", "通知"))
+                .put("sub", t("Stop / Notification hooks", "Stop / Notification フック"))
         )
         arr.put(
-            JSONObject().put("id", "log").put("group", "システム").put("icon", "📋")
-                .put("label", "ログ").put("sub", "オブザーバーログを表示")
+            JSONObject().put("id", "log").put("group", t("System", "システム")).put("icon", "📋")
+                .put("label", t("Log", "ログ")).put("sub", t("Show observer log", "オブザーバーログを表示"))
+        )
+        arr.put(
+            JSONObject().put("id", "lang").put("group", t("System", "システム")).put("icon", "🌐")
+                .put("label", t("Language", "言語"))
+                .put("sub", t("Follow device / 日本語 / English", "端末に合わせる / 日本語 / English"))
         )
         return arr.toString()
     }
@@ -53,7 +64,7 @@ object PanelJson {
      * 設定スクリーン描画用 JSON（対象プラグインのスキーマ＋現在値）。
      * 設定 namespace は displayName(@name) で揃える。valueOf は保存値（無ければ null）を返す。
      */
-    fun settingsView(info: PluginInfo?, valueOf: (ns: String, key: String) -> String?): String {
+    fun settingsView(info: PluginInfo?, ja: Boolean, valueOf: (ns: String, key: String) -> String?): String {
         if (info == null) return "{}"
         val ns = info.displayName
         val arr = JSONArray()
@@ -64,7 +75,7 @@ object PanelJson {
                     .put("key", d.key)
                     .put("type", d.type)
                     .put("default", PluginSettings.coerce(d.type, d.default))
-                    .put("label", d.label)
+                    .put("label", if (ja) d.labelJa ?: d.label else d.label)
                     .put("value", value)
             )
         }

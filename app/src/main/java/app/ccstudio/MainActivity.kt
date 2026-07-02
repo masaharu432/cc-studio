@@ -512,7 +512,7 @@ class MainActivity : AppCompatActivity() {
     /** 設定側の一覧（switcher が描く）。 */
     private fun settingsListJson(): String {
         val plugins = store.list()
-        return PanelJson.settingsList(plugins.size, plugins.count { it.enabled })
+        return PanelJson.settingsList(plugins.size, plugins.count { it.enabled }, AppLang.isJa(this))
     }
 
     /** 設定エントリのタップ。遷移の実体はここで解決する（switcher は id を渡すだけ）。 */
@@ -580,7 +580,7 @@ class MainActivity : AppCompatActivity() {
     private fun settingsViewJson(): String {
         // settingsTarget はファイル名（bridge ID）。設定 namespace は displayName(@name) で揃える。
         val info = settingsTarget?.let { t -> store.list().firstOrNull { it.name == t } }
-        return PanelJson.settingsView(info) { ns, key -> store.settingValue(ns, key) }
+        return PanelJson.settingsView(info, AppLang.isJa(this)) { ns, key -> store.settingValue(ns, key) }
     }
 
     /** 設定変更を全 WEB スクリーンへリロード無しで配信する（generation は上げない）。 */
@@ -623,7 +623,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     /** インストール済みプラグインの一覧 JSON。 */
-    private fun pluginsJson(): String = PanelJson.plugins(store.list())
+    private fun pluginsJson(): String = PanelJson.plugins(store.list(), AppLang.isJa(this))
 
     /** content:// の表示名（ファイル名）を取得する。取れなければ null。 */
     private fun queryDisplayName(uri: Uri): String? = try {

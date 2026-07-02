@@ -19,7 +19,7 @@ class PanelJsonTest {
 
     @Test
     fun `plugins は全フィールドを持つ配列`() {
-        val arr = JSONArray(PanelJson.plugins(listOf(info())))
+        val arr = JSONArray(PanelJson.plugins(listOf(info()), ja = false))
         val o = arr.getJSONObject(0)
         assertEquals("a.js", o.getString("name"))
         assertEquals("a", o.getString("displayName"))
@@ -33,25 +33,44 @@ class PanelJsonTest {
     @Test
     fun `plugins は null の version と description を空文字にする`() {
         val p = info().copy(version = null, description = null)
-        val o = JSONArray(PanelJson.plugins(listOf(p))).getJSONObject(0)
+        val o = JSONArray(PanelJson.plugins(listOf(p), ja = false)).getJSONObject(0)
         assertEquals("", o.getString("version"))
         assertEquals("", o.getString("description"))
     }
 
     @Test
+    fun `plugins は ja=true で日本語説明を優先しフォールバックする`() {
+        val p = info().copy(description = "EN", descriptionJa = "JA")
+        assertEquals("JA", JSONArray(PanelJson.plugins(listOf(p), ja = true)).getJSONObject(0).getString("description"))
+        assertEquals("EN", JSONArray(PanelJson.plugins(listOf(p), ja = false)).getJSONObject(0).getString("description"))
+        val p2 = info().copy(description = "EN", descriptionJa = null)
+        assertEquals("EN", JSONArray(PanelJson.plugins(listOf(p2), ja = true)).getJSONObject(0).getString("description"))
+    }
+
+    @Test
     fun `settingsList はプラグイン数を sub に埋める`() {
-        val arr = JSONArray(PanelJson.settingsList(3, 2))
+        val arr = JSONArray(PanelJson.settingsList(3, 2, ja = true))
         assertEquals("plugins", arr.getJSONObject(0).getString("id"))
         assertEquals("3 個インストール · 2 有効", arr.getJSONObject(0).getString("sub"))
         assertEquals("notify", arr.getJSONObject(1).getString("id"))
         assertEquals("log", arr.getJSONObject(2).getString("id"))
+        assertEquals("lang", arr.getJSONObject(3).getString("id"))
+    }
+
+    @Test
+    fun `settingsList は言語で文言が切り替わる`() {
+        val en = JSONArray(PanelJson.settingsList(3, 2, ja = false)).getJSONObject(0)
+        assertEquals("Plugin manager", en.getString("label"))
+        assertEquals("3 installed · 2 enabled", en.getString("sub"))
+        val jp = JSONArray(PanelJson.settingsList(3, 2, ja = true)).getJSONObject(0)
+        assertEquals("プラグイン管理", jp.getString("label"))
     }
 
     @Test
     fun `settingsView は保存値をスキーマに重ねる`() {
         val def = SettingDef("visible", "boolean", "true", "HUD を表示")
         val o = JSONObject(
-            PanelJson.settingsView(info("hud.js", settings = listOf(def))) { ns, key ->
+            PanelJson.settingsView(info("hud.js", settings = listOf(def)), ja = false) { ns, key ->
                 if (ns == "hud" && key == "visible") "false" else null
             },
         )
@@ -63,15 +82,27 @@ class PanelJsonTest {
     }
 
     @Test
+    fun `settingsView は ja=true で labelJa を優先しフォールバックする`() {
+        val def = SettingDef("visible", "boolean", "true", "Show the HUD", "HUD を表示")
+        val ja = JSONObject(PanelJson.settingsView(info("hud.js", settings = listOf(def)), ja = true) { _, _ -> null })
+        assertEquals("HUD を表示", ja.getJSONArray("settings").getJSONObject(0).getString("label"))
+        val en = JSONObject(PanelJson.settingsView(info("hud.js", settings = listOf(def)), ja = false) { _, _ -> null })
+        assertEquals("Show the HUD", en.getJSONArray("settings").getJSONObject(0).getString("label"))
+        val noJa = SettingDef("visible", "boolean", "true", "Show the HUD")
+        val fb = JSONObject(PanelJson.settingsView(info("hud.js", settings = listOf(noJa)), ja = true) { _, _ -> null })
+        assertEquals("Show the HUD", fb.getJSONArray("settings").getJSONObject(0).getString("label"))
+    }
+
+    @Test
     fun `settingsView は保存値が無ければ default を使う`() {
         val def = SettingDef("visible", "boolean", "true", "HUD を表示")
-        val o = JSONObject(PanelJson.settingsView(info("hud.js", settings = listOf(def))) { _, _ -> null })
+        val o = JSONObject(PanelJson.settingsView(info("hud.js", settings = listOf(def)), ja = false) { _, _ -> null })
         assertEquals(true, o.getJSONArray("settings").getJSONObject(0).getBoolean("value"))
     }
 
     @Test
     fun `settingsView は対象なしなら空オブジェクト`() {
-        assertEquals("{}", PanelJson.settingsView(null) { _, _ -> null })
+        assertEquals("{}", PanelJson.settingsView(null, ja = false) { _, _ -> null })
     }
 
     @Test
