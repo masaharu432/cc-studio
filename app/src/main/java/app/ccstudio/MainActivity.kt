@@ -34,11 +34,23 @@ class MainActivity : AppCompatActivity() {
     private lateinit var store: PluginStore
     private lateinit var screenStore: ScreenStore
     private val downloader = DownloadController(this) { toast(it) }
-    private var switcher: WebView? = null
-    private var notifyView: WebView? = null
-    private var logView: WebView? = null
-    private var settingsView: WebView? = null
     private var settingsTarget: String? = null
+
+    // ── 全画面オーバーレイ（遅延生成・使い回し）。表示順序・再描画 JS は従来と同一。 ──
+    private fun overlayWebView(): WebView =
+        newConfiguredWebView().also { it.webViewClient = CcWebViewClient() }
+    private val switcherPanel by lazy {
+        OverlayPanel(root, "switcher.html", "", ::overlayWebView)
+    }
+    private val notifyPanel by lazy {
+        OverlayPanel(root, "notify.html", "window.__ccRenderNotify && window.__ccRenderNotify();", ::overlayWebView)
+    }
+    private val logPanel by lazy {
+        OverlayPanel(root, "log.html", "window.__ccRenderLog && window.__ccRenderLog();", ::overlayWebView)
+    }
+    private val settingsPanel by lazy {
+        OverlayPanel(root, "plugin-settings.html", "window.__ccRenderSettings && window.__ccRenderSettings();", ::overlayWebView)
+    }
 
     /** OS バック用ナビスタック（純粋モデル）。表示副作用は popBack が PopAction を見て実行する。 */
     private val nav = NavModel()
@@ -536,20 +548,7 @@ class MainActivity : AppCompatActivity() {
 
     /** switcher の WebView を（必要なら作って）表示し、指定タブに合わせる。スタックは触らない。 */
     private fun showSwitcherView(tab: String) {
-        val sw = switcher ?: newConfiguredWebView().also {
-            it.webViewClient = CcWebViewClient()
-            it.loadUrl("file:///android_asset/switcher.html")
-            root.addView(
-                it,
-                FrameLayout.LayoutParams(
-                    FrameLayout.LayoutParams.MATCH_PARENT,
-                    FrameLayout.LayoutParams.MATCH_PARENT,
-                ),
-            )
-            switcher = it
-        }
-        sw.visibility = View.VISIBLE
-        sw.bringToFront()
+        switcherPanel.show()
         setSwitcherTabJs(tab)
         refreshSwitcher()
     }
@@ -560,10 +559,10 @@ class MainActivity : AppCompatActivity() {
         showSwitcherView(tab)
     }
 
-    private fun closeSwitcher() { switcher?.visibility = View.GONE }
+    private fun closeSwitcher() { switcherPanel.hide() }
 
     private fun setSwitcherTabJs(tab: String) {
-        switcher?.evaluateJavascript("window.__ccSetTab && window.__ccSetTab('$tab');", null)
+        switcherPanel.evaluate("window.__ccSetTab && window.__ccSetTab('$tab');")
     }
 
     /** switcher 内のタブ操作の報告（JS 発）。バック時の遷移判断に使う。 */
@@ -588,8 +587,8 @@ class MainActivity : AppCompatActivity() {
             }
             PopAction.Fallback -> {
                 // 防御: スタックと表示がズレていたら、見えているオーバーレイを畳むだけにする。
-                val visible = listOf(notifyView, logView, settingsView, switcher)
-                    .any { it != null && it.visibility == View.VISIBLE }
+                val visible = listOf(notifyPanel, logPanel, settingsPanel, switcherPanel)
+                    .any { it.isVisible() }
                 if (visible) {
                     closeNotify(); closeLog(); closePluginSettings(); closeSwitcher()
                     return
@@ -626,46 +625,14 @@ class MainActivity : AppCompatActivity() {
     }
 
     /** 通知設定の全画面（notify.html）をオーバーレイ表示する（switcher と同型）。 */
-    private fun openNotify() {
-        val nv = notifyView ?: newConfiguredWebView().also {
-            it.webViewClient = CcWebViewClient()
-            it.loadUrl("file:///android_asset/notify.html")
-            root.addView(
-                it,
-                FrameLayout.LayoutParams(
-                    FrameLayout.LayoutParams.MATCH_PARENT,
-                    FrameLayout.LayoutParams.MATCH_PARENT,
-                ),
-            )
-            notifyView = it
-        }
-        nv.visibility = View.VISIBLE
-        nv.bringToFront()
-        nv.evaluateJavascript("window.__ccRenderNotify && window.__ccRenderNotify();", null)
-    }
+    private fun openNotify() { notifyPanel.show() }
 
-    private fun closeNotify() { notifyView?.visibility = View.GONE }
+    private fun closeNotify() { notifyPanel.hide() }
 
     // ── ログビューア（log.html オーバーレイ・notify と同型） ──
-    private fun openLog() {
-        val lv = logView ?: newConfiguredWebView().also {
-            it.webViewClient = CcWebViewClient()
-            it.loadUrl("file:///android_asset/log.html")
-            root.addView(
-                it,
-                FrameLayout.LayoutParams(
-                    FrameLayout.LayoutParams.MATCH_PARENT,
-                    FrameLayout.LayoutParams.MATCH_PARENT,
-                ),
-            )
-            logView = it
-        }
-        lv.visibility = View.VISIBLE
-        lv.bringToFront()
-        lv.evaluateJavascript("window.__ccRenderLog && window.__ccRenderLog();", null)
-    }
+    private fun openLog() { logPanel.show() }
 
-    private fun closeLog() { logView?.visibility = View.GONE }
+    private fun closeLog() { logPanel.hide() }
 
     /** 表示用ログ本文（末尾を上限で切る。ダウンロードは全文）。 */
     private fun observerLogForDisplay(): String {
@@ -687,7 +654,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun refreshSwitcher() {
-        switcher?.evaluateJavascript("window.__ccRenderScreens && window.__ccRenderScreens();", null)
+        switcherPanel.evaluate("window.__ccRenderScreens && window.__ccRenderScreens();")
     }
 
     /** Plugins システムスクリーンの一覧を再描画させる（開いていれば反映）。 */
@@ -717,25 +684,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     /** プラグイン設定の全画面（plugin-settings.html）をオーバーレイ表示する（notify と同型）。 */
-    private fun openPluginSettings() {
-        val sv = settingsView ?: newConfiguredWebView().also {
-            it.webViewClient = CcWebViewClient()
-            it.loadUrl("file:///android_asset/plugin-settings.html")
-            root.addView(
-                it,
-                FrameLayout.LayoutParams(
-                    FrameLayout.LayoutParams.MATCH_PARENT,
-                    FrameLayout.LayoutParams.MATCH_PARENT,
-                ),
-            )
-            settingsView = it
-        }
-        sv.visibility = View.VISIBLE
-        sv.bringToFront()
-        sv.evaluateJavascript("window.__ccRenderSettings && window.__ccRenderSettings();", null)
-    }
+    private fun openPluginSettings() { settingsPanel.show() }
 
-    private fun closePluginSettings() { settingsView?.visibility = View.GONE }
+    private fun closePluginSettings() { settingsPanel.hide() }
 
     // ── 補助 ────────────────────────────────────────────────────────────
 
