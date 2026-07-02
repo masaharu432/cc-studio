@@ -24,8 +24,10 @@
     border:1px solid var(--line);padding:6px 8px;border-radius:7px;white-space:nowrap}
   .summary{padding:11px 18px 2px;font:500 11px/1 var(--mono);color:var(--dim);flex:0 0 auto}
   .summary b{color:var(--ink);font-weight:700}
-  .subnote{padding:6px 18px 8px;font:500 10px/1.5 var(--mono);color:#5d6675;flex:0 0 auto}
-  .sw-body{flex:1;overflow:auto;padding:4px 16px 14px;display:flex;flex-direction:column;gap:9px}
+  .pages{flex:1;min-height:0;position:relative}
+  .page{position:absolute;inset:0;overflow:auto;padding:4px 16px 14px;display:flex;flex-direction:column;gap:9px;
+    opacity:0;pointer-events:none;transition:opacity .15s ease}
+  .page.on{opacity:1;pointer-events:auto}
   .band-row{position:relative;overflow:hidden;border-radius:12px;flex:0 0 auto}
   .band{position:relative;display:flex;align-items:center;gap:12px;border:1px solid var(--line);border-radius:12px;
     padding:12px 10px 12px 14px;background:var(--module);cursor:pointer;transition:transform .2s}
@@ -41,7 +43,6 @@
   @keyframes ccpulse{0%,100%{box-shadow:0 0 0 0 rgba(46,144,232,.55)}50%{box-shadow:0 0 0 5px rgba(46,144,232,0)}}
   .band-badge{margin-left:8px;font:600 9px/1 var(--mono);letter-spacing:.08em;padding:4px 7px;border-radius:6px;flex:0 0 auto}
   .band-badge.disc{color:#fff;background:#c0392b}
-  @media (prefers-reduced-motion:reduce){.band .fdot.busy{animation:none}}
   .bicon{width:38px;height:38px;border-radius:9px;border:1px solid var(--line);background:#161b24;color:var(--dim);
     font-size:15px;display:grid;place-items:center;cursor:pointer;flex:0 0 auto;transition:background .15s,color .15s,border-color .15s}
   .bicon.reload{color:var(--brand-soft)}
@@ -54,43 +55,74 @@
   .band.new{display:flex;align-items:center;justify-content:center;border:1px dashed #33405a;border-radius:12px;background:#0e1620;
     color:var(--brand-soft);font:600 11px/1 var(--sans);letter-spacing:.04em;text-transform:uppercase;gap:8px;padding:15px 10px;cursor:pointer}
   .band.new .plus{font-size:17px}
-  .dock{flex:0 0 auto;padding:11px 16px calc(13px + env(safe-area-inset-bottom));border-top:1px solid var(--line);
-    background:linear-gradient(180deg,#10141b,#0c0f15);display:flex;flex-direction:column;gap:8px}
-  .dock-h{font:700 9px/1 var(--mono);letter-spacing:.2em;text-transform:uppercase;color:#5d6675;margin:2px 2px 0}
-  .band.sys{display:flex;align-items:center;gap:12px;border:1px solid #244b3f;border-radius:12px;padding:12px 12px;
-    background:var(--module);box-shadow:inset 3px 0 0 var(--live);cursor:pointer}
-  .band.sys .sic{width:30px;height:30px;border-radius:8px;display:grid;place-items:center;flex:0 0 auto;
-    background:#0e1620;border:1px solid var(--line);color:var(--live);font-size:16px}
-  .band.sys .anchor{flex:0 0 auto;width:28px;height:28px;border-radius:7px;display:grid;place-items:center;color:var(--dim);
-    font-size:13px;border:1px dashed #33405a}
-  @media (prefers-reduced-motion:reduce){.band,.bicon{transition:none}}
+  /* ── 設定側: グループ見出し + コンパクト行 ── */
+  .group-h{font:700 9px/1 var(--mono);letter-spacing:.2em;text-transform:uppercase;color:#5d6675;margin:10px 2px 0;flex:0 0 auto}
+  .group-h:first-child{margin-top:2px}
+  .set-row{display:flex;align-items:center;gap:12px;border:1px solid var(--line);border-radius:12px;
+    padding:11px 12px;background:var(--module);cursor:pointer;flex:0 0 auto}
+  .set-row .sic{width:32px;height:32px;border-radius:8px;display:grid;place-items:center;flex:0 0 auto;
+    background:#0e1620;border:1px solid var(--line);font-size:15px}
+  .set-row .band-name{font-size:13px}
+  .set-row .set-sub{font:500 10.5px/1.4 var(--mono);color:var(--dim);margin-top:4px}
+  .set-row .anchor{flex:0 0 auto;color:var(--brand-soft);font-size:18px}
+  /* ── タブバー（旧 SYSTEM ドックの位置と質感を継承） ── */
+  .tabbar{flex:0 0 auto;display:flex;border-top:1px solid var(--line);
+    background:linear-gradient(180deg,#10141b,#0c0f15);padding-bottom:env(safe-area-inset-bottom)}
+  .tab{flex:1;appearance:none;border:0;background:transparent;color:var(--dim);cursor:pointer;
+    display:flex;flex-direction:column;align-items:center;gap:5px;padding:11px 0 13px;position:relative;
+    font:600 10px/1 var(--mono);letter-spacing:.18em;text-transform:uppercase}
+  .tab .tic{font-size:17px;line-height:1}
+  .tab::before{content:"";position:absolute;top:0;left:26%;right:26%;height:2px;border-radius:0 0 2px 2px;
+    background:transparent;transition:background .15s}
+  .tab.on{color:var(--brand-soft)}
+  .tab.on::before{background:var(--brand)}
+  @media (prefers-reduced-motion:reduce){.band,.bicon,.page,.tab::before{transition:none}.band .fdot.busy{animation:none}}
 </style>
 </head>
 <body>
   <div class="screen">
     <div class="bar">
-      <span class="wordmark">CC<i>▍</i>STUDIO</span><span class="title">Screens</span>
+      <span class="wordmark">CC<i>▍</i>STUDIO</span><span class="title" id="barTitle">Screens</span>
       <span class="build" id="build"></span>
     </div>
     <div class="summary" id="summary"></div>
-    <div class="sw-body" id="webList"></div>
-    <div class="dock"><div class="dock-h">System</div><div id="sysList"></div>
-      <div class="band sys feat" id="notifyCard">
-        <div class="sic" style="color:#e9b949">🔔</div>
-        <div class="band-main"><div class="band-name">通知</div></div>
-        <div class="anchor" style="border:0;color:var(--brand-soft);font-size:18px">›</div>
-      </div>
-      <div class="band sys feat" id="logCard">
-        <div class="sic" style="color:#7fd1a3">📋</div>
-        <div class="band-main"><div class="band-name">ログ</div></div>
-        <div class="anchor" style="border:0;color:var(--brand-soft);font-size:18px">›</div>
-      </div>
+    <div class="pages">
+      <div class="page on" id="page-screens"><div id="webList" style="display:contents"></div></div>
+      <div class="page" id="page-settings"><div id="setList" style="display:contents"></div></div>
+    </div>
+    <div class="tabbar">
+      <button class="tab on" id="tabScreens"><span class="tic">▦</span><span>スクリーン</span></button>
+      <button class="tab" id="tabSettings"><span class="tic">⚙</span><span>設定</span></button>
     </div>
   </div>
 <script>
   function api(){ return window.CCStudio || {}; }
   function el(t,c){ var e=document.createElement(t); if(c) e.className=c; return e; }
   function screensData(){ try { return JSON.parse(api().listScreens()||'[]'); } catch(_){ return []; } }
+  function settingsData(){ try { return JSON.parse(api().listSettings()||'[]'); } catch(_){ return []; } }
+
+  var curTab='screens';
+  var counts={screens:0, settings:0};
+
+  function paintSummary(){
+    var s=document.getElementById('summary');
+    if(curTab==='screens') s.innerHTML='<b>'+counts.screens+'</b> screens';
+    else s.innerHTML='<b>'+counts.settings+'</b> 項目';
+  }
+
+  function setTab(t, silent){
+    curTab = (t==='settings') ? 'settings' : 'screens';
+    document.getElementById('page-screens').classList.toggle('on', curTab==='screens');
+    document.getElementById('page-settings').classList.toggle('on', curTab==='settings');
+    document.getElementById('tabScreens').classList.toggle('on', curTab==='screens');
+    document.getElementById('tabSettings').classList.toggle('on', curTab==='settings');
+    document.getElementById('barTitle').textContent = curTab==='screens' ? 'Screens' : 'Settings';
+    paintSummary();
+    // OS バックの遷移判断に使うため、タブの現在値をネイティブへ知らせる。
+    if(!silent){ try{ api().switcherTabChanged(curTab); }catch(_){ } }
+  }
+  // ネイティブが「設定側で開き直す」等のときに呼ぶ（ネイティブ発なので通知不要＝silent）。
+  window.__ccSetTab=function(t){ setTab(t, true); };
 
   function makeWebBand(s){
     var row=el('div','band-row');
@@ -144,31 +176,44 @@
     row.appendChild(b1); row.appendChild(b2); dg.appendChild(row); bd.appendChild(dg); document.body.appendChild(bd);
   }
 
-  function makeSysBand(s){
-    var band=el('div','band sys');
-    band.innerHTML='<div class="sic">⌁</div><div class="band-main"><div class="band-name">'+s.title+'</div></div><div class="anchor" style="border:0;color:var(--brand-soft);font-size:18px">›</div>';
-    band.addEventListener('click',function(){ try{ api().selectScreen(String(s.id)); }catch(_){ } });
-    return band;
+  function renderSettings(){
+    var list=document.getElementById('setList'); list.innerHTML='';
+    var items=settingsData(); var lastGroup=null;
+    items.forEach(function(it){
+      if(it.group!==lastGroup){
+        lastGroup=it.group;
+        var h=el('div','group-h'); h.textContent=it.group; list.appendChild(h);
+      }
+      var row=el('div','set-row');
+      var sic=el('div','sic'); sic.textContent=it.icon||'⚙';
+      var main=el('div','band-main');
+      var nm=el('div','band-name'); nm.textContent=it.label; main.appendChild(nm);
+      if(it.sub){ var sb=el('div','set-sub'); sb.textContent=it.sub; main.appendChild(sb); }
+      var an=el('div','anchor'); an.textContent='›';
+      row.appendChild(sic); row.appendChild(main); row.appendChild(an);
+      row.addEventListener('click',function(){ try{ api().openSettingsEntry(it.id); }catch(_){ } });
+      list.appendChild(row);
+    });
+    counts.settings=items.length;
   }
 
   window.__ccRenderScreens=function(){
     var data=screensData();
     var web=data.filter(function(s){return s.kind==='WEB';});
-    var sys=data.filter(function(s){return s.kind!=='WEB';});
     var list=document.getElementById('webList'); list.innerHTML='';
     // New screen は一番上（スクリーンが増えても常に見えて押せるように）。
     var nw=el('div','band new'); nw.innerHTML='<span class="plus">＋</span><span>New screen</span>';
     nw.addEventListener('click',function(){ try{ api().newScreen(); }catch(_){ } });
     list.appendChild(nw);
     web.forEach(function(s){ list.appendChild(makeWebBand(s)); });
-    var sysEl=document.getElementById('sysList'); sysEl.innerHTML='';
-    sys.forEach(function(s){ sysEl.appendChild(makeSysBand(s)); });
-    document.getElementById('summary').innerHTML='<b>'+web.length+'</b> screens';
+    counts.screens=web.length;
+    renderSettings();
+    paintSummary();
     var b=''; try{ b=(api().getBuild&&api().getBuild())||''; }catch(_){ }
     document.getElementById('build').textContent='build '+b;
   };
-  document.getElementById('notifyCard').addEventListener('click', function(){ try{ api().openNotifySettings(); }catch(_){ } });
-  document.getElementById('logCard').addEventListener('click', function(){ try{ api().openLogViewer(); }catch(_){ } });
+  document.getElementById('tabScreens').addEventListener('click', function(){ setTab('screens'); });
+  document.getElementById('tabSettings').addEventListener('click', function(){ setTab('settings'); });
   document.addEventListener('DOMContentLoaded', window.__ccRenderScreens);
 </script>
 </body>

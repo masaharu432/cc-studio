@@ -80,7 +80,7 @@
     }
     defs.forEach(function(s){ list.appendChild(boolRow(v.name, s)); });
   };
-  document.getElementById('back').addEventListener('click',function(){ try{ api().closePluginSettings(); }catch(_){ } });
+  document.getElementById('back').addEventListener('click',function(){ try{ api().navBack(); }catch(_){ } });
   document.addEventListener('DOMContentLoaded', window.__ccRenderSettings);
 </script>
 </body>

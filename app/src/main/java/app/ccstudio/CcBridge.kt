@@ -43,6 +43,10 @@ class CcBridge(
     private val onCloseLog: () -> Unit,
     private val observerLogTextFn: () -> String,
     private val onDownloadObserverLog: () -> Unit,
+    private val settingsListJsonFn: () -> String,
+    private val onOpenSettingsEntry: (id: String) -> Unit,
+    private val onSwitcherTabChanged: (tab: String) -> Unit,
+    private val onNavBack: () -> Unit,
 ) {
     /** ︙メニューに出すビルド番号（ビルド時刻）。 */
     @JavascriptInterface
@@ -158,4 +162,14 @@ class CcBridge(
     @JavascriptInterface fun getObserverLog(): String = observerLogTextFn()
     /** ログを端末の Downloads へ保存する。 */
     @JavascriptInterface fun downloadObserverLog() = onDownloadObserverLog()
+
+    // ── 設定（switcher 設定側） ──
+    /** 設定エントリ一覧 JSON（[{id,group,icon,label,sub}]、group 順）。 */
+    @JavascriptInterface fun listSettings(): String = settingsListJsonFn()
+    /** 設定エントリを開く。遷移の実体（スクリーン切替 / オーバーレイ表示）はネイティブが解決する。 */
+    @JavascriptInterface fun openSettingsEntry(id: String) = onOpenSettingsEntry(id)
+    /** switcher のタブ現在値の報告（"screens" | "settings"）。OS バックの遷移判断に使う。 */
+    @JavascriptInterface fun switcherTabChanged(tab: String) = onSwitcherTabChanged(tab)
+    /** アプリ内 ‹ ボタン用。OS バックと同じ pop 処理を呼ぶ（遷移ロジックを二重に持たない）。 */
+    @JavascriptInterface fun navBack() = onNavBack()
 }

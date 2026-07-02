@@ -73,7 +73,7 @@
 <body>
   <div class="screen">
     <div class="bar">
-      <button class="navback" id="back"><span class="chev">‹</span>Screens</button>
+      <button class="navback" id="back"><span class="chev">‹</span>設定</button>
       <span class="title">Plugins</span><span class="build" id="build"></span>
     </div>
     <div class="summary" id="summary"></div>
@@ -145,7 +145,7 @@
   };
   function render(){ window.__ccRenderPlugins(); }
   document.getElementById('add').addEventListener('click',function(){ try{ api().pickPlugin(); }catch(_){ } });
-  document.getElementById('back').addEventListener('click',function(){ try{ api().openSwitcher(); }catch(_){ } });
+  document.getElementById('back').addEventListener('click',function(){ try{ api().navBack(); }catch(_){ } });
   document.addEventListener('DOMContentLoaded', window.__ccRenderPlugins);
 </script>
 </body>

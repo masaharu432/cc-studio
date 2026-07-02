@@ -48,6 +48,24 @@ class MainActivity : AppCompatActivity() {
     private var settingsView: WebView? = null
     private var settingsTarget: String? = null
 
+    /**
+     * OS バック用の明示的ナビスタック。オーバーレイ/設定導線を開くたびに push し、
+     * バック（および各画面の ‹ ボタン＝ navBack）で pop する。表示の single source of truth は
+     * このスタックで、open/close は必ずスタック操作経由にする。
+     * 空のときは従来どおり「WebView 履歴 → moveTaskToBack」。
+     */
+    private sealed class Nav {
+        class Switcher(var tab: String) : Nav()   // tab: "screens" | "settings"
+        object PluginsScreen : Nav()              // 設定から開いた Plugins システムスクリーン
+        object Notify : Nav()
+        object Log : Nav()
+        object PluginSettings : Nav()
+    }
+    private val navStack = mutableListOf<Nav>()
+
+    /** 最後にアクティブだった WEB スクリーン。plugins スクリーンから switcher を閉じるときの戻り先。 */
+    private var lastWebScreenId: Long = -1L
+
     /** プラグインの有効集合が変わるたびに +1。各 Web スクリーンの loadedGeneration と比べて stale 判定。 */
     private var pluginGeneration: Int = 0
 
@@ -94,6 +112,7 @@ class MainActivity : AppCompatActivity() {
         screens.onActiveChanged = { s ->
             NotifyState.activeFolder =
                 if (s != null && s.kind == ScreenKind.WEB) ScreenUrl.folderPath(s.url) else null
+            if (s != null && s.kind == ScreenKind.WEB) lastWebScreenId = s.id
             // 表示スクリーンが変わったら、その ︙ボタンに全体の集約状態を塗り直す。
             pushMenuState()
         }
@@ -121,17 +140,7 @@ class MainActivity : AppCompatActivity() {
         intent.getStringExtra(KeepAliveService.EXTRA_OPEN_CWD)?.let { openScreenForCwd(it) }
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
-            override fun handleOnBackPressed() {
-                val nv = notifyView
-                if (nv != null && nv.visibility == View.VISIBLE) { closeNotify(); openSwitcher(); return }
-                val sw = switcher
-                if (sw != null && sw.visibility == View.VISIBLE) { closeSwitcher(); return }
-                val a = screens.activeOrNull()
-                // WebView に戻る履歴があれば戻る。無い場合は finish() せず
-                // ホームボタン同等にバックグラウンドへ送る（moveTaskToBack）。
-                // finish() すると Activity/WebView が破棄され、次回起動でリロードが走るため。
-                if (a != null && a.webView.canGoBack()) a.webView.goBack() else moveTaskToBack(true)
-            }
+            override fun handleOnBackPressed() { popBack() }
         })
     }
 
@@ -364,10 +373,10 @@ class MainActivity : AppCompatActivity() {
         onOpenSwitcher = { runOnUiThread { openSwitcher() } },
         onCloseSwitcher = { runOnUiThread { closeSwitcher() } },
         screensJsonFn = { ScreensJson.build(screens.rows(pluginGeneration)) },
-        onSelectScreen = { id -> runOnUiThread { closeSwitcher(); screens.select(id) } },
+        onSelectScreen = { id -> runOnUiThread { navStack.clear(); closeSwitcher(); screens.select(id) } },
         onReloadScreen = { id ->
             runOnUiThread {
-                closeSwitcher()
+                navStack.clear(); closeSwitcher()
                 screens.byId(id)?.let { reloadScreen(it); screens.select(id) }
             }
         },
@@ -375,28 +384,39 @@ class MainActivity : AppCompatActivity() {
         onNewScreen = {
             runOnUiThread {
                 val s = createWebScreen(TARGET_URL, reloadOnFirstLoad = true)
-                screens.add(s); screens.select(s.id); persistScreens(); closeSwitcher()
+                screens.add(s); screens.select(s.id); persistScreens()
+                navStack.clear(); closeSwitcher()
             }
         },
         notifyPrefsJsonFn = { NotifyPrefs.toJson(this) },
         onSetNotifyPref = { kind, enabled -> NotifyPrefs.setEnabled(this, kind, enabled) },
-        onOpenNotify = { runOnUiThread { closeSwitcher(); openNotify() } },
-        onCloseNotify = { runOnUiThread { closeNotify(); openSwitcher() } },
+        onOpenNotify = { runOnUiThread { openSettingsEntry("notify") } },
+        onCloseNotify = { runOnUiThread { popBack() } },
         pluginSettingsJsonFn = { effectiveSettingsJson() },
-        onOpenPluginSettings = { name -> runOnUiThread { settingsTarget = name; openPluginSettings() } },
+        onOpenPluginSettings = { name ->
+            runOnUiThread {
+                settingsTarget = name
+                navStack.add(Nav.PluginSettings)
+                openPluginSettings()
+            }
+        },
         settingsViewJsonFn = { settingsViewJson() },
         onSetSetting = { name, key, value ->
             store.setSettingRaw(name, key, value.toString())
             runOnUiThread { pushSettingLive(name, key, value) }
         },
-        onClosePluginSettings = { runOnUiThread { closePluginSettings() } },
+        onClosePluginSettings = { runOnUiThread { popBack() } },
         onSessionState = { busy, disconnected -> onSessionState(screenId, busy, disconnected) },
         onMarkdownPreview = { runOnUiThread { dispatchMarkdownPreviewKey() } },
         onObserverLog = { json -> onObserverLog(screenId, json) },
-        onOpenLog = { runOnUiThread { closeSwitcher(); openLog() } },
-        onCloseLog = { runOnUiThread { closeLog(); openSwitcher() } },
+        onOpenLog = { runOnUiThread { openSettingsEntry("log") } },
+        onCloseLog = { runOnUiThread { popBack() } },
         observerLogTextFn = { observerLogForDisplay() },
         onDownloadObserverLog = { downloadObserverLog() },
+        settingsListJsonFn = { settingsListJson() },
+        onOpenSettingsEntry = { id -> runOnUiThread { openSettingsEntry(id) } },
+        onSwitcherTabChanged = { tab -> runOnUiThread { onSwitcherTabChanged(tab) } },
+        onNavBack = { runOnUiThread { popBack() } },
     )
 
     /**
@@ -540,9 +560,17 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
-    // ── switcher オーバーレイ ───────────────────────────────────────────
+    // ── switcher オーバーレイ / ナビスタック ─────────────────────────────
 
+    /** ︙ボタン（WEB スクリーン）から開く入口。設定導線をリセットしてスクリーン側で開く。 */
     private fun openSwitcher() {
+        navStack.clear()
+        navStack.add(Nav.Switcher("screens"))
+        showSwitcherView("screens")
+    }
+
+    /** switcher の WebView を（必要なら作って）表示し、指定タブに合わせる。スタックは触らない。 */
+    private fun showSwitcherView(tab: String) {
         val sw = switcher ?: newConfiguredWebView().also {
             it.webViewClient = CcWebViewClient()
             it.loadUrl("file:///android_asset/switcher.html")
@@ -557,10 +585,106 @@ class MainActivity : AppCompatActivity() {
         }
         sw.visibility = View.VISIBLE
         sw.bringToFront()
+        setSwitcherTabJs(tab)
         refreshSwitcher()
     }
 
+    /** スタック上の Switcher のタブを合わせてから表示する（pop 後の開き直し用）。 */
+    private fun showSwitcher(tab: String) {
+        val entry = navStack.filterIsInstance<Nav.Switcher>().lastOrNull()
+        if (entry != null) entry.tab = tab else navStack.add(Nav.Switcher(tab))
+        showSwitcherView(tab)
+    }
+
     private fun closeSwitcher() { switcher?.visibility = View.GONE }
+
+    private fun setSwitcherTabJs(tab: String) {
+        switcher?.evaluateJavascript("window.__ccSetTab && window.__ccSetTab('$tab');", null)
+    }
+
+    /** switcher 内のタブ操作の報告（JS 発）。バック時の遷移判断に使う。 */
+    private fun onSwitcherTabChanged(tab: String) {
+        navStack.filterIsInstance<Nav.Switcher>().lastOrNull()?.tab = tab
+    }
+
+    /**
+     * OS バックとアプリ内 ‹ ボタンの共通 pop。spec の遷移表:
+     * PluginSettings → plugins / Notify・Log → switcher(設定側) / PluginsScreen → switcher(設定側)
+     * / Switcher(設定側) → スクリーン側 / Switcher(スクリーン側) → 閉じる
+     * / 空 → WebView 履歴 → moveTaskToBack。
+     */
+    private fun popBack() {
+        when (val top = navStack.removeLastOrNull()) {
+            is Nav.PluginSettings -> closePluginSettings()  // 下の PluginsScreen（表示中）に戻る
+            is Nav.Notify -> { closeNotify(); showSwitcher("settings") }
+            is Nav.Log -> { closeLog(); showSwitcher("settings") }
+            is Nav.PluginsScreen -> showSwitcher("settings")
+            is Nav.Switcher -> {
+                if (top.tab == "settings") {
+                    // タブの「ホーム」はスクリーン側。設定側からのバックはまずスクリーン側へ。
+                    top.tab = "screens"
+                    navStack.add(top)
+                    setSwitcherTabJs("screens")
+                } else {
+                    closeSwitcher()
+                    // plugins スクリーンが裏に見えている状態で閉じたら、直前の WEB スクリーンへ戻す。
+                    if (screens.activeOrNull()?.kind != ScreenKind.WEB) {
+                        screens.byId(lastWebScreenId)?.let { screens.select(it.id) }
+                    }
+                }
+            }
+            null -> {
+                // 防御: スタックと表示がズレていたら、見えているオーバーレイを畳むだけにする。
+                val visible = listOf(notifyView, logView, settingsView, switcher)
+                    .any { it != null && it.visibility == View.VISIBLE }
+                if (visible) {
+                    closeNotify(); closeLog(); closePluginSettings(); closeSwitcher()
+                    return
+                }
+                val a = screens.activeOrNull()
+                // WebView に戻る履歴があれば戻る。無い場合は finish() せず
+                // ホームボタン同等にバックグラウンドへ送る（moveTaskToBack）。
+                // finish() すると Activity/WebView が破棄され、次回起動でリロードが走るため。
+                if (a != null && a.webView.canGoBack()) a.webView.goBack() else moveTaskToBack(true)
+            }
+        }
+    }
+
+    /** 設定側の一覧（switcher が描く）。項目追加はここに1エントリ足すだけで済ませる。 */
+    private fun settingsListJson(): String {
+        val plugins = store.list()
+        val arr = JSONArray()
+        arr.put(
+            JSONObject().put("id", "plugins").put("group", "プラグイン").put("icon", "🧩")
+                .put("label", "プラグイン管理")
+                .put("sub", "${plugins.size} 個インストール · ${plugins.count { it.enabled }} 有効")
+        )
+        arr.put(
+            JSONObject().put("id", "notify").put("group", "システム").put("icon", "🔔")
+                .put("label", "通知").put("sub", "Stop / Notification フック")
+        )
+        arr.put(
+            JSONObject().put("id", "log").put("group", "システム").put("icon", "📋")
+                .put("label", "ログ").put("sub", "オブザーバーログを表示")
+        )
+        return arr.toString()
+    }
+
+    /** 設定エントリのタップ。遷移の実体はここで解決する（switcher は id を渡すだけ）。 */
+    private fun openSettingsEntry(id: String) {
+        // 設定導線の起点は switcher（設定側）。スタックに無ければ積んでおく（防御）。
+        if (navStack.none { it is Nav.Switcher }) navStack.add(Nav.Switcher("settings"))
+        when (id) {
+            "plugins" -> {
+                closeSwitcher()
+                navStack.add(Nav.PluginsScreen)
+                screens.all().firstOrNull { it.kind == ScreenKind.SYSTEM_PLUGINS }
+                    ?.let { screens.select(it.id) }
+            }
+            "notify" -> { closeSwitcher(); navStack.add(Nav.Notify); openNotify() }
+            "log" -> { closeSwitcher(); navStack.add(Nav.Log); openLog() }
+        }
+    }
 
     /** 通知設定の全画面（notify.html）をオーバーレイ表示する（switcher と同型）。 */
     private fun openNotify() {

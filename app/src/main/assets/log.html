@@ -115,7 +115,7 @@
     body.scrollTop=body.scrollHeight;
   };
 
-  document.getElementById('back').addEventListener('click', function(){ try{ api().closeLogViewer(); }catch(_){ } });
+  document.getElementById('back').addEventListener('click', function(){ try{ api().navBack(); }catch(_){ } });
   document.getElementById('reload').addEventListener('click', function(){ window.__ccRenderLog(); });
   document.getElementById('download').addEventListener('click', function(){ try{ api().downloadObserverLog(); }catch(_){ } });
   document.addEventListener('DOMContentLoaded', window.__ccRenderLog);

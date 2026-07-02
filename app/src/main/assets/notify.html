@@ -40,7 +40,7 @@
 <body>
   <div class="screen">
     <div class="bar">
-      <button class="navback" id="back"><span class="chev">‹</span>Screens</button>
+      <button class="navback" id="back"><span class="chev">‹</span>設定</button>
       <span class="title">通知設定</span>
     </div>
     <div class="body">
@@ -73,7 +73,7 @@
     try{ api().setNotifyPref(kind, next); }catch(_){ }
     elx.setAttribute('aria-pressed', String(next));
   };
-  document.getElementById('back').addEventListener('click',function(){ try{ api().closeNotifySettings(); }catch(_){ } });
+  document.getElementById('back').addEventListener('click',function(){ try{ api().navBack(); }catch(_){ } });
   document.addEventListener('DOMContentLoaded', window.__ccRenderNotify);
 </script>
 </body>
