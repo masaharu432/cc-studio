@@ -103,4 +103,54 @@ class PluginMetaTest {
         val m = PluginMetaParser.parse("(function(){})();")
         assertTrue(m.settings.isEmpty())
     }
+
+    @Test fun parsesJaDescriptionSuffix() {
+        val js = """
+            // ==CCStudioPlugin==
+            // @name        x
+            // @description English text.
+            // @description:ja 日本語の説明。
+            // ==/CCStudioPlugin==
+        """.trimIndent()
+        val m = PluginMetaParser.parse(js)
+        assertEquals("English text.", m.description)
+        assertEquals("日本語の説明。", m.descriptionJa)
+    }
+
+    @Test fun settingJaSuffixOverridesLabelOnly() {
+        val js = """
+            // ==CCStudioPlugin==
+            // @setting     visible boolean true Show the HUD
+            // @setting:ja  visible HUD を表示
+            // ==/CCStudioPlugin==
+        """.trimIndent()
+        val d = PluginMetaParser.parse(js).settings.single()
+        assertEquals("Show the HUD", d.label)
+        assertEquals("HUD を表示", d.labelJa)
+        assertEquals("boolean", d.type)
+        assertEquals("true", d.default)
+    }
+
+    @Test fun jaSuffixAbsentYieldsNulls() {
+        val js = """
+            // ==CCStudioPlugin==
+            // @description Only English.
+            // @setting     visible boolean true Show
+            // ==/CCStudioPlugin==
+        """.trimIndent()
+        val m = PluginMetaParser.parse(js)
+        assertNull(m.descriptionJa)
+        assertNull(m.settings.single().labelJa)
+    }
+
+    @Test fun settingJaForUnknownKeyIsIgnored() {
+        val js = """
+            // ==CCStudioPlugin==
+            // @setting     visible boolean true Show
+            // @setting:ja  nosuch 存在しないキー
+            // ==/CCStudioPlugin==
+        """.trimIndent()
+        val m = PluginMetaParser.parse(js)
+        assertNull(m.settings.single().labelJa)
+    }
 }

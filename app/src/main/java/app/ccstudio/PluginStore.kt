@@ -11,7 +11,8 @@ data class PluginInfo(
     val enabled: Boolean,
     val displayName: String,          // 表示名：@name があればそれ、無ければファイル名
     val version: String?,
-    val description: String?,
+    val description: String?,   // 英語（既定）
+    val descriptionJa: String?,  // 日本語（@description:ja。無ければ null → 英語へフォールバック）
     val hasSettings: Boolean,
     val bundled: Boolean,
     val runAt: String,                // "document-start" | "document-idle"
@@ -118,6 +119,7 @@ class PluginStore(private val context: Context) {
                     displayName = meta.name?.takeIf { it.isNotBlank() } ?: f.name,
                     version = meta.version,
                     description = meta.description,
+                    descriptionJa = meta.descriptionJa,
                     hasSettings = meta.hasSettings,
                     bundled = bundledNames.contains(f.name),
                     runAt = meta.runAt,

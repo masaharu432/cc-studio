@@ -12,7 +12,8 @@ class PanelJsonTest {
         settings: List<SettingDef> = emptyList(),
     ) = PluginInfo(
         name = name, size = 10L, enabled = enabled, displayName = name.removeSuffix(".js"),
-        version = "1.0", description = "説明", hasSettings = settings.isNotEmpty(),
+        version = "1.0", description = "説明", descriptionJa = null,
+        hasSettings = settings.isNotEmpty(),
         bundled = false, runAt = "document-start", allFrames = true, settings = settings,
     )
 
