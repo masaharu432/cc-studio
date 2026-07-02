@@ -304,6 +304,20 @@ Write/Edit 発行（bypass でも拡張バグでプロンプト生成 #36219）
 4. 回避案の検証: 拡張パネルではなく**ターミナルで claude を走らせる**（拡張の Edit/Write
    プロンプト経路を通らない）が確実な回避になるか要検証。
 
+### 回避策の本命候補: 「Edit automatically」(acceptEdits) モード
+
+- 全プロジェクト transcript の実績（permissionMode 記録 vs uQ キャンセル）:
+  bypassPermissions **10/6771**・auto **3/164**・**acceptEdits 0/37**・plan 0/79・default 0/32。
+- 理屈: バグ #36219 は「bypass が **Edit/Write プロンプト**を抑止しない」。acceptEdits は
+  Edit/Write の自動承認そのものが仕事なので、プロンプトを出す側を直接解決する別経路で効く見込み。
+- UI 名の対応: モードピッカーの **「Edit automatically」= acceptEdits**（「Auto mode」= auto は
+  キャンセル実績ありなので別物・非推奨）。
+- **トレードオフ**: acceptEdits は Bash に効かない。bypass では Bash/Read は正しく素通りして
+  いた（8件全て Write/Edit だった理由）ため、acceptEdits へ切替えると背面の Bash 承認待ちが
+  新たな 668s キャンセル源になりうる → **Bash allowlist（permissions.allow）併用**が前提。
+  `/fewer-permission-prompts` で整備できる。
+- 決定実験: acceptEdits のセッションで Write を含むタスク→背面12分放置→完走すれば採用。
+
 ## 次の一手（優先度順）
 
 1. **CANCEL を永続ログに載せる（最小・低リスク・推奨）**
