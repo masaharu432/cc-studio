@@ -198,11 +198,7 @@ class MainActivity : AppCompatActivity() {
             screens.select(hit.id)
             return
         }
-        val schemeEnd = TARGET_URL.indexOf("://")
-        if (schemeEnd < 0) return
-        val host = TARGET_URL.substring(schemeEnd + 3).substringBefore('/')
-        val base = TARGET_URL.substring(0, schemeEnd) + "://" + host
-        val url = "$base/?folder=" + java.net.URLEncoder.encode(cwd, "UTF-8")
+        val url = UrlPolicy.folderUrl(TARGET_URL, cwd) ?: return
         val s = createWebScreen(url, reloadOnFirstLoad = true)
         screens.add(s); screens.select(s.id); persistScreens()
     }
@@ -318,13 +314,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     /** workbench 以外の http(s) ホストへのナビゲーションか（＝外部ブラウザで開くべきか）。 */
-    private fun isExternalHttp(uri: Uri): Boolean {
-        val scheme = uri.scheme?.lowercase() ?: return false
-        if (scheme != "http" && scheme != "https") return false
-        val host = uri.host ?: return false
-        val wh = workbenchHost ?: return false
-        return !host.equals(wh, ignoreCase = true)
-    }
+    private fun isExternalHttp(uri: Uri): Boolean =
+        UrlPolicy.isExternalHttp(uri.scheme, uri.host, workbenchHost)
 
     /** URL を Android の外部ブラウザ（既定ブラウザ）で開く。 */
     private fun openExternalUrl(uri: Uri) {
