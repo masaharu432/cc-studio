@@ -1,6 +1,5 @@
 package app.ccstudio
 
-import android.annotation.SuppressLint
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -11,13 +10,10 @@ import android.provider.OpenableColumns
 import android.util.Base64
 import android.util.Log
 import android.view.KeyEvent
-import android.view.View
 import android.webkit.RenderProcessGoneDetail
 import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
-import android.webkit.WebResourceRequest
 import android.webkit.WebView
-import android.webkit.WebViewClient
 import android.widget.FrameLayout
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
@@ -38,7 +34,7 @@ class MainActivity : AppCompatActivity() {
 
     // ── 全画面オーバーレイ（遅延生成・使い回し）。表示順序・再描画 JS は従来と同一。 ──
     private fun overlayWebView(): WebView =
-        newConfiguredWebView().also { it.webViewClient = CcWebViewClient() }
+        screenFactory.newConfiguredWebView().also { it.webViewClient = screenFactory.baseWebViewClient() }
     private val switcherPanel by lazy {
         OverlayPanel(root, "switcher.html", "", ::overlayWebView)
     }
@@ -110,7 +106,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         // 1) Plugins システムスクリーン（先頭・固定）
-        screens.add(createSystemPluginsScreen())
+        screens.add(screenFactory.createSystemPluginsScreen())
 
         // 2) 復元 or 既定の Web スクリーン
         // 復元/起動時の WebView も初回ロード後に一度 reload する（reloadOnFirstLoad=true）。
@@ -216,89 +212,44 @@ class MainActivity : AppCompatActivity() {
         return true
     }
 
-    /** 全 WebView 共通のクライアント基底。レンダラ死を必ず処理する（未処理＝アプリごと死）。 */
-    private open inner class CcWebViewClient : WebViewClient() {
-        override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean =
-            handleRendererGone(detail)
+    /** WebView 構成・スクリーン生成・プラグイン注入の実体。副作用はラムダで Activity に戻す。 */
+    private val screenFactory by lazy {
+        ScreenFactory(
+            this, store,
+            ScreenFactory.Deps(
+                nextId = { screens.nextId() },
+                buildBridge = ::buildBridge,
+                onShowFileChooser = ::onShowFileChooser,
+                onDownload = { url, cd, mime -> downloader.handleDownload(url, cd, mime) },
+                onRendererGone = ::handleRendererGone,
+                isExternalHttp = ::isExternalHttp,
+                openExternalUrl = ::openExternalUrl,
+                injectAsset = ::injectAssetInto,
+                effectiveSettingsJson = ::effectiveSettingsJson,
+                currentGeneration = { pluginGeneration },
+                onScreenNavigated = { persistScreens() },
+            ),
+        )
     }
 
-    @SuppressLint("SetJavaScriptEnabled")
-    private fun newConfiguredWebView(screenId: Long = -1L): WebView = WebView(this).apply {
-        settings.javaScriptEnabled = true
-        settings.domStorageEnabled = true
-        settings.databaseEnabled = true
-        settings.mediaPlaybackRequiresUserGesture = false
-        // 非可視でもレンダラ優先度を下げない（既定は非可視で waive＝背面kill の温床）。
-        // 背面でターンを維持するというアプリの目的を優先し、電池より生存性を取る。
-        setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT, false)
-        webChromeClient = object : WebChromeClient() {
-            override fun onShowFileChooser(
-                view: WebView,
-                filePathCallback: ValueCallback<Array<Uri>>,
-                fileChooserParams: FileChooserParams,
-            ): Boolean {
-                fileChooserCallback?.onReceiveValue(null)
-                fileChooserCallback = filePathCallback
-                return try {
-                    pickFiles.launch(fileChooserParams.createIntent()); true
-                } catch (e: Exception) {
-                    Log.w("CcStudio", "onShowFileChooser failed", e)
-                    fileChooserCallback = null
-                    toast("ファイル選択を開けませんでした"); false
-                }
-            }
+    /** <input type="file"> の選択 UI を開く（ScreenFactory の WebChromeClient から呼ばれる）。 */
+    private fun onShowFileChooser(
+        filePathCallback: ValueCallback<Array<Uri>>,
+        fileChooserParams: WebChromeClient.FileChooserParams,
+    ): Boolean {
+        fileChooserCallback?.onReceiveValue(null)
+        fileChooserCallback = filePathCallback
+        return try {
+            pickFiles.launch(fileChooserParams.createIntent()); true
+        } catch (e: Exception) {
+            Log.w("CcStudio", "onShowFileChooser failed", e)
+            fileChooserCallback = null
+            toast("ファイル選択を開けませんでした"); false
         }
-        setDownloadListener { url, _, contentDisposition, mimeType, _ ->
-            downloader.handleDownload(url, contentDisposition, mimeType)
-        }
-        addJavascriptInterface(buildBridge(screenId), "CCStudio")
     }
 
-    private fun createWebScreen(url: String, reloadOnFirstLoad: Boolean = false): Screen {
-        val id = screens.nextId()
-        val wv = newConfiguredWebView(id)
-        val screen = Screen(id, ScreenKind.WEB, wv)
-        screen.url = url
-        var firstReloadDone = false
-        wv.webViewClient = object : CcWebViewClient() {
-            override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
-                // 外部サイト（調査リンク・ホームページ等）は外部ブラウザで開き、workbench を離れない。
-                if (isExternalHttp(request.url)) { openExternalUrl(request.url); return true }
-                return false
-            }
-            override fun doUpdateVisitedHistory(view: WebView, newUrl: String?, isReload: Boolean) {
-                if (newUrl != null) { screen.url = newUrl; persistScreens() }
-            }
-            override fun onPageFinished(view: WebView, finishedUrl: String?) {
-                // 新規スクリーンは初回ロード後に一度だけリロードして、有効プラグインを確実に反映する
-                // （document-start 登録は新規 WebView の初回ナビゲーションに乗り切らないことがあるため）。
-                if (reloadOnFirstLoad && !firstReloadDone) {
-                    firstReloadDone = true
-                    registerScreenScripts(screen)
-                    view.reload()
-                    return
-                }
-                injectAssetInto(view, "bootstrap.js")
-                if (!ExtensionRuntime.isDocumentStartSupported()) {
-                    view.evaluateJavascript("window.__ccPluginSettings = ${effectiveSettingsJson()};", null)
-                    // document-start 非対応端末: 有効プラグインを全部メインフレームに注入（フォールバック）。
-                    store.enabledScripts().forEach { view.evaluateJavascript(it, null) }
-                } else {
-                    // all-frames=false のプラグインは document-start 登録していない（registerScreenScripts 参照）。
-                    // メインフレームのみ・document-idle 相当として、ここで注入する。
-                    store.enabled().filter { !it.allFrames }.forEach { p ->
-                        store.script(p.name)?.let { view.evaluateJavascript(it, null) }
-                    }
-                }
-                if (finishedUrl != null) screen.url = finishedUrl
-                screen.loadedGeneration = pluginGeneration
-                persistScreens()
-            }
-        }
-        registerScreenScripts(screen)
-        wv.loadUrl(url)
-        return screen
-    }
+    private fun createWebScreen(url: String, reloadOnFirstLoad: Boolean = false): Screen =
+        screenFactory.createWebScreen(url, reloadOnFirstLoad)
 
     /** workbench（アプリが開く code-server）のホスト。これ以外の http(s) ホストは「外部」とみなす。 */
     private val workbenchHost: String? by lazy {
@@ -317,16 +268,6 @@ class MainActivity : AppCompatActivity() {
             Log.w("CcStudio", "openExternalUrl failed: $uri", e)
             runOnUiThread { toast("外部リンクを開けませんでした") }
         }
-    }
-
-    private fun createSystemPluginsScreen(): Screen {
-        val id = screens.nextId()
-        val wv = newConfiguredWebView(id)
-        val screen = Screen(id, ScreenKind.SYSTEM_PLUGINS, wv)
-        screen.title = "Plugins"
-        wv.webViewClient = CcWebViewClient()
-        wv.loadUrl("file:///android_asset/plugins.html")
-        return screen
     }
 
     // ── ブリッジ ────────────────────────────────────────────────────────
@@ -429,45 +370,11 @@ class MainActivity : AppCompatActivity() {
 
     // ── スクリーン操作・プラグイン反映 ──────────────────────────────────
 
-    private fun reloadScreen(s: Screen) {
-        registerScreenScripts(s)   // 最新の有効集合で登録し直してから
-        s.webView.reload()
-    }
-
-    /**
-     * 有効プラグインを WEB スクリーンへ document-start 登録/解除する。
-     * 対象は **all-frames=true** のプラグインのみ（全フレーム×document-start）。
-     * all-frames=false のものはメインフレーム注入なので onPageFinished 側で扱う（ここでは登録しない）。
-     */
-    private fun registerScreenScripts(s: Screen) {
-        if (s.kind != ScreenKind.WEB) return
-        if (!ExtensionRuntime.isDocumentStartSupported()) return
-        // 設定ランタイムを最初に1本だけ登録（プラグインが読む前に __ccPluginSettings を用意）。
-        if (!s.pluginHandlers.containsKey(SETTINGS_RUNTIME_KEY)) {
-            ExtensionRuntime.registerDocumentStart(s.webView, SETTINGS_RUNTIME_JS)
-                ?.let { s.pluginHandlers[SETTINGS_RUNTIME_KEY] = it }
-        }
-        val enabled = store.enabled().filter { it.allFrames }.map { it.name }.toSet()
-        val iter = s.pluginHandlers.iterator()
-        while (iter.hasNext()) {
-            val e = iter.next()
-            if (e.key == SETTINGS_RUNTIME_KEY) continue
-            if (e.key !in enabled) {
-                try { e.value.remove() } catch (_: Exception) {}
-                iter.remove()
-            }
-        }
-        for (name in enabled) {
-            val js = store.script(name) ?: continue
-            // 同名でも毎回、古いハンドラを外して現在の内容で登録し直す（再取り込みを確実に反映）。
-            s.pluginHandlers.remove(name)?.let { try { it.remove() } catch (_: Exception) {} }
-            ExtensionRuntime.registerDocumentStart(s.webView, js)?.let { h -> s.pluginHandlers[name] = h }
-        }
-    }
+    private fun reloadScreen(s: Screen) = screenFactory.reloadScreen(s)
 
     private fun bumpGenerationAndSync() {
         pluginGeneration++
-        screens.webScreens().forEach { registerScreenScripts(it) }
+        screens.webScreens().forEach { screenFactory.registerScreenScripts(it) }
         refreshSwitcher()
         // 反映は各スクリーンの手動リロードで（他セッションに影響しないよう自動リロードはしない）。
     }
@@ -756,24 +663,5 @@ class MainActivity : AppCompatActivity() {
         // 既定で開くワークベンチ URL。実値は local.properties の ccstudio.targetUrl から
         // BuildConfig 経由で注入する（build.gradle 参照）。個人ホストはコミットしない。
         private val TARGET_URL = BuildConfig.TARGET_URL
-
-        private const val SETTINGS_RUNTIME_KEY = "__ccSettingsRuntime"
-
-        /** document-start で window.__ccPluginSettings を用意し、ライブ更新の受け口を定義する。 */
-        private const val SETTINGS_RUNTIME_JS = """
-(function(){
-  try { window.__ccPluginSettings = JSON.parse(window.CCStudio.getPluginSettings() || '{}'); }
-  catch(e){ window.__ccPluginSettings = {}; }
-  window.__ccApplyPluginSetting = function(plugin, key, val){
-    var p = window.__ccPluginSettings[plugin] || (window.__ccPluginSettings[plugin] = {});
-    p[key] = val;
-    try {
-      window.dispatchEvent(new CustomEvent('ccstudio:setting',
-        { detail: { plugin: plugin, key: key, value: val } }));
-    } catch(_){}
-  };
-})();
-"""
-
     }
 }
