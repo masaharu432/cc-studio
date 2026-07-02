@@ -148,3 +148,24 @@ test("txCancelFromLine rejects non-user / junk lines", () => {
   assert.equal(txCancelFromLine(JSON.stringify({ type: "assistant", message: { content: UQ } })), null)
   assert.equal(txCancelFromLine(JSON.stringify({ type: "user", message: { content: "plain " } })), null)
 })
+
+import { txCancelEvent } from "./relay.mjs"
+
+test("txCancelEvent builds a Cancel notification for fresh cancels", () => {
+  const now = 1782975800000
+  const ev = txCancelEvent({ t: now - 60_000, cwd: "/mnt/x/cc-studio/app", session: "4fe4eaaf" }, now)
+  assert.ok(ev)
+  assert.equal(ev.event, "cc-notify")
+  assert.equal(ev.kind, "Cancel")
+  assert.equal(ev.project, "app")
+  assert.equal(ev.cwd, "/mnt/x/cc-studio/app")
+  assert.equal(ev.sessionId, "4fe4eaaf")
+  assert.equal(ev.ts, Math.floor((now - 60_000) / 1000))
+  assert.ok(ev.message.length > 0)
+})
+
+test("txCancelEvent suppresses stale (backfill) cancels", () => {
+  const now = 1782975800000
+  assert.equal(txCancelEvent({ t: now - 11 * 60_000, cwd: "/x", session: "s" }, now), null)
+  assert.equal(txCancelEvent(null, now), null)
+})

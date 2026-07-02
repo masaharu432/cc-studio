@@ -166,10 +166,11 @@ class KeepAliveService : Service() {
         if (!NotifyPrefs.isEnabled(this, kind)) return
         val project = json.optString("project")
         val message = json.optString("message")
-        val title = if (kind == "Notification")
-            "${getString(R.string.task_permission_title)} — $project"
-        else
-            "${getString(R.string.task_done_title)} — $project"
+        val title = when (kind) {
+            "Notification" -> "${getString(R.string.task_permission_title)} — $project"
+            "Cancel" -> "${getString(R.string.task_cancel_title)} — $project"
+            else -> "${getString(R.string.task_done_title)} — $project"
+        }
         // フォルダ（cwd フルパス）を必ず表示。message があれば上に添える。
         val folder = cwd.ifEmpty { project }
         val body = if (message.isNotEmpty()) "$message\n$folder" else folder

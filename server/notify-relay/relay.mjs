@@ -82,6 +82,24 @@ export function txCancelFromLine(line) {
   }
 }
 
+const TX_NOTIFY_FRESH_MS = 10 * 60 * 1000  // これより古い検出（初回バックフィル等）は通知しない
+
+/**
+ * 走査で見つけたキャンセルを phone 向け通知イベント（cc-notify 形式）に変換する。
+ * 古い検出は null（通知スパム防止。60秒周期の走査で新規発生は常に fresh）。
+ */
+export function txCancelEvent(rec, now) {
+  if (!rec || !rec.t || now - rec.t > TX_NOTIFY_FRESH_MS) return null
+  const cwd = asString(rec.cwd)
+  return {
+    event: "cc-notify", kind: "Cancel",
+    project: cwd ? cwd.replace(/\/+$/, "").split("/").pop() || "" : "",
+    branch: "", cwd, sessionId: asString(rec.session),
+    message: "ツール呼び出しが中断されました（「続けて」で再開できます）",
+    ts: Math.floor(rec.t / 1000),
+  }
+}
+
 function loadTxState() {
   try { return JSON.parse(fs.readFileSync(TX_STATE_FILE, "utf8")) } catch { return { files: {} } }
 }
@@ -127,7 +145,12 @@ export function scanTranscriptsOnce(root = TX_ROOT) {
       st.files[p] = { offset: offset + Buffer.byteLength(chunk, "utf8") + 1 }
       for (const line of chunk.split("\n")) {
         const rec = txCancelFromLine(line)
-        if (rec) { appendObserver(JSON.stringify(rec) + "\n"); found++ }
+        if (rec) {
+          appendObserver(JSON.stringify(rec) + "\n")
+          found++
+          const ev = txCancelEvent(rec, now)   // 新鮮な検出だけ phone へ通知
+          if (ev) broadcast(ev)
+        }
       }
     }
   }
