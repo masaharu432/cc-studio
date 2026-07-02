@@ -109,6 +109,23 @@
 - **アプリ（Kotlin JVM）**: 差分抽出ロジックを純関数に切り出しテスト（`UploadDelta.select(text, lastT): (lines, maxT)`）。
 - **実機**: 断→復帰後に `server/notify-relay/data/observer.jsonl` が増え、端末行＋サーバ keepalive 行＋batch 行が並ぶ。
 
+## 追補: トランスクリプト走査（キャンセル発生時刻の自動収集・実装済み）
+
+DOM 文字列検知（アプリ側）は「パネルが見えている時しか拾えない・検知時刻が発生時刻と
+最大27分ズレる（実測）」ため補助に格下げし、**一次証拠＝セッショントランスクリプトの自動走査**を
+relay に実装した（commit f2d8547）。
+
+- 対象: `~/.claude/projects/**/**.jsonl`。60秒ごとに**増分走査**（オフセットを
+  `data/tx-scan-state.json` に永続化。初見の古いファイル＝mtime 48h超は末尾から追従）。
+- 判定: `type:"user"` の `message.content[]` に、content が CLI のツール拒否定数
+  `"The user doesn't want to take this action right now."` で**始まる** `tool_result` がある行のみ
+  （CLI 自身と同じ startsWith 判定。引用・ノート・会話中の言及は除外される）。
+- 出力: `{"t":<発生epoch ms>,"iso":...,"src":"cancel","kind":"cancel","via":"transcript","cwd":...,"session":<先頭8桁>}`
+  を observer.jsonl へ追記。アプリ側 DOM 検知のレコード（via 無し）とは `via` で区別する。
+  **解析は via:transcript を正とする。**
+- 検収: 2026-07-02 16:03:05 の実キャンセル（別セッションの Write 拒否）を正確な時刻で捕捉。
+  偽ヒット（引用73件）は全除外。過去48hの本物7件をバックフィル。
+
 ## スコープ外（フェーズ2）
 
 - 解析の自動化（ダッシュボード/アラート）。当面は私が手で cat/grep 解析。
