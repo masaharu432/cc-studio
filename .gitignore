@@ -18,3 +18,4 @@ server/provision/cc-studio.env
 
 # 各ユーザのローカル追加拡張（tracked リストを触らず足せる）
 server/provision/extensions.local.txt
+*.code-workspace
