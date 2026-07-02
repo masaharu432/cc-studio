@@ -97,6 +97,96 @@ Observer Log（アプリ内ビューア）より、拒否は `02:04:17.682 foreg
 これで次回、往復が **stop-hidden を伴う本当の背面化**なのか、**winblur だけの一時フォーカス喪失**なのかを
 判別できる。突発キャンセルは後者（VS Code の確認 UI やターンが window blur で中断される）に相関する疑い。
 
+## 確定解析（3回目・ソース逆引きによる機構の特定）
+
+これまで推測だった「なぜ STOP メッセージが届くのか」を、**claude CLI バイナリと拡張の実コードから逆引き**して確定させた。
+
+### 証拠1: メッセージの発生源は CLI（拡張ではない）
+
+`~/.local/share/claude/versions/2.1.195`（CLI バイナリ）内:
+
+```js
+_N="[Request interrupted by user]",
+Jv="[Request interrupted by user for tool use]",
+uQ="The user doesn't want to take this action right now. STOP what you are doing and wait for the user to tell you how to proceed."
+```
+
+さらに同バイナリ内に**保留リクエストの一括 reject 処理**がある:
+
+```js
+this.inputClosed = !0;
+for (let n of this.pendingRequests.values())
+  n.reject(Error("Tool permission stream closed before response received"))
+```
+
+→ **UI との権限ストリーム（stream-json の制御チャネル）が閉じると、保留中の対話リクエスト
+（can_use_tool 権限確認・AskUserQuestion 等のダイアログ）が全部 reject される**。
+can_use_tool の reject は `uQ`＝「The user doesn't want to take this action…」としてターンに注入される。
+
+### 証拠2: ストリームを閉じるのは「webview パネルの破棄」
+
+`anthropic.claude-code-2.1.197` の `extension.js`:
+
+```js
+e.onDidDispose(() => {
+  c.shutdown(),                 // ← CLI との通信を終了
+  this.allComms.delete(c), this.webviews.delete(n);
+  ... this.sessionPanels.delete(u), this.sessionStates.delete(u) ...
+})
+```
+
+→ チャットの webview パネルが dispose されると拡張が `comms.shutdown()` を呼び、CLI 側で
+`inputClosed` → 保留リクエスト一括 reject が発火する。
+
+### 証拠3: 同一セッションで両方の顔を実測
+
+この開発セッション自体（CC Studio 経由）で:
+- AskUserQuestion が **`Tool permission stream closed before response received`** で失敗（reject の生文字列）
+- Edit / Write が **`The user doesn't want to take this action`** で中断（can_use_tool reject の注入形）
+
+= **同じ一つの機構の二つの現れ**。
+
+### 証拠4: 引き金はアプリの背面死/再生成（ログ実測）
+
+- `12:26:06 background` → `12:26:18 lifecycle: start`（**onCreate＝コールドスタート**）→ 全スクリーン再ロード
+  → 直後に cancel 検知。= 背面でプロセスが殺され、復帰でワークベンチごと作り直された。
+- `12:22:06〜12:24:06` の**2分背面**では `start` 無し（プロセス生存）なのにターン消滅
+  → 背面中の WebView ソケット凍結→復帰時のワークベンチ再接続/再ロードでも webview は作り直される。
+- 一方、新計測（winblur/stop-hidden 分離後）では **数十秒の背面ではターンが生存する例**も確認
+  → 「背面＝即死」ではなく、**プロセス kill or ワークベンチ再ロードが起きた時だけ**死ぬ、と整合。
+
+### 確定した因果チェーン
+
+```
+アプリ背面化
+  → (a) Android がプロセス kill（復帰時 lifecycle: start）
+    or (b) WebView ソケット凍結が長引き、復帰時にワークベンチ再ロード
+  → チャット webview パネルが dispose（作り直し）
+  → 拡張 onDidDispose → comms.shutdown()
+  → CLI の権限ストリーム close → inputClosed
+  → 保留中の対話リクエスト（権限確認/質問）を一括 reject
+  → 「The user doesn't want to take this action right now. STOP …」がターンに注入
+  = 突発キャンセル
+```
+
+### 旧仮説の判定
+
+| 仮説 | 判定 |
+|---|---|
+| 接続瞬断（cc-notify WS）由来 | **否定**。native keepalive は別ソケットで、断は観測されていない。死ぬのは WebView 側のワークベンチ接続。 |
+| keyboard-suppress の blur 由来 | **主因ではない**。機構はフォーカスではなく webview 破棄＋ストリーム切断。 |
+| フォーカス喪失で VS Code プロンプトが自動 dismiss | **惜しいが不正確**。dismiss ではなく、webview 破棄→ストリーム close→CLI 側 reject。 |
+
+### 対策の方向（トリガー潰しが本命）
+
+1. **背面 kill / 凍結を防ぐ**: バッテリー最適化の除外（Samsung「スリープさせないアプリ」）、
+   必要なら cc-web の無音オーディオ MediaSession キープアライブ資産の移植
+   （`cc-web/cc-web-keepalive/` — ONE playing tab keeps all sockets alive の実証済み手法）。
+2. **保留窓を減らす**: 対話リクエスト（権限確認）が pending のまま背面化するのが急所。
+   bypass permissions の活用や、離席前にプロンプトを残さない運用で露出を下げる。
+3. **観測は整備済み**: cancel 永続化＋重複除去＋lifecycle 3系統分離により、
+   以後の発生は「start 伴う＝プロセス死」「stop-hidden のみ＝再ロード」を機械的に判別できる。
+
 ## 次の一手（優先度順）
 
 1. **CANCEL を永続ログに載せる（最小・低リスク・推奨）**
