@@ -67,7 +67,8 @@ git clone <this-repo> && cd cc-studio
 3. **常駐化** — systemd ユーザサービス `vsserver` を有効化（boot 時自動起動）。
    systemd が無い環境は `./server/provision/start-vsserver.sh` で手動起動。
 4. **推奨設定の投入** — `.md`/`.html` をタブ内フルサイズプレビューで開く設定を既存設定へ非破壊 merge。
-5. **拡張のインストール** — Claude Code 公式拡張ほか（`extensions.txt`）+ 同梱拡張 **cc-open**
+5. **拡張のインストール** — Claude Code 公式拡張のほか、HTML プレビューを**タブとして開ける**
+   マーケットプレイス拡張 `aios-html-auto-preview` など（`extensions.txt`）+ 同梱拡張 **cc-open**
    （チャットのリンクから開いた `.md` をプレビュー表示にする）。
 6. **通知機能** — 通知サーバ **notify-relay**（`127.0.0.1:8770`）を常駐化し、Claude Code の
    user フック（Stop / 許可待ち → relay へ POST）を `~/.claude/settings.json` に登録。
