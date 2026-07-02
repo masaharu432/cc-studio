@@ -107,3 +107,44 @@ test("serverKeepaliveLine builds connect/disconnect line", () => {
   assert.equal(o.event, "disconnect")
   assert.equal(o.t_server, 555)
 })
+
+import { txCancelFromLine } from "./relay.mjs"
+
+const UQ = "The user doesn't want to take this action right now. STOP what you are doing and wait for the user to tell you how to proceed."
+
+test("txCancelFromLine extracts a genuine cancel (string content)", () => {
+  const line = JSON.stringify({
+    type: "user", timestamp: "2026-07-02T07:03:05.523Z",
+    cwd: "/mnt/x/cc-studio", sessionId: "4fe4eaaf-fe8a-4b9b-80c5-301ed78519e8",
+    message: { content: [{ type: "tool_result", tool_use_id: "t1", content: UQ }] },
+  })
+  const r = txCancelFromLine(line)
+  assert.ok(r)
+  assert.equal(r.src, "cancel")
+  assert.equal(r.via, "transcript")
+  assert.equal(r.t, Date.parse("2026-07-02T07:03:05.523Z"))
+  assert.equal(r.cwd, "/mnt/x/cc-studio")
+  assert.equal(r.session, "4fe4eaaf")
+})
+
+test("txCancelFromLine extracts array-content variant", () => {
+  const line = JSON.stringify({
+    type: "user", timestamp: "2026-07-02T07:03:05.523Z", cwd: "/x", sessionId: "abcd1234efgh",
+    message: { content: [{ type: "tool_result", content: [{ type: "text", text: UQ }] }] },
+  })
+  assert.ok(txCancelFromLine(line))
+})
+
+test("txCancelFromLine rejects mere quotes (contains but not startsWith)", () => {
+  const line = JSON.stringify({
+    type: "user", timestamp: "2026-07-02T07:00:00Z", cwd: "/x", sessionId: "s",
+    message: { content: [{ type: "tool_result", content: "1\t# note quoting: " + UQ }] },
+  })
+  assert.equal(txCancelFromLine(line), null)
+})
+
+test("txCancelFromLine rejects non-user / junk lines", () => {
+  assert.equal(txCancelFromLine("not-json " + UQ), null)
+  assert.equal(txCancelFromLine(JSON.stringify({ type: "assistant", message: { content: UQ } })), null)
+  assert.equal(txCancelFromLine(JSON.stringify({ type: "user", message: { content: "plain " } })), null)
+})

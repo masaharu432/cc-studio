@@ -1,6 +1,7 @@
 import http from "node:http"
 import crypto from "node:crypto"
 import fs from "node:fs"
+import os from "node:os"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 
@@ -41,6 +42,100 @@ function appendObserver(text) {
   } catch (e) {
     console.error("observer append failed:", e.message)
   }
+}
+
+// ── トランスクリプト走査（突発キャンセルの正確な発生時刻を自動収集） ─────────
+// DOM 文字列検知（アプリ側）は「見えている時しか拾えない・時刻が発生とズレる」ため補助扱い。
+// 一次証拠は ~/.claude/projects/**.jsonl のセッショントランスクリプト。ここを増分走査し、
+// ツール拒否メッセージ（CLI 定数 uQ。CLI 自身も startsWith で判定している）を
+// t=正確な発生時刻 で observer.jsonl に自動追記する。
+const TX_ROOT = path.join(os.homedir(), ".claude", "projects")
+const TX_STATE_FILE = path.join(DATA_DIR, "tx-scan-state.json")
+const TX_SCAN_MS = 60_000
+const TX_NEW_FILE_WINDOW_MS = 48 * 3600 * 1000   // 初見ファイルはこの期間内に更新されたものだけ全走査
+const CANCEL_TEXT = "The user doesn't want to take this action right now."
+
+/**
+ * トランスクリプト1行 → キャンセルレコード（該当しなければ null）。
+ * 本物の判定条件: type=user の message.content[] に、content が CANCEL_TEXT で**始まる**
+ * tool_result があること（startsWith 判定。引用・ノート・会話中の言及は先頭一致しないため除外される）。
+ */
+export function txCancelFromLine(line) {
+  if (!line || line.indexOf("want to take this action") < 0) return null  // 安価な前置フィルタ
+  let o
+  try { o = JSON.parse(line) } catch { return null }
+  if (!o || o.type !== "user") return null
+  const items = o.message && o.message.content
+  if (!Array.isArray(items)) return null
+  const hit = items.some((it) => {
+    if (!it || it.type !== "tool_result") return false
+    const c = it.content
+    const text = typeof c === "string" ? c
+      : Array.isArray(c) ? String((c.find((x) => x && x.type === "text") || {}).text || "") : ""
+    return text.startsWith(CANCEL_TEXT)
+  })
+  if (!hit) return null
+  const t = Date.parse(o.timestamp || "") || 0
+  return {
+    t, iso: asString(o.timestamp), src: "cancel", kind: "cancel", via: "transcript",
+    cwd: asString(o.cwd), session: asString(o.sessionId).slice(0, 8),
+  }
+}
+
+function loadTxState() {
+  try { return JSON.parse(fs.readFileSync(TX_STATE_FILE, "utf8")) } catch { return { files: {} } }
+}
+function saveTxState(st) {
+  try { fs.mkdirSync(DATA_DIR, { recursive: true }); fs.writeFileSync(TX_STATE_FILE, JSON.stringify(st)) }
+  catch (e) { console.error("tx-state save failed:", e.message) }
+}
+
+/** 全プロジェクトのトランスクリプトを増分走査し、見つけたキャンセルを追記。見つけた件数を返す。 */
+export function scanTranscriptsOnce(root = TX_ROOT) {
+  const st = loadTxState()
+  st.files = st.files || {}
+  const now = Date.now()
+  let found = 0
+  let dirs = []
+  try { dirs = fs.readdirSync(root) } catch { return 0 }
+  for (const d of dirs) {
+    let files = []
+    try { files = fs.readdirSync(path.join(root, d)).filter((f) => f.endsWith(".jsonl")) } catch { continue }
+    for (const f of files) {
+      const p = path.join(root, d, f)
+      let stat
+      try { stat = fs.statSync(p) } catch { continue }
+      const known = st.files[p]
+      if (!known && now - stat.mtimeMs > TX_NEW_FILE_WINDOW_MS) {
+        st.files[p] = { offset: stat.size }   // 古いファイルは履歴を掘らず末尾から追う
+        continue
+      }
+      let offset = known ? known.offset : 0
+      if (stat.size < offset) offset = 0      // truncate された場合は先頭から
+      if (stat.size <= offset) continue
+      let text = ""
+      try {
+        const fd = fs.openSync(p, "r")
+        const buf = Buffer.alloc(stat.size - offset)
+        fs.readSync(fd, buf, 0, buf.length, offset)
+        fs.closeSync(fd)
+        text = buf.toString("utf8")
+      } catch { continue }
+      const lastNl = text.lastIndexOf("\n")
+      if (lastNl < 0) continue                 // 末尾の行が未完（書き込み途中）なら次回へ
+      const chunk = text.slice(0, lastNl)
+      st.files[p] = { offset: offset + Buffer.byteLength(chunk, "utf8") + 1 }
+      for (const line of chunk.split("\n")) {
+        const rec = txCancelFromLine(line)
+        if (rec) { appendObserver(JSON.stringify(rec) + "\n"); found++ }
+      }
+    }
+  }
+  for (const p of Object.keys(st.files)) {    // 7日更新の無いエントリは掃除
+    try { if (now - fs.statSync(p).mtimeMs > 7 * 86400e3) delete st.files[p] } catch { delete st.files[p] }
+  }
+  saveTxState(st)
+  return found
 }
 
 export function normalizeEvent(raw) {
@@ -157,4 +252,7 @@ if (isMain) {
   createServer().listen(PORT, HOST, () => {
     console.log(`notify-relay on ${HOST}:${PORT}`)
   })
+  // トランスクリプト走査: 起動時に1回＋60秒ごと。テスト import では起動しない。
+  try { const n = scanTranscriptsOnce(); if (n) console.log(`tx-scan: ${n} cancel(s) found`) } catch {}
+  setInterval(() => { try { scanTranscriptsOnce() } catch {} }, TX_SCAN_MS)
 }
