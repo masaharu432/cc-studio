@@ -175,10 +175,10 @@ class KeepAliveService : Service() {
         val folder = cwd.ifEmpty { project }
         val body = if (message.isNotEmpty()) "$message\n$folder" else folder
 
-        notifyTask(title, body, cwd)
+        notifyTask(title, body, cwd, kind)
     }
 
-    private fun notifyTask(title: String, body: String, cwd: String) {
+    private fun notifyTask(title: String, body: String, cwd: String, kind: String) {
         val tapIntent = Intent(this, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_NEW_TASK
             putExtra(EXTRA_OPEN_CWD, cwd)
@@ -198,9 +198,11 @@ class KeepAliveService : Service() {
             .setCategory(NotificationCompat.CATEGORY_MESSAGE)
             .setDefaults(NotificationCompat.DEFAULT_ALL)
             .build()
-        // セッション単位で更新（積み上げない）: tag+id namespace で foreground id=1 と衝突しない
+        // セッション単位で更新（積み上げない）: tag+id namespace で foreground id=1 と衝突しない。
+        // ただし Cancel は専用 tag に分離する。同じ cwd の直後の Stop（応答完了）が同一枠を
+        // 上書きして「⚠️中断」が「✅完了」に化けるのを防ぐ（実測で発生）。
         val mgr = ContextCompat.getSystemService(this, NotificationManager::class.java)
-        mgr?.notify(TASK_TAG, cwd.hashCode(), n)
+        mgr?.notify(if (kind == "Cancel") CANCEL_TAG else TASK_TAG, cwd.hashCode(), n)
         Log.d("CcStudio", "cc_task notified: $title")
     }
 
@@ -261,6 +263,8 @@ class KeepAliveService : Service() {
         const val TASK_CHANNEL_ID_LEGACY = "cc_task"
         const val TASK_CHANNEL_ID = "cc_task_alerts"
         const val TASK_TAG = "cc_task"
+        // Cancel 通知の専用 tag（同 cwd の Stop 通知に上書きされない別枠）
+        const val CANCEL_TAG = "cc_cancel"
         const val NOTIFICATION_ID = 1
         const val EXTRA_OPEN_CWD = "app.ccstudio.OPEN_CWD"
         const val ACTION_REFRESH = "app.ccstudio.REFRESH_KEEPALIVE"
