@@ -317,6 +317,17 @@ Write/Edit 発行（bypass でも拡張バグでプロンプト生成 #36219）
   新たな 668s キャンセル源になりうる → **Bash allowlist（permissions.allow）併用**が前提。
   `/fewer-permission-prompts` で整備できる。
 - 決定実験: acceptEdits のセッションで Write を含むタスク→背面12分放置→完走すれば採用。
+- **注意（上流の議論より）**: [#37518](https://github.com/anthropics/claude-code/issues/37518)
+  （v2.1.78, closed as duplicate）は「**acceptEdits でも** Edit/Write の diff 承認が出る」と報告して
+  おり、拡張の diff 承認フローは権限システム全体（allow ルール・defaultMode・bypass・acceptEdits）
+  から**独立に動くリグレッション**とされている。同族 issue は #15772 #20536 #29159 #33047
+  #36219 #36884 #43953 など多数で、メンテナ対応はほぼ無くステールクローズが目立つ。
+  当時 2.1.78 → 現行 2.1.19x でバージョン差が大きいため、**実験の価値はある**（ローカル実績
+  acceptEdits 0/37 はサンプル薄だが有望）。ダメなら残る回避は「ターミナルで claude 実行」
+  「通知で11分以内に応答」「webview 延命」。
+- **上流未報告の新情報（報告価値）**: どの issue も「~668 秒で自動 deny され
+  『The user doesn't want to take this action』に化ける」挙動には触れていない。凍結クライアント
+  （モバイル/code-server）での実測データ付きで新規報告する価値がある。
 
 ## 次の一手（優先度順）
 
