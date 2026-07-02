@@ -495,26 +495,20 @@ class MainActivity : AppCompatActivity() {
     /** プラグインからの生の状態遷移を、スクリーン情報＋端末時刻を付けて永続ログへ書く。 */
     private fun onObserverLog(screenId: Long, json: String) {
         try {
-            val o = org.json.JSONObject(json)
             val s = screens.byId(screenId)
             val screen = if (s?.kind == ScreenKind.WEB) ScreenUrl.folderName(s.url) else (s?.title ?: "")
             val cwd = if (s?.kind == ScreenKind.WEB) (ScreenUrl.folderPath(s.url) ?: "") else ""
-            if (o.optString("event") == "cancel") {
-                // 重複除去: 中断メッセージは履歴に残るため、リロード（背面 kill→復帰の再作成含む）ごとに
-                // 同じ中断が再検知される。直近の cancel から一定時間内の再報告は捨てる。
-                // SharedPreferences に持つので Activity 再作成をまたいでも効く。
-                val prefs = getSharedPreferences("cc_observer", MODE_PRIVATE)
-                val now = System.currentTimeMillis()
-                val last = prefs.getLong("last_cancel_t", 0L)
-                if (now - last >= CANCEL_DEDUP_MS) {
+            // cancel の重複除去時刻は SharedPreferences に持つので Activity 再作成をまたいでも効く。
+            val prefs = getSharedPreferences("cc_observer", MODE_PRIVATE)
+            val now = System.currentTimeMillis()
+            when (val a = ObserverIngest.decide(json, prefs.getLong("last_cancel_t", 0L), now)) {
+                ObserverIngest.Action.RecordCancel -> {
                     prefs.edit().putLong("last_cancel_t", now).apply()
                     ObserverLog.cancel(this, screen, cwd)
                 }
-            } else {
-                ObserverLog.screenState(
-                    this, screen, cwd,
-                    o.optBoolean("busy", false), o.optBoolean("disconnected", false), o.optString("matched", ""),
-                )
+                is ObserverIngest.Action.RecordState ->
+                    ObserverLog.screenState(this, screen, cwd, a.busy, a.disconnected, a.matched)
+                ObserverIngest.Action.DropDuplicateCancel, ObserverIngest.Action.Ignore -> {}
             }
         } catch (_: Exception) { /* ログはアプリを落とさない */ }
     }
@@ -1003,9 +997,6 @@ class MainActivity : AppCompatActivity() {
         // 既定で開くワークベンチ URL。実値は local.properties の ccstudio.targetUrl から
         // BuildConfig 経由で注入する（build.gradle 参照）。個人ホストはコミットしない。
         private val TARGET_URL = BuildConfig.TARGET_URL
-
-        /** 突発キャンセルの重複除去窓（ms）。この時間内の再報告はリロード再検知として捨てる。 */
-        private const val CANCEL_DEDUP_MS = 15_000L
 
         private const val SETTINGS_RUNTIME_KEY = "__ccSettingsRuntime"
 
