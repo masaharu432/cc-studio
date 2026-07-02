@@ -24,6 +24,10 @@ cp cc-studio.env.example cc-studio.env   # 必要なら編集（任意）
    systemd が無ければ `start-vsserver.sh` 案内にフォールバック。
 4. **provision** — 推奨 User 設定（`settings.json`）を**非破壊ディープ merge**（既存は `.bak` 退避）し、
    `extensions.txt` の拡張を Open VSX からインストール。
+5. **同梱拡張 cc-open** — `install-cc-open.sh` が [`cc-open/`](cc-open) を `.vsix` にパッケージして
+   インストール（チャットのリンクから開いた `.md` をタブ内プレビューへ切替える補助拡張。同バージョン
+   なら skip、`--force` で再インストール）。
+6. **通知機能** — `install-notify.sh` を呼び、notify-relay の常駐化と Claude Code user フックの登録を行う（下記）。
 
 ## 公開（HTTPS / Tailnet）
 
@@ -36,6 +40,25 @@ tailscale serve --bg 127.0.0.1:8088
 
 WSL で動かす場合、`tailscale serve` は **Windows 側**で実行する（mirrored networking で
 Windows loopback が WSL loopback に届く）。
+
+## 通知機能（notify-relay + Claude Code フック）
+
+`install-notify.sh`（setup.sh からも呼ばれる・冪等）がインストールする:
+
+1. **user フック** — `~/.claude/settings.json` に `Stop`（ターン完了）と `Notification`
+   （matcher `permission_prompt`・許可待ち）のフックを登録。イベント JSON を
+   `http://127.0.0.1:8770/cc-notify` へ POST する（user スコープなので全プロジェクト共通）。
+2. **notify-relay 常駐** — [`../notify-relay/relay.mjs`](../notify-relay/relay.mjs)（Node・`:8770`）を
+   systemd user サービス `notify-relay` として常駐化。受けたイベントを WebSocket でアプリへ配信し、
+   アプリからの観測ログバッチ（`type:"cc-observer"`）は `../notify-relay/data/observer.jsonl` に追記する。
+   node が無ければ skip、systemd が無ければ `start-vsserver.sh` が起動を代行する。
+3. **tailscale パス公開** — この環境から tailscale を操作できれば
+   `tailscale serve --bg --set-path /cc-notify http://127.0.0.1:8770` を自動実行。できない場合
+   （WSL 等）は前段ホストで手動実行する（Windows は PowerShell 推奨。Git Bash は
+   `MSYS_NO_PATHCONV=1` を付ける）。
+
+既に起動中の Claude セッションは一度リロードするとフックを読み込む。相手方（アプリ側）の挙動は
+[docs/specs/2026-07-02-architecture-and-implementation-notes.md](../../docs/specs/2026-07-02-architecture-and-implementation-notes.md) 参照。
 
 ## 推奨設定：ファイルを「プレビュー既定」で開く（`settings.json`）
 
@@ -80,6 +103,10 @@ setup.sh が両方を読む。
 | `setup.sh` | オーケストレータ（冪等） |
 | `settings.json` | 推奨 User 設定（merge するキーのみ） |
 | `extensions.txt` | 拡張 ID（Open VSX） |
+| `cc-open/` | 同梱拡張（.md をタブ内プレビューへ自動切替） |
+| `install-cc-open.sh` | cc-open を vsix 化してインストール（冪等） |
+| `install-notify.sh` | 通知機能（フック登録 + notify-relay 常駐 + serve 公開） |
+| `notify-relay.service.tmpl` | notify-relay の systemd user unit テンプレ |
 | `vsserver.service.tmpl` | systemd user unit テンプレ |
-| `start-vsserver.sh` | systemd 無し用フォールバック起動 |
+| `start-vsserver.sh` | systemd 無し用フォールバック起動（relay も代行起動） |
 | `cc-studio.env.example` | 調整値テンプレ |

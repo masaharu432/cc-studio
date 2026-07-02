@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # cc-studio サーバ・ブリングアップ（冪等）。
 #   install code-server → config 生成 → systemd ユーザサービス常駐 →
-#   推奨 User 設定の非破壊 merge → 拡張インストール → tailscale 公開手順を表示。
+#   推奨 User 設定の非破壊 merge → 拡張インストール（Open VSX + 同梱 cc-open）→
+#   通知機能（install-notify.sh）→ tailscale 公開手順を表示。
 #
 #   ./setup.sh            # 通常
 #   ./setup.sh --force    # 拡張を再インストール（--install-extension --force）
@@ -131,6 +132,12 @@ for listfile in "$HERE/extensions.txt" "$HERE/extensions.local.txt"; do
     cs "${args[@]}" >/dev/null 2>&1 || ext_failed+=("$id")
   done < "$listfile"
 done
+
+# ---- 5c) provision: 同梱拡張 cc-open（.md タブ内プレビュー切替） ----
+log "同梱拡張 cc-open をインストール（install-cc-open.sh）..."
+cc_open_args=()
+[[ $FORCE -eq 1 ]] && cc_open_args+=(--force)
+"$HERE/install-cc-open.sh" ${cc_open_args[@]+"${cc_open_args[@]}"} || ext_failed+=("ccstudio.cc-open")
 
 # ---- 6) expose: tailscale serve は前段ホスト側で手動 ----
 cat <<EOF
