@@ -153,6 +153,25 @@ class MainActivity : AppCompatActivity() {
         ObserverLog.lifecycle(this, "background")
     }
 
+    // ── 診断: 「本当の背面化(stop/start)」と「一時的なフォーカス喪失(winblur/winfocus)」を
+    //    onPause/onResume(=foreground/background) と区別して記録する。
+    //    突発キャンセルは onPause だけで onStop を伴わない“一時フォーカス喪失”に相関する疑いがあるため、
+    //    この3系統を分けて突合できるようにする。
+    override fun onStart() {
+        super.onStart()
+        ObserverLog.lifecycle(this, "start-visible")
+    }
+
+    override fun onStop() {
+        super.onStop()
+        ObserverLog.lifecycle(this, "stop-hidden")
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        ObserverLog.lifecycle(this, if (hasFocus) "winfocus" else "winblur")
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
