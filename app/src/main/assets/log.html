@@ -76,6 +76,7 @@
       cls=(o.event==='failure'||o.event==='closed')?'bad':(o.event==='open'?'on':'');
     } else if(src==='app'){
       k='app'; m='lifecycle: '+(o.event||'')+(o.active?(' @'+base(o.active)):'');
+      if(String(o.event||'').indexOf('renderer')===0) cls='bad';  // renderer-crash / renderer-killed
     } else if(src==='cancel'){
       k='cancel'; m='⚠ 突発キャンセル'+(o.screen?(' @'+o.screen):(o.cwd?(' @'+base(o.cwd)):'')); cls='bad';
     } else {

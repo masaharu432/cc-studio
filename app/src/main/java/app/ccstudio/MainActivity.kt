@@ -17,6 +17,7 @@ import android.util.Log
 import android.view.KeyEvent
 import android.view.View
 import android.webkit.CookieManager
+import android.webkit.RenderProcessGoneDetail
 import android.webkit.URLUtil
 import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
@@ -199,12 +200,40 @@ class MainActivity : AppCompatActivity() {
 
     // ── WebView ファクトリ ──────────────────────────────────────────────
 
+    /**
+     * レンダラプロセス死の共通ハンドラ。WebView のレンダラは FGS の保護外の別プロセスで、
+     * 背面では優先度が下がり殺されうる。onRenderProcessGone を処理しないと Android は
+     * アプリ本体ごと強制終了する（＝通知常駐でも殺される最大の抜け穴）。
+     * ここでは (1) 道連れクラッシュを防ぎ (2) 原因を永続ログに記録し (3) Activity を
+     * 作り直して全画面を復旧する（レンダラは全 WebView で共有のため個別復旧は意味がない）。
+     */
+    @Volatile private var rendererGoneHandled = false
+    private fun handleRendererGone(detail: RenderProcessGoneDetail?): Boolean {
+        if (!rendererGoneHandled) {
+            rendererGoneHandled = true
+            try {
+                ObserverLog.lifecycle(this, if (detail?.didCrash() == true) "renderer-crash" else "renderer-killed")
+            } catch (_: Exception) {}
+            runOnUiThread { recreate() }
+        }
+        return true
+    }
+
+    /** 全 WebView 共通のクライアント基底。レンダラ死を必ず処理する（未処理＝アプリごと死）。 */
+    private open inner class CcWebViewClient : WebViewClient() {
+        override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean =
+            handleRendererGone(detail)
+    }
+
     @SuppressLint("SetJavaScriptEnabled")
     private fun newConfiguredWebView(screenId: Long = -1L): WebView = WebView(this).apply {
         settings.javaScriptEnabled = true
         settings.domStorageEnabled = true
         settings.databaseEnabled = true
         settings.mediaPlaybackRequiresUserGesture = false
+        // 非可視でもレンダラ優先度を下げない（既定は非可視で waive＝背面kill の温床）。
+        // 背面でターンを維持するというアプリの目的を優先し、電池より生存性を取る。
+        setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT, false)
         webChromeClient = object : WebChromeClient() {
             override fun onShowFileChooser(
                 view: WebView,
@@ -234,7 +263,7 @@ class MainActivity : AppCompatActivity() {
         val screen = Screen(id, ScreenKind.WEB, wv)
         screen.url = url
         var firstReloadDone = false
-        wv.webViewClient = object : WebViewClient() {
+        wv.webViewClient = object : CcWebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                 // 外部サイト（調査リンク・ホームページ等）は外部ブラウザで開き、workbench を離れない。
                 if (isExternalHttp(request.url)) { openExternalUrl(request.url); return true }
@@ -303,7 +332,7 @@ class MainActivity : AppCompatActivity() {
         val wv = newConfiguredWebView(id)
         val screen = Screen(id, ScreenKind.SYSTEM_PLUGINS, wv)
         screen.title = "Plugins"
-        wv.webViewClient = WebViewClient()
+        wv.webViewClient = CcWebViewClient()
         wv.loadUrl("file:///android_asset/plugins.html")
         return screen
     }
@@ -515,7 +544,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun openSwitcher() {
         val sw = switcher ?: newConfiguredWebView().also {
-            it.webViewClient = WebViewClient()
+            it.webViewClient = CcWebViewClient()
             it.loadUrl("file:///android_asset/switcher.html")
             root.addView(
                 it,
@@ -536,7 +565,7 @@ class MainActivity : AppCompatActivity() {
     /** 通知設定の全画面（notify.html）をオーバーレイ表示する（switcher と同型）。 */
     private fun openNotify() {
         val nv = notifyView ?: newConfiguredWebView().also {
-            it.webViewClient = WebViewClient()
+            it.webViewClient = CcWebViewClient()
             it.loadUrl("file:///android_asset/notify.html")
             root.addView(
                 it,
@@ -557,7 +586,7 @@ class MainActivity : AppCompatActivity() {
     // ── ログビューア（log.html オーバーレイ・notify と同型） ──
     private fun openLog() {
         val lv = logView ?: newConfiguredWebView().also {
-            it.webViewClient = WebViewClient()
+            it.webViewClient = CcWebViewClient()
             it.loadUrl("file:///android_asset/log.html")
             root.addView(
                 it,
@@ -652,7 +681,7 @@ class MainActivity : AppCompatActivity() {
     /** プラグイン設定の全画面（plugin-settings.html）をオーバーレイ表示する（notify と同型）。 */
     private fun openPluginSettings() {
         val sv = settingsView ?: newConfiguredWebView().also {
-            it.webViewClient = WebViewClient()
+            it.webViewClient = CcWebViewClient()
             it.loadUrl("file:///android_asset/plugin-settings.html")
             root.addView(
                 it,
