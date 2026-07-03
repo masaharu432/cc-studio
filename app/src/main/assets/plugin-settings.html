@@ -49,6 +49,17 @@
   </div>
 <script>
   function api(){ return window.CCStudio || {}; }
+  // 表示言語（ja/en）。ブリッジ不在（ブラウザで直接開いた等）は ja に倒す。
+  var JA=(function(){ try{ return (api().getUiLang && api().getUiLang())!=='en'; }catch(_){ return true; } })();
+  var T=JA?{
+    docTitle:'プラグイン設定', title:'設定',
+    note:'設定はリロード無しで、開いている全スクリーンに即反映されます。',
+    empty:'このプラグインに設定項目はありません。'
+  }:{
+    docTitle:'Plugin settings', title:'Settings',
+    note:'Changes apply immediately to all open screens — no reload needed.',
+    empty:'This plugin has no settings.'
+  };
   function el(t,c){ var e=document.createElement(t); if(c) e.className=c; return e; }
   function view(){ try{ return JSON.parse(api().getSettingsView()||'{}'); }catch(_){ return {}; } }
 
@@ -71,11 +82,13 @@
 
   window.__ccRenderSettings=function(){
     var v=view();
-    document.getElementById('title').textContent = v.displayName || v.name || '設定';
+    document.title=T.docTitle;
+    document.querySelector('.note').textContent=T.note;
+    document.getElementById('title').textContent = v.displayName || v.name || T.title;
     var list=document.getElementById('list'); list.innerHTML='';
     var defs=(v.settings||[]).filter(function(s){ return s.type==='boolean'; });
     if(!defs.length){
-      var e=el('div','empty'); e.textContent='このプラグインに設定項目はありません。';
+      var e=el('div','empty'); e.textContent=T.empty;
       list.appendChild(e); return;
     }
     defs.forEach(function(s){ list.appendChild(boolRow(v.name, s)); });

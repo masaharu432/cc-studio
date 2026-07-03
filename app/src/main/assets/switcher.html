@@ -91,12 +91,25 @@
       <div class="page" id="page-settings"><div id="setList" style="display:contents"></div></div>
     </div>
     <div class="tabbar">
-      <button class="tab on" id="tabScreens"><span class="tic">▦</span><span>スクリーン</span></button>
-      <button class="tab" id="tabSettings"><span class="tic">⚙</span><span>設定</span></button>
+      <button class="tab on" id="tabScreens"><span class="tic">▦</span><span id="tabScreensLabel">スクリーン</span></button>
+      <button class="tab" id="tabSettings"><span class="tic">⚙</span><span id="tabSettingsLabel">設定</span></button>
     </div>
   </div>
 <script>
   function api(){ return window.CCStudio || {}; }
+  // 表示言語（ja/en）。ブリッジ不在時は ja に倒す。
+  var JA=(function(){ try{ return (api().getUiLang && api().getUiLang())!=='en'; }catch(_){ return true; } })();
+  var T=JA?{
+    tabScreens:'スクリーン', tabSettings:'設定', items:'項目', del:'削除', disconnected:'接続切れ',
+    confirmTitle:'リロードして起動しますか？',
+    confirmBody:function(f){ return '<b style="color:#E8EDF4;">'+f+'</b> を再読込してプラグインの変更を反映します。<span style="color:#e8b07e;">このスクリーンで実行中の処理があれば中断されます。</span>'; },
+    openAsIs:'そのまま開く', reload:'リロード'
+  }:{
+    tabScreens:'Screens', tabSettings:'Settings', items:'items', del:'Delete', disconnected:'disconnected',
+    confirmTitle:'Reload and open?',
+    confirmBody:function(f){ return 'Reload <b style="color:#E8EDF4;">'+f+'</b> to apply plugin changes. <span style="color:#e8b07e;">Anything running on this screen will be interrupted.</span>'; },
+    openAsIs:'Open as is', reload:'Reload'
+  };
   function el(t,c){ var e=document.createElement(t); if(c) e.className=c; return e; }
   function screensData(){ try { return JSON.parse(api().listScreens()||'[]'); } catch(_){ return []; } }
   function settingsData(){ try { return JSON.parse(api().listSettings()||'[]'); } catch(_){ return []; } }
@@ -107,7 +120,7 @@
   function paintSummary(){
     var s=document.getElementById('summary');
     if(curTab==='screens') s.innerHTML='<b>'+counts.screens+'</b> screens';
-    else s.innerHTML='<b>'+counts.settings+'</b> 項目';
+    else s.innerHTML='<b>'+counts.settings+'</b> '+T.items;
   }
 
   function setTab(t, silent){
@@ -126,7 +139,7 @@
 
   function makeWebBand(s){
     var row=el('div','band-row');
-    var del=el('button','swipe-del'); del.innerHTML='<span class="x">✕</span>削除';
+    var del=el('button','swipe-del'); del.innerHTML='<span class="x">✕</span>'; del.appendChild(document.createTextNode(T.del));
     del.addEventListener('click',function(e){ e.stopPropagation(); try{ api().closeScreen(String(s.id)); }catch(_){ } });
     var band=el('div','band'+(s.active?' active':''));
     var dot=el('span','fdot');
@@ -139,7 +152,7 @@
     rb.addEventListener('click',function(e){ e.stopPropagation(); onReload(s); });
     band.appendChild(dot); band.appendChild(main);
     // 処理中はドットが青くパルスするので文字バッジは出さない。接続切れは静止赤ドットなので文字も添える。
-    if(s.disconnected){ var bd=el('span','band-badge disc'); bd.textContent='接続切れ'; band.appendChild(bd); }
+    if(s.disconnected){ var bd=el('span','band-badge disc'); bd.textContent=T.disconnected; band.appendChild(bd); }
     band.appendChild(rb);
     var x0=null;
     band.addEventListener('touchstart',function(e){ x0=e.touches[0].clientX; },{passive:true});
@@ -166,11 +179,11 @@
   function showConfirm(folder, onReloadCb, onOpenCb){
     var bd=el('div'); bd.style.cssText='position:fixed;inset:0;background:rgba(6,9,13,.66);display:flex;align-items:center;justify-content:center;padding:22px;z-index:50;';
     var dg=el('div'); dg.style.cssText='width:100%;max-width:320px;background:linear-gradient(180deg,#161d27,#11151c);border:1px solid #2A3342;border-radius:16px;padding:18px 16px 16px;';
-    dg.innerHTML='<div style="font:600 16px/1.3 var(--sans);color:#E8EDF4;margin-bottom:8px;">リロードして起動しますか？</div>'+
-      '<div style="font:500 12.5px/1.65 var(--sans);color:#7C8694;margin-bottom:16px;"><b style="color:#E8EDF4;">'+folder+'</b> を再読込してプラグインの変更を反映します。<span style="color:#e8b07e;">このスクリーンで実行中の処理があれば中断されます。</span></div>';
+    dg.innerHTML='<div style="font:600 16px/1.3 var(--sans);color:#E8EDF4;margin-bottom:8px;">'+T.confirmTitle+'</div>'+
+      '<div style="font:500 12.5px/1.65 var(--sans);color:#7C8694;margin-bottom:16px;">'+T.confirmBody(folder)+'</div>';
     var row=el('div'); row.style.cssText='display:flex;gap:9px;';
-    var b1=el('button'); b1.textContent='そのまま開く'; b1.style.cssText='flex:1;border-radius:10px;padding:13px;border:1px solid #2A3342;background:transparent;color:#7C8694;font:600 13px var(--sans);';
-    var b2=el('button'); b2.textContent='リロード'; b2.style.cssText='flex:1;border-radius:10px;padding:13px;border:1px solid #1c6fc0;background:#2E90E8;color:#fff;font:600 13px var(--sans);';
+    var b1=el('button'); b1.textContent=T.openAsIs; b1.style.cssText='flex:1;border-radius:10px;padding:13px;border:1px solid #2A3342;background:transparent;color:#7C8694;font:600 13px var(--sans);';
+    var b2=el('button'); b2.textContent=T.reload; b2.style.cssText='flex:1;border-radius:10px;padding:13px;border:1px solid #1c6fc0;background:#2E90E8;color:#fff;font:600 13px var(--sans);';
     b1.onclick=function(){ document.body.removeChild(bd); onOpenCb(); };
     b2.onclick=function(){ document.body.removeChild(bd); onReloadCb(); };
     row.appendChild(b1); row.appendChild(b2); dg.appendChild(row); bd.appendChild(dg); document.body.appendChild(bd);
@@ -198,6 +211,8 @@
   }
 
   window.__ccRenderScreens=function(){
+    document.getElementById('tabScreensLabel').textContent=T.tabScreens;
+    document.getElementById('tabSettingsLabel').textContent=T.tabSettings;
     var data=screensData();
     var web=data.filter(function(s){return s.kind==='WEB';});
     var list=document.getElementById('webList'); list.innerHTML='';

@@ -50,6 +50,14 @@
 
   var CHUNK = 512 * 1024; // 生バイトのチャンク幅（base64 で約1.33倍になる）
 
+  // 表示言語（ja/en）。ブリッジ不在時は ja に倒す。
+  var JA = (function () { try { return (window.CCStudio && window.CCStudio.getUiLang && window.CCStudio.getUiLang()) !== 'en'; } catch (_) { return true; } })();
+  var T = JA ? {
+    start: 'ダウンロード開始: ', progress: 'ダウンロード中 ', saved: '保存しました: ', failed: 'ダウンロードに失敗しました'
+  } : {
+    start: 'Download started: ', progress: 'Downloading ', saved: 'Saved: ', failed: 'Download failed'
+  };
+
   // ── 進捗オーバーレイ ──
   function el(id) { return document.getElementById(id); }
   function ensureOverlay() {
@@ -96,23 +104,23 @@
     ensureOverlay().style.display = 'block';
     el('ccstudio-dl-bar').style.background = '#1e88e5';
     el('ccstudio-dl-bar').style.width = '0%';
-    el('ccstudio-dl-label').textContent = 'ダウンロード開始: ' + name;
+    el('ccstudio-dl-label').textContent = T.start + name;
   }
   function ovProgress(done, total) {
     var p = total ? Math.round(done / total * 100) : 0;
     el('ccstudio-dl-bar').style.width = p + '%';
     el('ccstudio-dl-label').textContent =
-      'ダウンロード中 ' + p + '%  (' + fmt(done) + ' / ' + fmt(total) + ')';
+      T.progress + p + '%  (' + fmt(done) + ' / ' + fmt(total) + ')';
   }
   function ovDone(name) {
     el('ccstudio-dl-bar').style.width = '100%';
-    el('ccstudio-dl-label').textContent = '保存しました: ' + name;
+    el('ccstudio-dl-label').textContent = T.saved + name;
     setTimeout(function () { var o = el('ccstudio-dl'); if (o) o.style.display = 'none'; }, 2500);
   }
   function ovFail() {
     var o = ensureOverlay();
     el('ccstudio-dl-bar').style.background = '#e53935';
-    el('ccstudio-dl-label').textContent = 'ダウンロードに失敗しました';
+    el('ccstudio-dl-label').textContent = T.failed;
     setTimeout(function () { o.style.display = 'none'; }, 3000);
   }
 

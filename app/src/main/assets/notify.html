@@ -40,27 +40,52 @@
 <body>
   <div class="screen">
     <div class="bar">
-      <button class="navback" id="back"><span class="chev">‹</span>設定</button>
-      <span class="title">通知設定</span>
+      <button class="navback" id="back"><span class="chev">‹</span><span id="backLabel">設定</span></button>
+      <span class="title" id="pageTitle">通知設定</span>
     </div>
     <div class="body">
-      <div class="sect"><p class="sect-h">種類別</p>
+      <div class="sect"><p class="sect-h" id="sectByType">種類別</p>
         <div class="row"><div class="ic">✅</div><div class="row-main">
-          <div class="row-t">応答完了 (Stop)</div>
-          <div class="row-d">AI が応答を終えたとき通知</div></div>
+          <div class="row-t" id="stopT">応答完了 (Stop)</div>
+          <div class="row-d" id="stopD">AI が応答を終えたとき通知</div></div>
           <button class="tgl" id="tgl-stop" aria-pressed="true" onclick="window.__ccToggleNotify('Stop')"><span class="knob"></span></button></div>
         <div class="row"><div class="ic">🔔</div><div class="row-main">
-          <div class="row-t">許可待ち (Notification)</div>
-          <div class="row-d">入力 / 許可待ちのとき通知</div></div>
+          <div class="row-t" id="permT">許可待ち (Notification)</div>
+          <div class="row-d" id="permD">入力 / 許可待ちのとき通知</div></div>
           <button class="tgl" id="tgl-permission" aria-pressed="true" onclick="window.__ccToggleNotify('Notification')"><span class="knob"></span></button></div>
       </div>
-      <p class="note">通知は端末の OS 通知として届きます。今見ているスクリーンの結果は通知しません。</p>
+      <p class="note" id="pageNote">通知は端末の OS 通知として届きます。今見ているスクリーンの結果は通知しません。</p>
     </div>
   </div>
 <script>
   function api(){ return window.CCStudio || {}; }
+  // 表示言語（ja/en）。ブリッジ不在時は ja（HTML の初期文言）に倒す。
+  var JA=(function(){ try{ return (api().getUiLang && api().getUiLang())!=='en'; }catch(_){ return true; } })();
+  var T=JA?{
+    back:'設定', title:'通知設定', byType:'種類別',
+    stopT:'応答完了 (Stop)', stopD:'AI が応答を終えたとき通知',
+    permT:'許可待ち (Notification)', permD:'入力 / 許可待ちのとき通知',
+    note:'通知は端末の OS 通知として届きます。今見ているスクリーンの結果は通知しません。'
+  }:{
+    back:'Settings', title:'Notifications', byType:'By type',
+    stopT:'Response finished (Stop)', stopD:'Notify when the AI finishes a response',
+    permT:'Waiting for permission (Notification)', permD:'Notify when input or permission is needed',
+    note:'Delivered as OS notifications. Results from the screen you are viewing are not notified.'
+  };
+  function applyText(){
+    document.title=T.title;
+    document.getElementById('backLabel').textContent=T.back;
+    document.getElementById('pageTitle').textContent=T.title;
+    document.getElementById('sectByType').textContent=T.byType;
+    document.getElementById('stopT').textContent=T.stopT;
+    document.getElementById('stopD').textContent=T.stopD;
+    document.getElementById('permT').textContent=T.permT;
+    document.getElementById('permD').textContent=T.permD;
+    document.getElementById('pageNote').textContent=T.note;
+  }
   function readPrefs(){ try{ return JSON.parse(api().getNotifyPrefs()); }catch(_){ return {stop:true, permission:true}; } }
   window.__ccRenderNotify=function(){
+    applyText();
     var p=readPrefs();
     var s=document.getElementById('tgl-stop'), n=document.getElementById('tgl-permission');
     if(s) s.setAttribute('aria-pressed', String(!!p.stop));

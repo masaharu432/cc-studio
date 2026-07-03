@@ -53,6 +53,17 @@
   </div>
 <script>
   function api(){ return window.CCStudio || {}; }
+  // 表示言語（ja/en）。ブリッジ不在時は ja に倒す。
+  var JA=(function(){ try{ return (api().getUiLang && api().getUiLang())!=='en'; }catch(_){ return true; } })();
+  var T=JA?{
+    reload:'↻ 更新', download:'⬇ ダウンロード',
+    disconnected:'接続切れ', busy:'処理中', idle:'アイドル', cancel:'⚠ 突発キャンセル',
+    empty:'まだログがありません。\n処理を走らせる/接続を切って戻す/背面↔前面 で記録されます。'
+  }:{
+    reload:'↻ Refresh', download:'⬇ Download',
+    disconnected:'disconnected', busy:'busy', idle:'idle', cancel:'⚠ unexpected cancel',
+    empty:'No log entries yet.\nRun a task, drop and restore the connection, or send the app to the background and back.'
+  };
   function el(t,c){ var e=document.createElement(t); if(c) e.className=c; return e; }
 
   function base(p){ try{ var s=String(p).replace(/\/+$/,''); return s.split('/').filter(Boolean).pop()||s; }catch(_){ return String(p||''); } }
@@ -68,9 +79,9 @@
     if(src==='screen'){
       var b=!!o.busy, d=!!o.disconnected;
       var fol=o.screen?(' @'+o.screen):(o.cwd?(' @'+base(o.cwd)):'');
-      if(d){ m='接続切れ'+fol+(o.matched?(' '+o.matched):''); cls='bad'; }
-      else if(b){ m='処理中'+fol; cls='on'; }
-      else { m='アイドル'+fol; cls='off'; }
+      if(d){ m=T.disconnected+fol+(o.matched?(' '+o.matched):''); cls='bad'; }
+      else if(b){ m=T.busy+fol; cls='on'; }
+      else { m=T.idle+fol; cls='off'; }
     } else if(src==='keepalive'){
       k='keepalive'; m=(o.event||'')+(o.detail?(' '+o.detail):'')+(o.active?(' @'+base(o.active)):'');
       cls=(o.event==='failure'||o.event==='closed')?'bad':(o.event==='open'?'on':'');
@@ -78,7 +89,7 @@
       k='app'; m='lifecycle: '+(o.event||'')+(o.active?(' @'+base(o.active)):'');
       if(String(o.event||'').indexOf('renderer')===0) cls='bad';  // renderer-crash / renderer-killed
     } else if(src==='cancel'){
-      k='cancel'; m='⚠ 突発キャンセル'+(o.screen?(' @'+o.screen):(o.cwd?(' @'+base(o.cwd)):'')); cls='bad';
+      k='cancel'; m=T.cancel+(o.screen?(' @'+o.screen):(o.cwd?(' @'+base(o.cwd)):'')); cls='bad';
     } else {
       m=JSON.stringify(o);
     }
@@ -86,11 +97,13 @@
   }
 
   window.__ccRenderLog=function(){
+    document.getElementById('reload').textContent=T.reload;
+    document.getElementById('download').textContent=T.download;
     var body=document.getElementById('body'); body.innerHTML='';
     var text=''; try{ text=api().getObserverLog ? (api().getObserverLog()||'') : ''; }catch(_){ text=''; }
     var lines=text.split('\n').filter(function(s){ return s.trim(); });
     if(!lines.length){
-      var e=el('div','empty'); e.textContent='まだログがありません。\n処理を走らせる/接続を切って戻す/背面↔前面 で記録されます。';
+      var e=el('div','empty'); e.textContent=T.empty;
       body.appendChild(e);
       document.getElementById('count').textContent='0';
       return;

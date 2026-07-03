@@ -73,7 +73,7 @@
 <body>
   <div class="screen">
     <div class="bar">
-      <button class="navback" id="back"><span class="chev">‹</span>設定</button>
+      <button class="navback" id="back"><span class="chev">‹</span><span id="backLabel">設定</span></button>
       <span class="title">Plugins</span><span class="build" id="build"></span>
     </div>
     <div class="summary" id="summary"></div>
@@ -84,13 +84,28 @@
         <div class="row"><div class="ic">▍</div><div class="row-main">
           <div class="row-t">CC Studio</div><div class="row-d" id="about"></div></div></div>
         <div class="row"><div class="ic">⌁</div><div class="row-main">
-          <div class="row-t">有効なプラグインは全フレームに常駐</div>
-          <div class="row-d">ON にした時点で以後の全ロード×全フレームに注入</div></div></div>
+          <div class="row-t" id="aboutT">有効なプラグインは全フレームに常駐</div>
+          <div class="row-d" id="aboutD">ON にした時点で以後の全ロード×全フレームに注入</div></div></div>
       </div>
     </div>
   </div>
 <script>
   function api(){ return window.CCStudio || {}; }
+  // 表示言語（ja/en）。ブリッジ不在時は ja に倒す。
+  var JA=(function(){ try{ return (api().getUiLang && api().getUiLang())!=='en'; }catch(_){ return true; } })();
+  var T=JA?{
+    back:'設定',
+    aboutT:'有効なプラグインは全フレームに常駐', aboutD:'ON にした時点で以後の全ロード×全フレームに注入',
+    gear:'このプラグインの設定', del:'削除',
+    confirmDel:function(n){ return '「'+n+'」を削除しますか？'; },
+    emptyP:'.js ファイルを追加すると、各スクリーンに注入できます。'
+  }:{
+    back:'Settings',
+    aboutT:'Enabled plugins live in every frame', aboutD:'Once ON, injected into every load × every frame from then on',
+    gear:'Settings for this plugin', del:'Delete',
+    confirmDel:function(n){ return 'Delete "'+n+'"?'; },
+    emptyP:'Add a .js file to inject it into every screen.'
+  };
   function el(t,c){ var e=document.createElement(t); if(c) e.className=c; return e; }
   function fmtSize(b){ b=+b||0; return b<1024? b+' B':(b/1024).toFixed(1)+' KB'; }
   function plugins(){ try{ return JSON.parse(api().listPlugins()||'[]'); }catch(_){ return []; } }
@@ -112,13 +127,13 @@
     var meta=el('div','mod-meta'); meta.innerHTML=fmtSize(p.size)+' · <span class="st">'+(on?'ON':'OFF')+'</span> · all frames';
     var acts=el('div','mod-actions');
     if(p.hasSettings){
-      var g=el('button','iconbtn gear'); g.textContent='⚙'; g.title='このプラグインの設定';
+      var g=el('button','iconbtn gear'); g.textContent='⚙'; g.title=T.gear;
       g.addEventListener('click',function(){ try{ api().openPluginSettings(p.name); }catch(_){ } });
       acts.appendChild(g);
     }
-    var del=el('button','iconbtn del'); del.textContent='✕'; del.title='削除';
+    var del=el('button','iconbtn del'); del.textContent='✕'; del.title=T.del;
     del.addEventListener('click',function(){
-      if(confirm('「'+(p.displayName||p.name)+'」を削除しますか？')){ try{ api().removePlugin(p.name); }catch(_){ } render(); }
+      if(confirm(T.confirmDel(p.displayName||p.name))){ try{ api().removePlugin(p.name); }catch(_){ } render(); }
     });
     acts.appendChild(del);
     foot.appendChild(meta); foot.appendChild(acts);
@@ -128,12 +143,15 @@
 
   function emptyState(){
     var w=el('div','empty');
-    w.innerHTML='<div class="plug">⌁</div><h3>No plugins yet</h3>'+
-      '<p>.js ファイルを追加すると、各スクリーンに注入できます。</p>';
+    w.innerHTML='<div class="plug">⌁</div><h3>No plugins yet</h3><p></p>';
+    w.querySelector('p').textContent=T.emptyP;
     return w;
   }
 
   window.__ccRenderPlugins=function(){
+    document.getElementById('backLabel').textContent=T.back;
+    document.getElementById('aboutT').textContent=T.aboutT;
+    document.getElementById('aboutD').textContent=T.aboutD;
     var list=plugins(); var bus=document.getElementById('bus'); bus.innerHTML='';
     if(!list.length){ bus.appendChild(emptyState()); }
     else { list.forEach(function(p){ bus.appendChild(makeMod(p)); }); }
