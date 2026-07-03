@@ -1,5 +1,7 @@
 # CC Studio
 
+**日本語** | [English](README.en.md)
+
 スマホから Claude Code を「思い立ったら即」使うための、自前ホストの Android アプリ。
 
 土台はオープンソースの VS Code サーバ（**code-server** / Code-OSS, MIT）と Anthropic 公式の
@@ -41,6 +43,7 @@ UI 語彙は **Screen / スクリーン** と **Plugin / プラグイン** の 2
   クリップボード機能で行う（キーボード上部のクリップボードアイコン）。
 - **観測ログ** — switcher → ログ で、処理中・接続・突発キャンセル等の記録を時系列表示（⬇ で Downloads へ保存）。
   不具合調査用で、サーバへも自動収集される。
+- **表示言語** — 端末の言語に追従（日本語 / English）。switcher → 設定 → 言語 で固定もできる。
 
 ## セキュリティ
 
@@ -87,3 +90,7 @@ tailscale serve --bg --set-path /cc-notify http://127.0.0.1:8770
 | [server/provision/README.md](server/provision/README.md) | サーバ側の詳細（調整値・拡張の追加・通知サーバ） |
 | [docs/specs/2026-07-02-architecture-and-implementation-notes.md](docs/specs/2026-07-02-architecture-and-implementation-notes.md) | アーキテクチャ・実装メモ・リポジトリ構成・プラグイン仕様 |
 | [docs/specs/](docs/specs/) | 機能ごとの設計文書 |
+
+## ライセンス
+
+[MIT](LICENSE)。同梱の [code-server](https://github.com/coder/code-server)（サブモジュール）も MIT。
