@@ -8,7 +8,7 @@
 
 **Tech Stack:** notify-relay (Node 標準ライブラリのみ・外部 npm 依存なし, `node:test`), Android (Kotlin, OkHttp WebSocket, JUnit JVM テスト), bash フック + curl, tailscale serve。
 
-設計書: [docs/superpowers/specs/2026-06-29-cc-studio-task-notification-design.md](../specs/2026-06-29-cc-studio-task-notification-design.md)
+設計書: [docs/specs/2026-06-29-cc-studio-task-notification-design.md](../specs/2026-06-29-cc-studio-task-notification-design.md)
 
 ## Global Constraints
 

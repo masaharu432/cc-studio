@@ -8,7 +8,7 @@
 
 **Tech Stack:** Kotlin (Android, WebView), JUnit + org.json（JVM ユニットテスト）, バニラ JS/HTML（assets）。
 
-参照 spec: [docs/superpowers/specs/2026-06-29-plugin-settings-screen-design.md](../specs/2026-06-29-plugin-settings-screen-design.md)
+参照 spec: [docs/specs/2026-06-29-plugin-settings-screen-design.md](../specs/2026-06-29-plugin-settings-screen-design.md)
 
 ## Global Constraints
 
