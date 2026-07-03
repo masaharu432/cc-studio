@@ -1,7 +1,8 @@
 // ==CCStudioPlugin==
 // @name        select-diag
 // @version     0.3.0
-// @description 不具合調査用の診断ツールです。長押しした時に赤いテストボタンとマーカーを出し、記録を取ります。右端の「DIAG」ボタンを押すと内容をコピーできます。調査が終わったら削除してください。
+// @description Diagnostic tool. On long-press it shows a red test button and markers and records what fired; copy the log with the DIAG button. Delete it when the investigation is done.
+// @description:ja 不具合調査用の診断ツール。長押しで赤いテストボタンとマーカーを出して記録し、DIAG ボタンで内容をコピーできる。調査が終わったら削除してよい。
 // @run-at        document-start
 // @all-frames    true
 // ==/CCStudioPlugin==

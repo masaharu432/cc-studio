@@ -1,7 +1,8 @@
 // ==CCStudioPlugin==
 // @name        session-list-readable
 // @version     1.1.0
-// @description モバイルで途切れて読めない Claude Code のセッション一覧のタイトルを「フォント縮小＋最大2行折返し」で読めるようにする。クラス名に依存せず相対時刻(4m/5h/18h…)を手掛かりに行を特定し、見た目だけを上書きする。全フレームに document-start で常駐。
+// @description Stock code-server truncates session titles on phone-width screens. This plugin shrinks the font and wraps titles to two lines so they stay readable.
+// @description:ja 素の code-server ではセッション一覧のタイトルがスマホ幅で途切れて読めない。このプラグインはフォント縮小と最大 2 行の折返しで読めるようにする。
 // @run-at      document-start
 // @all-frames  true
 // ==/CCStudioPlugin==

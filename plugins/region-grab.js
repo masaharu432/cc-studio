@@ -1,7 +1,8 @@
 // ==CCStudioPlugin==
 // @name        region-grab
 // @version     0.1.0
-// @description モバイルでは編集できない画面の文字をコピーするのが難しいです。このプラグインは、左端の □ ボタンを押してコピーしたい範囲を指で四角く囲うと、その中の文字をまとめてコピーできるようにします。
+// @description Stock code-server has no way to bulk-copy text from read-only areas on mobile. This plugin adds a □ button: trace a rectangle with your finger and everything inside is copied at once.
+// @description:ja 素の code-server では編集できない画面の文字をまとめてコピーする手段がない。このプラグインは左端の □ ボタンから指で範囲を囲うと、中の文字を一括コピーできるようにする。
 // @run-at        document-start
 // @all-frames    true
 // ==/CCStudioPlugin==

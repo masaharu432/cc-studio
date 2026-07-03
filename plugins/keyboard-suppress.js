@@ -1,7 +1,8 @@
 // ==CCStudioPlugin==
 // @name        keyboard-suppress
 // @version     1.2.21
-// @description ソフトキーボードの自動表示を抑制する。チャット入力欄やテキストエディタへ自動フォーカスが移ってもソフトキーボードを勝手に開かせない（枠をタップした時だけ出す）。全フレームに document-start で常駐する。
+// @description Stock code-server pops the soft keyboard every time the chat input auto-focuses. This plugin suppresses that and shows the keyboard only when you tap the input yourself.
+// @description:ja 素の code-server ではチャット入力欄への自動フォーカスのたびにソフトキーボードが勝手に開く。このプラグインはそれを抑え、枠をタップした時だけキーボードを出す。
 // ==/CCStudioPlugin==
 // keyboard-suppress.js — CC Studio 組込み機能（assets同梱）
 // claude-code チャットの入力欄が「自動フォーカス（ページ読込/送信後/遷移/タブ切替）」された

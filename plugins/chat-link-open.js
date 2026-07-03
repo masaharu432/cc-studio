@@ -1,7 +1,8 @@
 // ==CCStudioPlugin==
 // @name        chat-link-open
 // @version     1.0.0
-// @description チャットの返信に出るファイルリンク（例: foo.md / src/bar.ts）をタップしたとき、真っ白／Not found にならず、エディタのタブで開きます。.md はサーバ側の cc-open 拡張がプレビュー表示に切り替えます。
+// @description Stock code-server opens file links in chat replies to a blank page or "Not found". This plugin intercepts the tap and opens the file in an editor tab (.md opens as preview).
+// @description:ja 素の code-server ではチャット内のファイルリンクを開くと真っ白/Not found になる。このプラグインはタップを横取りしてエディタのタブで開く（.md はプレビュー表示）。
 // @run-at        document-start
 // @all-frames    true
 // ==/CCStudioPlugin==

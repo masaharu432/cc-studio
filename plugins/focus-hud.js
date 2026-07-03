@@ -1,10 +1,12 @@
 // ==CCStudioPlugin==
 // @name        focus-hud
 // @version     1.6.0
-// @description フォーカス診断オーバーレイ。どの要素・どのフレームにフォーカス/タップが入ったかを画面上部に時系列表示する（スクショで状況共有する用）。全フレームに document-start で常駐し、表示は最前面フレームのみ。
+// @description Diagnostic tool. Shows which element in which frame received focus or taps, as a timeline overlay at the top of the screen (for sharing screenshots).
+// @description:ja 不具合調査用の診断ツール。どの要素・どのフレームにフォーカスやタップが入ったかを画面上部に時系列表示する（スクショで状況共有する用）。
 // @run-at      document-start
 // @all-frames  true
-// @setting     visible boolean true HUD を表示
+// @setting     visible boolean true Show the HUD
+// @setting:ja  visible HUD を表示
 // ==/CCStudioPlugin==
 // focus-hud.js — CC Studio 診断プラグイン（keyboard-suppress とは独立）
 // 目的: 「エクスプローラー表示でチャット入力にフォーカスが行きキーボードが出る」等の

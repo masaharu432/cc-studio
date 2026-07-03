@@ -1,7 +1,8 @@
 // ==CCStudioPlugin==
 // @name        selectable-text
 // @version     0.11.0
-// @description モバイルの画面ではチャットの返信やプレビューなど編集できない文字をうまく選択・コピーできません。このプラグインは、文字を長押しすると「コピー」ボタンを出し、ハンドルで範囲を調整してコピーできるようにします。
+// @description Stock code-server won't let you select or copy chat replies or preview text on mobile. This plugin adds long-press selection with a copy button and adjustable handles.
+// @description:ja 素の code-server ではチャットの返信やプレビューの文字をモバイルで選択・コピーできない。このプラグインは長押しでコピーボタンを出し、範囲を調整してコピーできるようにする。
 // @run-at        document-start
 // @all-frames    true
 // ==/CCStudioPlugin==

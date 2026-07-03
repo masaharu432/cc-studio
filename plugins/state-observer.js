@@ -1,10 +1,12 @@
 // ==CCStudioPlugin==
 // @name        state-observer
 // @version     1.4.0
-// @description Claude Code が処理中か / code-server の接続が切れているかを各スクリーンで検知し、スクリーン一覧の行・常駐通知・左端の ︙ ボタンに「処理中 / 接続切れ」を表示します。停止ボタンや再接続表示を監視するだけで、操作はしません。
+// @description There is no built-in way to see whether each screen is busy or disconnected. This plugin detects both and shows them in the screen list, the persistent notification, and the ︙ button. It only observes and never acts.
+// @description:ja 元々は各スクリーンが処理中か・接続切れかを知る手段がない。このプラグインが検知してスクリーン一覧・常駐通知・︙ ボタンに表示する。監視のみで操作はしない。
 // @run-at        document-start
 // @all-frames    true
-// @setting     diag boolean true 診断ログを focus-hud に出す（停止ボタン候補のダンプ）
+// @setting     diag boolean true Send diagnostics to focus-hud
+// @setting:ja  diag 診断ログを focus-hud に出す
 // ==/CCStudioPlugin==
 // state-observer.js — 処理中/接続切れの状態を観測してネイティブへ報告するプラグイン。
 //   claude-code の停止ボタンは code-server の webview iframe 内に居る（[[selectable-text]] と同じ）。
