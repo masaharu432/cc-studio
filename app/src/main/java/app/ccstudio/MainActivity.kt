@@ -180,6 +180,10 @@ class MainActivity : AppCompatActivity() {
     /** 通知タップ用: cwd に対応する WEB スクリーンへ。無ければ新規作成して開く。 */
     private fun openScreenForCwd(cwd: String) {
         if (cwd.isEmpty()) return
+        // オーバーレイ（switcher 等）を開いたまま背面化していると、select しても
+        // その上に被さったままスクリーン一覧が見え続けるため、先に全て畳む。
+        nav.clear()
+        closeNotify(); closeLog(); closePluginSettings(); closeSwitcher()
         val hit = screens.webScreens().firstOrNull {
             NotifyDecision.matches(ScreenUrl.folderPath(it.url), cwd)
         }
