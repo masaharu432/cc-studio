@@ -27,10 +27,18 @@
           uiMode（夜間モード）や density/fontScale 変化が再生成を誘発していた。
           WebView 内容(code-server)は自前でレイアウト/テーマを管理するので、これらを手放しても問題ない。
         -->
+        <!--
+          windowSoftInputMode は adjustResize を明示する。未指定（adjustUnspecified）だと
+          システムが resize/pan を自動判定し、外部ブラウザ往復後に pan 相当へ化けることがある。
+          その状態ではキーボードが WebView に被さるだけで body(ICB) が縮まず、workbench が
+          再レイアウトできずチャット入力欄がキーボードの裏に隠れる（実測: 正常時 bd:438 /
+          往復後 bd:750 のまま・vv/in のみ 438）。
+        -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
             android:launchMode="singleTask"
+            android:windowSoftInputMode="adjustResize"
             android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden|keyboard|navigation|uiMode|density|fontScale|locale|layoutDirection">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

@@ -3,6 +3,7 @@ package app.ccstudio
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.net.Uri
+import android.os.Message
 import android.webkit.RenderProcessGoneDetail
 import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
@@ -50,6 +51,13 @@ class ScreenFactory(
         settings.domStorageEnabled = true
         settings.databaseEnabled = true
         settings.mediaPlaybackRequiresUserGesture = false
+        // window.open(_blank)（チャット内リンク等）を onCreateWindow で受けるために必須。
+        // 無効（既定）だと WebView は _blank をメインフレーム遷移に格下げし、workbench の
+        // ページ自体が外部 URL へ遷移し始める。それを shouldOverrideUrlLoading で中断すると
+        // ページに unload 系処理（VS Code の終了処理＝接続破棄）が走り、さらに中断された
+        // 遷移が renderer に残って以後 ICB がリサイズされなくなる（キーボードで body が
+        // 縮まずチャット入力欄が隠れる・送信が死ぬ、の実測原因）。
+        settings.setSupportMultipleWindows(true)
         // 非可視でもレンダラ優先度を下げない（既定は非可視で waive＝背面kill の温床）。
         // 背面でターンを維持するというアプリの目的を優先し、電池より生存性を取る。
         setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT, false)
@@ -59,6 +67,32 @@ class ScreenFactory(
                 filePathCallback: ValueCallback<Array<Uri>>,
                 fileChooserParams: FileChooserParams,
             ): Boolean = deps.onShowFileChooser(filePathCallback, fileChooserParams)
+
+            // _blank の行き先 URL は onCreateWindow 時点では分からないため、一時 WebView に
+            // 受けて最初のナビゲーションで確定させる。外部→ブラウザ / 内部→元スクリーンに
+            // 読み込み。メインフレームには一切遷移を試みさせない。
+            override fun onCreateWindow(
+                view: WebView,
+                isDialog: Boolean,
+                isUserGesture: Boolean,
+                resultMsg: Message,
+            ): Boolean {
+                val temp = WebView(activity)
+                temp.webViewClient = object : WebViewClient() {
+                    override fun shouldOverrideUrlLoading(v: WebView, request: WebResourceRequest): Boolean {
+                        if (deps.isExternalHttp(request.url)) {
+                            deps.openExternalUrl(request.url)
+                        } else {
+                            view.loadUrl(request.url.toString())
+                        }
+                        v.post { v.destroy() }
+                        return true
+                    }
+                }
+                (resultMsg.obj as WebView.WebViewTransport).webView = temp
+                resultMsg.sendToTarget()
+                return true
+            }
         }
         setDownloadListener { url, _, contentDisposition, mimeType, _ ->
             deps.onDownload(url, contentDisposition, mimeType)

@@ -1,6 +1,6 @@
 // ==CCStudioPlugin==
 // @name        focus-hud
-// @version     1.6.0
+// @version     1.6.7
 // @description Diagnostic tool. Shows which element in which frame received focus or taps, as a timeline overlay at the top of the screen (for sharing screenshots).
 // @description:ja 不具合調査用の診断ツール。どの要素・どのフレームにフォーカスやタップが入ったかを画面上部に時系列表示する（スクショで状況共有する用）。
 // @run-at      document-start
@@ -109,6 +109,15 @@
         logEvt(frameTag() + ' TAP' + (doc.__ccStudioFocusTapCmp ? '*' : '') + ' ' + elemDesc(e.target));
       } catch (_) { /* ignore */ }
     };
+    // 外部リンク→shouldOverrideUrlLoading キャンセルの過程で「ページが遷移しかけた」証拠を
+    // 掴む。BEFOREUNLOAD が出れば VS Code の終了処理（接続破棄）が走った疑いが濃くなる。
+    try {
+      var w2 = doc.defaultView;
+      if (w2) {
+        w2.addEventListener('beforeunload', function () { logEvt(frameTag() + ' BEFOREUNLOAD'); }, true);
+        w2.addEventListener('pagehide', function () { logEvt(frameTag() + ' PAGEHIDE'); }, true);
+      }
+    } catch (_) { /* ignore */ }
     doc.addEventListener('pointerdown', mark, true);
     doc.addEventListener('touchstart', mark, true);
     doc.addEventListener('focusin', function (e) {
@@ -209,9 +218,38 @@
       el.style.top = Math.round((vv && vv.offsetTop) || 0) + 'px';
       var kbv = '';
       try { kbv = topWin().__ccStudioKbVer || ''; } catch (_) {}
-      var head = 'FOCUS-HUD v1.6.0  KB:' + (kbv ? 'v' + kbv : 'none') +
-        '  vvH:' + (vv ? Math.round(vv.height) : '?') +
-        (el.__ccExpanded ? '  (tap=畳む)' : '  (tap=開く)');
+      // vvH=visual viewport（キーボード分縮む側）/ inH=layout viewport（workbench が
+      // 再レイアウトの基準にする側）/ wb=.monaco-workbench の実高さ（workbench が resize に
+      // 追随したかの直接証拠）。キーボード表示中に inH だけ縮んで wb が縮まないなら
+      // 「イベントは届いたが workbench のレイアウトが動いていない」と確定できる。
+      // ヘッダは畳んだ1行表示でも 350ms 毎に生更新される＝HUD をタップ（＝チャットの
+      // フォーカスが外れてキーボードが閉じる）せずにスクショだけで読み取れる。
+      var wbH = '?';
+      try {
+        var wbEl = document.querySelector('.monaco-workbench');
+        if (wbEl) wbH = Math.round(wbEl.getBoundingClientRect().height);
+      } catch (_) { /* ignore */ }
+      // bd = document.body の実高さ（VS Code がレイアウト計算の基準に測る値）。
+      //   in が縮むのに bd が古いままなら Chromium のルートレイアウトが固着＝renderer 側。
+      //   bd も縮むのに wb が古いままなら VS Code のレイアウト処理が止まっている＝workbench 側。
+      // rsz = resize イベント発火カウンタ（w=window / v=visualViewport）。キーボード開閉で
+      //   増えなければ「イベント自体が飛んでいない」と確定できる。
+      // raf = 最後に requestAnimationFrame が動いてからの経過ms。正常なら数十ms、
+      //   9999 に張り付けば rAF 停止＝rAF 駆動の workbench レイアウトが動かない説の証拠。
+      // ※1行（≒55桁）に収めるため KB:/vis: 表示は一時撤去（vis は v+F 固着なしを確認済み）。
+      var bdH = '?';
+      try { bdH = Math.round(document.body.getBoundingClientRect().height); } catch (_) { /* ignore */ }
+      var rsz = window.__ccHudRszCnt || { w: 0, v: 0 };
+      var rafAge = '?';
+      try {
+        if (window.__ccHudRafLast) rafAge = Math.min(9999, Date.now() - window.__ccHudRafLast);
+      } catch (_) { /* ignore */ }
+      var head = 'HUD1.6.7 vv:' + (vv ? Math.round(vv.height) : '?') +
+        ' in:' + Math.round(window.innerHeight) +
+        ' bd:' + bdH +
+        ' wb:' + wbH +
+        ' rsz:w' + rsz.w + '/v' + rsz.v +
+        ' raf:' + rafAge;
       if (!el.__ccExpanded) {
         // 畳んだ状態：1行だけ。画面（左メニュー含む）を塞がない。
         el.style.maxHeight = '1.6em';
@@ -252,6 +290,37 @@
     }
   } catch (_) { setInterval(watchAll, 1000); }
   if (isTop()) {
+    // resize 計測: 「viewport は縮んだのに workbench が再レイアウトしない」を直接観測する。
+    // RSZ 行 = window resize 発火時点の innerHeight と .monaco-workbench の実高さ。
+    // resize 発火で wb が inH に追随しない＝workbench のレイアウト処理が動いていない証拠になる。
+    try {
+      if (!window.__ccStudioHudRszHook) {
+        window.__ccStudioHudRszHook = true;
+        window.__ccHudRszCnt = { w: 0, v: 0 };
+        var logRsz = function (src) {
+          try {
+            var wb = document.querySelector('.monaco-workbench');
+            logEvt('top RSZ(' + src + ') in:' + Math.round(window.innerHeight) +
+              ' wb:' + (wb ? Math.round(wb.getBoundingClientRect().height) : '?'));
+          } catch (_) { /* ignore */ }
+        };
+        window.addEventListener('resize', function () {
+          window.__ccHudRszCnt.w++; logRsz('win');
+        }, true);
+        if (window.visualViewport) {
+          window.visualViewport.addEventListener('resize', function () {
+            window.__ccHudRszCnt.v++; logRsz('vv');
+          });
+        }
+        // rAF 生存監視: 常時 rAF ループで最終 tick 時刻を記録し、ヘッダで経過msを出す。
+        window.__ccHudRafLast = Date.now();
+        var rafTick = function () {
+          window.__ccHudRafLast = Date.now();
+          try { requestAnimationFrame(rafTick); } catch (_) { /* ignore */ }
+        };
+        try { requestAnimationFrame(rafTick); } catch (_) { /* ignore */ }
+      }
+    } catch (_) { /* ignore */ }
     try {
       if (!window.__ccStudioHudSettingHook) {
         window.__ccStudioHudSettingHook = true;
