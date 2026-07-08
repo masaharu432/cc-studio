@@ -12,6 +12,12 @@ small helper extensions**.
 
 The UI vocabulary is unified around two words: **Screen** and **Plugin**.
 
+<p align="center">
+  <img src="docs/images/workbench.jpg" width="45%" alt="Workbench — full VS Code + Claude Code in a phone's portrait screen" />
+</p>
+<p align="center"><sub>Full VS Code + Claude Code in a phone's portrait screen. Fun fact: this very screenshot shows
+CC Studio's announcement post being dictated to Claude by voice — the app is advertising itself on itself.</sub></p>
+
 ## What hurts when you use stock code-server on a phone → CC Studio's answer
 
 | Problem on mobile | CC Studio's fix |
@@ -35,11 +41,25 @@ The UI vocabulary is unified around two words: **Screen** and **Plugin**.
   switch between them like browser tabs. The `⋮` button at the left edge opens the full-screen
   switcher. Tap to switch, `⟳` to reload (with a confirmation dialog if the screen is busy),
   swipe left to delete, `＋ New screen` to add. Restored after a restart.
+
+<p align="center">
+  <img src="docs/images/screens.jpg" width="45%" alt="Screen list — switch between VS Code instances like tabs" />
+</p>
+<p align="center"><sub>The screen list. Looks like browser tabs, but every one of them stays alive in the
+background — queue up the next job while Claude is thinking hard on another screen.</sub></p>
+
 - **Plugins** — `.js` files that remove mobile friction; toggle / add / delete them on the full-screen
   management screen. Eight bundled plugins live in [`plugins/`](plugins/) (the ones in the table above
   plus the diagnostic `focus-hud` / `select-diag`). Plugins with `@setting` are configurable via ⚙,
   and changes apply **live, no reload needed**. To write your own, see
   [docs/specs/2026-07-02-architecture-and-implementation-notes.md](docs/specs/2026-07-02-architecture-and-implementation-notes.md).
+
+<p align="center">
+  <img src="docs/images/plugins.jpg" width="45%" alt="Plugin management — toggle / add / delete" />
+</p>
+<p align="center"><sub>Plugin management. Each mobile pain point gets exactly one plugin — and each
+description doubles as a record of the bug it kills.</sub></p>
+
 - **Notifications** — OS notifications for Claude Code's **turn completion** and **permission waits**
   (suppressed for the screen you are currently viewing). Toggle each kind under switcher →
   Notifications. Tapping a notification jumps to the screen for that folder (creating one if needed).

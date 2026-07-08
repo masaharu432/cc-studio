@@ -11,6 +11,12 @@
 
 UI 語彙は **Screen / スクリーン** と **Plugin / プラグイン** の 2 語に統一している。
 
+<p align="center">
+  <img src="docs/images/workbench.jpg" width="45%" alt="ワークベンチ — スマホの縦画面にフル VS Code + Claude Code" />
+</p>
+<p align="center"><sub>スマホの縦画面にフルの VS Code + Claude Code。ちなみにこのスクショ、まさに CC Studio の紹介文を
+音声入力で Claude に書かせているところ — つまりこのアプリはこのアプリの上で宣伝されている。</sub></p>
+
 ## 素の code-server をスマホで使うと何が困るか → CC Studio の答え
 
 | モバイルでの問題 | CC Studio の対処 |
@@ -33,10 +39,24 @@ UI 語彙は **Screen / スクリーン** と **Plugin / プラグイン** の 2
 - **Screens（複数スクリーン）** — 別フォルダで開いた複数の VS Code を「スクリーン」として生きたまま
   並行保持し、ブラウザのタブのように切り替える。左端 `⋮` で全画面 switcher。タップで切替、`⟳` で
   リロード（実行中なら確認ダイアログ）、左スワイプで削除、`＋ New screen` で追加。再起動で復元。
+
+<p align="center">
+  <img src="docs/images/screens.jpg" width="45%" alt="スクリーン一覧 — フォルダごとの VS Code をタブのように切替" />
+</p>
+<p align="center"><sub>スクリーン一覧。見た目はブラウザのタブだが、どれも裏で生きている —
+別スクリーンで Claude が長考している間に、次の仕事を仕込める。</sub></p>
+
 - **Plugins（プラグイン）** — モバイルの摩擦を潰す `.js` を全画面の管理スクリーンで ON/OFF・追加・削除。
   同梱プラグインは [`plugins/`](plugins/) に 8 本（上表のほか、不具合調査用の `focus-hud` / `select-diag`）。
   `@setting` を持つプラグインは ⚙ から設定でき、**リロード不要でライブ反映**。
   自作プラグインの書き方は [docs/specs/2026-07-02-architecture-and-implementation-notes.md](docs/specs/2026-07-02-architecture-and-implementation-notes.md)。
+
+<p align="center">
+  <img src="docs/images/plugins.jpg" width="45%" alt="プラグイン管理 — ON/OFF・追加・削除" />
+</p>
+<p align="center"><sub>プラグイン管理。「モバイルで困ること 1 つ = プラグイン 1 本」で潰していく。
+説明文がそのまま不具合の記録になっているのがポイント。</sub></p>
+
 - **通知** — Claude Code の**ターン完了**と**許可待ち**で OS 通知（見ているスクリーンの分は出さない）。
   種類ごとの ON/OFF は switcher → 通知設定。通知タップで該当フォルダのスクリーンへ移動（無ければ作る）。
 - **コピー & ペースト** — コピーは上表の 2 プラグイン（長押し／範囲囲み）。ペーストは Gboard の
