@@ -27,4 +27,46 @@ class ServerConfigTest {
         assertEquals("empty", errCode(""))
         assertEquals("empty", errCode("   "))
     }
+
+    // --- codec ---
+    @Test fun codec_roundTrip() {
+        val json = ServerConfigCodec.encode(ServerCfg("https://host.ts.net", "/home/user/projects"))
+        val back = ServerConfigCodec.decode(json)
+        assertEquals("https://host.ts.net", back.origin)
+        assertEquals("/home/user/projects", back.defaultFolder)
+    }
+    @Test fun codec_decodesBlankAndBrokenAsEmpty() {
+        assertEquals(null, ServerConfigCodec.decode(null).origin)
+        assertEquals(null, ServerConfigCodec.decode("").origin)
+        assertEquals(null, ServerConfigCodec.decode("{not json").origin)
+    }
+    @Test fun seed_realDomainSeeds_placeholderDoesNot() {
+        assertEquals("https://workbench.tailnet.ts.net",
+            ServerConfigCodec.seedOriginFrom("https://workbench.tailnet.ts.net/?folder=/x"))
+        assertEquals(null, ServerConfigCodec.seedOriginFrom("https://localhost/"))
+        assertEquals(null, ServerConfigCodec.seedOriginFrom(""))
+    }
+
+    // --- file store（原子的書き込み） ---
+    @org.junit.Rule @JvmField val tmp = org.junit.rules.TemporaryFolder()
+
+    @Test fun store_unsetWhenNoFile() {
+        val c = ServerConfig(java.io.File(tmp.root, "server.json"))
+        assertEquals(null, c.origin())
+    }
+    @Test fun store_setOrigin_persistsAndCleansTmp() {
+        val f = java.io.File(tmp.root, "server.json")
+        ServerConfig(f).setOrigin("https://host.ts.net")
+        assertEquals("https://host.ts.net", ServerConfig(f).origin())
+        assertEquals(false, java.io.File(tmp.root, "server.json.tmp").exists())
+    }
+    @Test fun store_corruptFileReadsAsUnset() {
+        val f = java.io.File(tmp.root, "server.json"); f.writeText("{broken")
+        assertEquals(null, ServerConfig(f).origin())
+    }
+    @Test fun store_setDefaultFolderBlankClears() {
+        val f = java.io.File(tmp.root, "server.json")
+        val c = ServerConfig(f); c.setOrigin("https://host.ts.net"); c.setDefaultFolder("   ")
+        assertEquals(null, ServerConfig(f).defaultFolder())
+    }
 }
