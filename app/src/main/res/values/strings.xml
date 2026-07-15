@@ -17,6 +17,9 @@
     <string name="toast_save_failed">Failed to save</string>
     <string name="toast_log_save_failed">Failed to save the log</string>
     <string name="toast_mdpv">MDPV: sending preview toggle key</string>
+    <string name="toast_default_folder_saved">Saved</string>
+    <string name="toast_server_updated">Server updated</string>
+    <string name="toast_origin_invalid">Enter a valid HTTPS domain (no IP)</string>
     <string name="lang_dialog_title">Display language</string>
     <string name="lang_follow_device">Follow device</string>
 </resources>

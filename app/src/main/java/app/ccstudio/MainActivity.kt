@@ -21,6 +21,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import okhttp3.Request
 import org.json.JSONObject
 
 class MainActivity : AppCompatActivity() {
@@ -55,6 +56,13 @@ class MainActivity : AppCompatActivity() {
     private val settingsPanel by lazy {
         OverlayPanel(root, "plugin-settings.html", "window.__ccRenderSettings && window.__ccRenderSettings();", ::overlayWebView)
     }
+
+    // 接続先設定オーバーレイ（server.html）。show() は Task 7 の openServer() から。
+    private val serverPanel by lazy {
+        OverlayPanel(root, "server.html", "window.__ccRenderServer && window.__ccRenderServer();", ::overlayWebView)
+    }
+
+    private val okHttp = okhttp3.OkHttpClient()
 
     /** OS バック用ナビスタック（純粋モデル）。表示副作用は popBack が PopAction を見て実行する。 */
     private val nav = NavModel()
@@ -361,7 +369,56 @@ class MainActivity : AppCompatActivity() {
         onSwitcherTabChanged = { tab -> runOnUiThread { onSwitcherTabChanged(tab) } },
         onNavBack = { runOnUiThread { popBack() } },
         uiLangFn = { if (AppLang.isJa(this)) "ja" else "en" },
+        serverConfigJsonFn = {
+            val o = serverConfig.origin() ?: ""
+            val h = if (o.isNotEmpty()) (try { Uri.parse(o).host } catch (_: Exception) { null }) ?: "" else ""
+            org.json.JSONObject().put("origin", o)
+                .put("defaultFolder", serverConfig.defaultFolder() ?: "")
+                .put("host", h).toString()
+        },
+        onSaveServerOrigin = { host -> runOnUiThread { applyServerOrigin(host) } },
+        onSaveDefaultFolder = { path -> runOnUiThread {
+            serverConfig.setDefaultFolder(path); toast(getString(R.string.toast_default_folder_saved))
+        } },
+        onBrowseDir = { path -> fetchDirs(path) },
     )
+
+    // ── 接続先設定（server.html） ──────────────────────────────────────
+
+    /** ホスト入力を検証・保存し、旧スクリーンを捨てて新オリジンで作り直す。KeepAlive も再起動。 */
+    private fun applyServerOrigin(host: String) {
+        val r = ServerConfigCodec.normalizeOrigin(host)
+        if (r !is OriginResult.Ok) { toast(getString(R.string.toast_origin_invalid)); return }
+        serverConfig.setOrigin(r.origin)
+        screenStore.save(emptyList(), 0)
+        screens.webScreens().forEach { screens.close(it.id) }
+        val folder = serverConfig.defaultFolder()
+        val url = folder?.let { UrlPolicy.folderUrl(r.origin, it) } ?: "${r.origin}/"
+        val s = createWebScreen(url, reloadOnFirstLoad = true)
+        screens.add(s); screens.select(s.id)
+        stopService(Intent(this, KeepAliveService::class.java))
+        ContextCompat.startForegroundService(this, Intent(this, KeepAliveService::class.java))
+        toast(getString(R.string.toast_server_updated))
+    }
+
+    /** …/ls を OkHttp で非同期取得し、生 JSON を window.__ccDirResult に渡す。未接続/失敗は {error}。 */
+    private fun fetchDirs(path: String) {
+        val origin = originOrNull()
+        if (origin == null) {
+            serverPanel.evaluate("window.__ccDirResult({\"error\":\"not_connected\"})"); return
+        }
+        val url = "$origin/cc-notify/ls" + if (path.isNotEmpty()) "?path=" + Uri.encode(path) else ""
+        okHttp.newCall(Request.Builder().url(url).build()).enqueue(object : okhttp3.Callback {
+            override fun onFailure(call: okhttp3.Call, e: java.io.IOException) {
+                runOnUiThread { serverPanel.evaluate("window.__ccDirResult({\"error\":\"fetch_failed\"})") }
+            }
+            override fun onResponse(call: okhttp3.Call, response: okhttp3.Response) {
+                val body = response.body?.string()
+                val payload = if (response.isSuccessful && body != null) body else "{\"error\":\"not_a_directory\"}"
+                runOnUiThread { serverPanel.evaluate("window.__ccDirResult($payload)") }
+            }
+        })
+    }
 
     /**
      * アクティブな WebView へ Ctrl+Shift+V（markdown.togglePreview）をトラステッドなキーイベントとして

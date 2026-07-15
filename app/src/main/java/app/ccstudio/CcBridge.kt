@@ -48,6 +48,10 @@ class CcBridge(
     private val onSwitcherTabChanged: (tab: String) -> Unit,
     private val onNavBack: () -> Unit,
     private val uiLangFn: () -> String,
+    private val serverConfigJsonFn: () -> String,
+    private val onSaveServerOrigin: (host: String) -> Unit,
+    private val onSaveDefaultFolder: (path: String) -> Unit,
+    private val onBrowseDir: (path: String) -> Unit,
 ) {
     /** 表示言語（"ja" / "en"）。管理系 HTML と bootstrap.js が文言辞書の切替に使う。 */
     @JavascriptInterface
@@ -177,4 +181,14 @@ class CcBridge(
     @JavascriptInterface fun switcherTabChanged(tab: String) = onSwitcherTabChanged(tab)
     /** アプリ内 ‹ ボタン用。OS バックと同じ pop 処理を呼ぶ（遷移ロジックを二重に持たない）。 */
     @JavascriptInterface fun navBack() = onNavBack()
+
+    // ── 接続先設定（server.html） ──
+    /** 接続先設定の現在値 JSON（origin/defaultFolder/host）。 */
+    @JavascriptInterface fun getServerConfig(): String = serverConfigJsonFn()
+    /** ホスト文字列を検証・保存し、スクリーンを新オリジンで再構築する。 */
+    @JavascriptInterface fun saveServerOrigin(host: String) = onSaveServerOrigin(host)
+    /** 初期フォルダを保存する。 */
+    @JavascriptInterface fun saveDefaultFolder(path: String) = onSaveDefaultFolder(path)
+    /** ディレクトリ一覧を非同期取得し window.__ccDirResult(json) を呼ぶ。 */
+    @JavascriptInterface fun browseDir(path: String) = onBrowseDir(path)
 }

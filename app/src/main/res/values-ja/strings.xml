@@ -15,6 +15,9 @@
     <string name="toast_save_failed">保存に失敗しました</string>
     <string name="toast_log_save_failed">ログの保存に失敗しました</string>
     <string name="toast_mdpv">MDPV: プレビュー化キー送出</string>
+    <string name="toast_default_folder_saved">保存しました</string>
+    <string name="toast_server_updated">接続先を更新しました</string>
+    <string name="toast_origin_invalid">HTTPS のドメインを入力してください（IP 不可）</string>
     <string name="lang_dialog_title">表示言語</string>
     <string name="lang_follow_device">端末に合わせる</string>
 </resources>
