@@ -158,7 +158,7 @@ class MainActivity : AppCompatActivity() {
         // 接続先が未設定（シードも不可）なら、localhost へは繋がず設定パネルを促す。
         // Nav.Server も積んでおく（他の設定導線と同様。積まないと戻るボタンがこのパネルを畳めない）。
         if (serverConfig.origin() == null) {
-            nav.ensureSwitcher("settings"); nav.push(Nav.Server); openServer()
+            nav.ensureSwitcher("settings"); nav.push(Nav.Server); openServer("host")
         }
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
@@ -395,6 +395,7 @@ class MainActivity : AppCompatActivity() {
                 .put("defaultFolder", serverConfig.defaultFolder() ?: "")
                 .put("host", originAuthority() ?: "").toString()
         },
+        serverModeFn = { serverPanelMode },
         onSaveServerOrigin = { host -> runOnUiThread { applyServerOrigin(host) } },
         onSaveDefaultFolder = { path -> runOnUiThread {
             serverConfig.setDefaultFolder(path); toast(getString(R.string.toast_default_folder_saved))
@@ -405,17 +406,43 @@ class MainActivity : AppCompatActivity() {
     // ── 接続先設定（server.html） ──────────────────────────────────────
 
     /**
-     * ホスト入力を検証・保存し、KeepAlive を新ホストへ再購読する。
-     * 保存するだけ — スクリーンは作らない・画面遷移しない・設定パネルも閉じない。設定ページはそのまま残す。
-     * 既存スクリーンも保持（旧ホストを指したままだが、リロード/新規スクリーンで新ホストに切り替わる）。
+     * ホスト入力を検証・保存し、KeepAlive を新ホストへ再購読する。既定は「保存するだけ」で画面遷移しない。
+     * ただしホストが実際に変わった（旧 origin と異なる）ときだけ、既存スクリーンは旧ホストを指して無効に
+     * なるため「新ホストで開き直すか」を確認ダイアログで尋ねる（切替はユーザー確認後のみ）。
      */
     private fun applyServerOrigin(host: String) {
         val r = ServerConfigCodec.normalizeOrigin(host)
         if (r !is OriginResult.Ok) { toast(getString(R.string.toast_origin_invalid)); return }
+        val old = serverConfig.origin()
         serverConfig.setOrigin(r.origin)
         stopService(Intent(this, KeepAliveService::class.java))
         ContextCompat.startForegroundService(this, Intent(this, KeepAliveService::class.java))
-        toast(getString(R.string.toast_server_updated))
+        if (old != null && old != r.origin && screens.webScreens().isNotEmpty()) {
+            confirmHostSwitch(r.origin)
+        } else {
+            toast(getString(R.string.toast_server_updated))
+        }
+    }
+
+    /** ホストが変わったとき、新ホストでスクリーンを開き直すか確認する。設定自体は既に保存済み。 */
+    private fun confirmHostSwitch(newOrigin: String) {
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle(getString(R.string.server_switch_title))
+            .setMessage(getString(R.string.server_switch_message))
+            .setPositiveButton(getString(R.string.server_switch_reopen)) { d, _ ->
+                d.dismiss()
+                // 旧ホストの Web スクリーンを閉じ、新ホストで初期フォルダのスクリーンを1枚開いて表示する。
+                screens.webScreens().forEach { screens.close(it.id) }
+                val s = createWebScreen(initialScreenUrl() ?: "$newOrigin/", reloadOnFirstLoad = true)
+                screens.add(s); screens.select(s.id); persistScreens()
+                nav.clear()
+                closeNotify(); closeLog(); closePluginSettings(); closeServer(); closeSwitcher()
+            }
+            .setNegativeButton(getString(R.string.server_switch_keep)) { d, _ ->
+                d.dismiss()
+                toast(getString(R.string.toast_server_updated))
+            }
+            .show()
     }
 
     /** …/ls を OkHttp で非同期取得し、生 JSON を window.__ccDirResult に渡す。未接続/失敗は {error}。 */
@@ -625,7 +652,8 @@ class MainActivity : AppCompatActivity() {
             }
             "notify" -> { closeSwitcher(); nav.push(Nav.Notify); openNotify() }
             "log" -> { closeSwitcher(); nav.push(Nav.Log); openLog() }
-            "server" -> { closeSwitcher(); nav.push(Nav.Server); openServer() }
+            "server" -> { closeSwitcher(); nav.push(Nav.Server); openServer("host") }
+            "defaultfolder" -> { closeSwitcher(); nav.push(Nav.Server); openServer("folder") }
             "lang" -> openLanguageDialog()   // ダイアログ表示のみ。switcher は裏に残す
         }
     }
@@ -666,7 +694,9 @@ class MainActivity : AppCompatActivity() {
     private fun closeLog() { logPanel.hide() }
 
     // ── 接続先設定（server.html オーバーレイ・notify と同型） ──
-    private fun openServer() { serverPanel.show() }
+    // server.html は host / folder の2モードで開く。設定リストの「接続先」「最初に開くフォルダ」に対応。
+    private var serverPanelMode: String = "host"
+    private fun openServer(mode: String) { serverPanelMode = mode; serverPanel.show() }
 
     private fun closeServer() { serverPanel.hide() }
 

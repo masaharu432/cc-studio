@@ -43,12 +43,16 @@ object PanelJson {
                 .put("label", t("Plugin manager", "プラグイン管理"))
                 .put("sub", t("$total installed · $enabled enabled", "$total 個インストール · $enabled 有効"))
         )
-        val serverSub = if (originHost != null)
-            originHost + (defaultFolder?.let { " · $it" } ?: "")
-        else t("Not set — tap to configure", "未設定 — タップして設定")
+        // 接続先（ホストのみ）と初期フォルダは別エントリに分ける（保存の意味・影響範囲が違うため）。
+        val serverSub = originHost ?: t("Not set — tap to configure", "未設定 — タップして設定")
         arr.put(
             JSONObject().put("id", "server").put("group", t("System", "システム")).put("icon", "🖥️")
                 .put("label", t("Server", "接続先")).put("sub", serverSub)
+        )
+        val folderSub = defaultFolder ?: t("Server default (home)", "サーバの既定（ホーム）")
+        arr.put(
+            JSONObject().put("id", "defaultfolder").put("group", t("System", "システム")).put("icon", "📁")
+                .put("label", t("Folder to open first", "最初に開くフォルダ")).put("sub", folderSub)
         )
         arr.put(
             JSONObject().put("id", "notify").put("group", t("System", "システム")).put("icon", "🔔")

@@ -114,7 +114,7 @@
     </div>
 
     <div class="body">
-      <div class="sect">
+      <div class="sect" id="sectHost">
         <p class="sect-h"><span class="num">01</span> <span id="sect1">Workbench Origin</span></p>
         <div class="scheme-lab">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
@@ -138,7 +138,7 @@
         <p class="why err" id="whyErr"></p>
       </div>
 
-      <div class="sect">
+      <div class="sect" id="sectFolder">
         <p class="sect-h"><span class="num">02</span> <span id="sect2">最初に開くフォルダ</span></p>
         <div class="folder">
           <div class="fbox"><span class="fic">📁</span>
@@ -172,7 +172,7 @@
   // 表示言語（ja/en）。ブリッジ不在時は ja に倒す。
   var JA=(function(){ try{ return (api().getUiLang && api().getUiLang())!=='en'; }catch(_){ return true; } })();
   var T=JA?{
-    back:'設定', title:'接続先',
+    back:'設定', title:'接続先', titleFolder:'最初に開くフォルダ', saveFolder:'フォルダを保存',
     sect1:'Workbench Origin', schemeLab:'HTTPS 固定 ·', schemeTag:'ドメインのみ',
     teleHttpsT:'HTTPS', teleHttpsD:'必須 — 暗号化された接続',
     teleDomainT:'ドメイン名', teleDomainD:'FQDN が必要（例 host.example.ts.net）',
@@ -192,7 +192,7 @@
       empty:'接続先のドメインを入力してください。'
     }
   }:{
-    back:'Settings', title:'Server',
+    back:'Settings', title:'Server', titleFolder:'Folder to open first', saveFolder:'Save folder',
     sect1:'Workbench Origin', schemeLab:'HTTPS only ·', schemeTag:'DOMAIN ONLY',
     teleHttpsT:'HTTPS', teleHttpsD:'Required — encrypted connection',
     teleDomainT:'Domain name', teleDomainD:'FQDN required (e.g. host.example.ts.net)',
@@ -315,31 +315,43 @@
   $('#up').addEventListener('click',function(){
     if(window.__ccDirParent){ try{ api().browseDir(window.__ccDirParent); }catch(_){ } }
   });
+  // 参照ピッカーで選んだフォルダは入力欄に入れるだけ。確定は「フォルダを保存」ボタンで（host と同じく明示保存）。
   $('#pick').addEventListener('click',function(){
     $('#folder').value=currentPath;
-    try{ api().saveDefaultFolder(currentPath); }catch(_){ }
     $('#browser').classList.remove('open');
   });
-  $('#folder').addEventListener('blur',function(){
-    try{ api().saveDefaultFolder($('#folder').value); }catch(_){ }
-  });
 
-  // ── 保存 ──
+  // ── 保存（モードで対象が変わる） ──
+  // このページは host / folder の2モードで開かれる。設定リストの「接続先」＝host、「最初に開くフォルダ」＝folder。
+  var currentMode='host';
   $('#save').addEventListener('click',function(){
     if(this.disabled) return;
-    try{ api().saveServerOrigin($('#host').value); }catch(_){ }
+    if(currentMode==='folder'){ try{ api().saveDefaultFolder($('#folder').value); }catch(_){ } }
+    else { try{ api().saveServerOrigin($('#host').value); }catch(_){ } }
   });
 
   $('#back').addEventListener('click',function(){ try{ api().navBack(); }catch(_){ } });
 
   function readCfg(){ try{ return JSON.parse(api().getServerConfig()||"{}"); }catch(_){ return {}; } }
+  function readMode(){ try{ return (api().getServerMode && api().getServerMode())==='folder' ? 'folder' : 'host'; }catch(_){ return 'host'; } }
   window.__ccRenderServer=function(){
     applyText();
     var cfg=readCfg();
+    currentMode=readMode();
+    var isFolder=currentMode==='folder';
+    // モードに応じて片方のセクションだけ表示する（設定リストの2エントリに対応）。
+    $('#sectHost').style.display = isFolder ? 'none' : '';
+    $('#sectFolder').style.display = isFolder ? '' : 'none';
+    document.querySelectorAll('.sect-h .num').forEach(function(n){ n.textContent=''; });
+    $('#pageTitle').textContent = isFolder ? T.titleFolder : T.title;
+    document.title = isFolder ? T.titleFolder : T.title;
+    $('#save').textContent = isFolder ? T.saveFolder : T.save;
     $('#host').value = cfg.host || "";
     $('#folder').value = cfg.defaultFolder || "";
     $('#browser').classList.remove('open');
-    validate();
+    $('#offHint').classList.remove('show');
+    if(isFolder){ $('#save').disabled=false; }   // フォルダはどんなパスでも保存可（空＝サーバ既定）
+    else { validate(); }
   };
   document.addEventListener('DOMContentLoaded', window.__ccRenderServer);
 })();

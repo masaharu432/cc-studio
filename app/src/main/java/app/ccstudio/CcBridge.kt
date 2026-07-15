@@ -49,6 +49,7 @@ class CcBridge(
     private val onNavBack: () -> Unit,
     private val uiLangFn: () -> String,
     private val serverConfigJsonFn: () -> String,
+    private val serverModeFn: () -> String,
     private val onSaveServerOrigin: (host: String) -> Unit,
     private val onSaveDefaultFolder: (path: String) -> Unit,
     private val onBrowseDir: (path: String) -> Unit,
@@ -185,6 +186,8 @@ class CcBridge(
     // ── 接続先設定（server.html） ──
     /** 接続先設定の現在値 JSON（origin/defaultFolder/host）。 */
     @JavascriptInterface fun getServerConfig(): String = serverConfigJsonFn()
+    /** server.html を開いたモード（"host" | "folder"）。設定リストの2エントリで出し分ける。 */
+    @JavascriptInterface fun getServerMode(): String = serverModeFn()
     /** ホスト文字列を検証・保存し、スクリーンを新オリジンで再構築する。 */
     @JavascriptInterface fun saveServerOrigin(host: String) = onSaveServerOrigin(host)
     /** 初期フォルダを保存する。 */

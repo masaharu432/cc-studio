@@ -54,9 +54,10 @@ class PanelJsonTest {
         assertEquals("plugins", arr.getJSONObject(0).getString("id"))
         assertEquals("3 個インストール · 2 有効", arr.getJSONObject(0).getString("sub"))
         assertEquals("server", arr.getJSONObject(1).getString("id"))
-        assertEquals("notify", arr.getJSONObject(2).getString("id"))
-        assertEquals("log", arr.getJSONObject(3).getString("id"))
-        assertEquals("lang", arr.getJSONObject(4).getString("id"))
+        assertEquals("defaultfolder", arr.getJSONObject(2).getString("id"))
+        assertEquals("notify", arr.getJSONObject(3).getString("id"))
+        assertEquals("log", arr.getJSONObject(4).getString("id"))
+        assertEquals("lang", arr.getJSONObject(5).getString("id"))
     }
 
     @Test
@@ -113,28 +114,36 @@ class PanelJsonTest {
         assertEquals(false, json.getJSONObject("hud").getBoolean("visible"))
     }
 
-    @Test fun settingsList_hasServerEntry_withValueSub() {
-        val json = PanelJson.settingsList(0, 0, "workbench.tailnet.ts.net", "/home/user/projects", true)
+    private fun entryById(json: String, id: String): org.json.JSONObject? {
         val arr = org.json.JSONArray(json)
-        var server: org.json.JSONObject? = null
         for (i in 0 until arr.length()) {
             val o = arr.getJSONObject(i)
-            if (o.getString("id") == "server") server = o
+            if (o.getString("id") == id) return o
         }
+        return null
+    }
+
+    @Test fun settingsList_serverEntry_showsHostOnly() {
+        val json = PanelJson.settingsList(0, 0, "workbench.tailnet.ts.net", "/home/user/projects", true)
+        val server = entryById(json, "server")
         assertNotNull(server)
         assertEquals("システム", server!!.getString("group"))
         assertEquals("接続先", server.getString("label"))
-        assertEquals("workbench.tailnet.ts.net · /home/user/projects", server.getString("sub"))
+        assertEquals("workbench.tailnet.ts.net", server.getString("sub"))
     }
 
-    @Test fun settingsList_serverUnset_showsPrompt() {
+    @Test fun settingsList_folderEntry_isSeparate_showsPath() {
+        val json = PanelJson.settingsList(0, 0, "workbench.tailnet.ts.net", "/home/user/projects", true)
+        val folder = entryById(json, "defaultfolder")
+        assertNotNull(folder)
+        assertEquals("システム", folder!!.getString("group"))
+        assertEquals("最初に開くフォルダ", folder.getString("label"))
+        assertEquals("/home/user/projects", folder.getString("sub"))
+    }
+
+    @Test fun settingsList_unset_serverPromptsAndFolderShowsDefault() {
         val json = PanelJson.settingsList(0, 0, null, null, true)
-        val arr = org.json.JSONArray(json)
-        var sub = ""
-        for (i in 0 until arr.length()) {
-            val o = arr.getJSONObject(i)
-            if (o.getString("id") == "server") sub = o.getString("sub")
-        }
-        assertEquals("未設定 — タップして設定", sub)
+        assertEquals("未設定 — タップして設定", entryById(json, "server")!!.getString("sub"))
+        assertEquals("サーバの既定（ホーム）", entryById(json, "defaultfolder")!!.getString("sub"))
     }
 }

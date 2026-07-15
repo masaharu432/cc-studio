@@ -20,6 +20,10 @@
     <string name="toast_default_folder_saved">Saved</string>
     <string name="toast_server_updated">Server updated</string>
     <string name="toast_origin_invalid">Enter a valid HTTPS domain (no IP)</string>
+    <string name="server_switch_title">Server changed</string>
+    <string name="server_switch_message">Reopen a screen on the new server? Your current screens still point at the old host.</string>
+    <string name="server_switch_reopen">Reopen on new server</string>
+    <string name="server_switch_keep">Just save</string>
     <string name="lang_dialog_title">Display language</string>
     <string name="lang_follow_device">Follow device</string>
 </resources>
