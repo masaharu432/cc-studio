@@ -272,7 +272,12 @@ export function createServer() {
   const server = http.createServer((req, res) => {
     // tailscale serve のパス挙動に依存しないよう POST は method だけで判定（tailnet 前提）。
     if (req.method === "GET") {
-      const u = new URL(req.url, "http://x")
+      let u
+      try { u = new URL(req.url, "http://x") } catch {
+        res.writeHead(400, { "Content-Type": "application/json" })
+        res.end(JSON.stringify({ error: "bad_request" }))
+        return
+      }
       if (u.pathname.endsWith("/ls")) {
         const result = listDirs(u.searchParams.get("path"))
         if (!result) {

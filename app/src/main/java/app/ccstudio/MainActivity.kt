@@ -285,9 +285,19 @@ class MainActivity : AppCompatActivity() {
     private fun createWebScreen(url: String, reloadOnFirstLoad: Boolean = false): Screen =
         screenFactory.createWebScreen(url, reloadOnFirstLoad)
 
+    /** origin のホスト（ポート無し）。null-safe。外部リンク判定など「ホストだけ」比較する用途向け。 */
+    private fun originHost(): String? =
+        originOrNull()?.let { try { Uri.parse(it).host } catch (_: Exception) { null } }
+
+    /** origin の authority（host:port。ポート省略時は host と同じ）。null-safe。表示/プリフィル用途向け。 */
+    private fun originAuthority(): String? =
+        originOrNull()?.let { origin ->
+            try { Uri.parse(origin).let { it.authority ?: it.host } } catch (_: Exception) { null }
+        }
+
     /** workbench（アプリが開く code-server）のホスト。これ以外の http(s) ホストは「外部」とみなす。 */
     private val workbenchHost: String?
-        get() = originOrNull()?.let { try { Uri.parse(it).host } catch (_: Exception) { null } }
+        get() = originHost()
 
     /** workbench 以外の http(s) ホストへのナビゲーションか（＝外部ブラウザで開くべきか）。 */
     private fun isExternalHttp(uri: Uri): Boolean =
@@ -377,10 +387,9 @@ class MainActivity : AppCompatActivity() {
         uiLangFn = { if (AppLang.isJa(this)) "ja" else "en" },
         serverConfigJsonFn = {
             val o = serverConfig.origin() ?: ""
-            val h = if (o.isNotEmpty()) (try { Uri.parse(o).host } catch (_: Exception) { null }) ?: "" else ""
             org.json.JSONObject().put("origin", o)
                 .put("defaultFolder", serverConfig.defaultFolder() ?: "")
-                .put("host", h).toString()
+                .put("host", originAuthority() ?: "").toString()
         },
         onSaveServerOrigin = { host -> runOnUiThread { applyServerOrigin(host) } },
         onSaveDefaultFolder = { path -> runOnUiThread {
@@ -401,10 +410,13 @@ class MainActivity : AppCompatActivity() {
         val folder = serverConfig.defaultFolder()
         val url = folder?.let { UrlPolicy.folderUrl(r.origin, it) } ?: "${r.origin}/"
         val s = createWebScreen(url, reloadOnFirstLoad = true)
-        screens.add(s); screens.select(s.id)
+        screens.add(s); screens.select(s.id); persistScreens()
         stopService(Intent(this, KeepAliveService::class.java))
         ContextCompat.startForegroundService(this, Intent(this, KeepAliveService::class.java))
         toast(getString(R.string.toast_server_updated))
+        // 保存成功でパネルを畳んで新しい workbench スクリーンを見せる（openScreenForCwd と同じ畳み方）。
+        nav.clear()
+        closeNotify(); closeLog(); closePluginSettings(); closeServer(); closeSwitcher()
     }
 
     /** …/ls を OkHttp で非同期取得し、生 JSON を window.__ccDirResult に渡す。未接続/失敗は {error}。 */
@@ -596,9 +608,8 @@ class MainActivity : AppCompatActivity() {
     /** 設定側の一覧（switcher が描く）。 */
     private fun settingsListJson(): String {
         val plugins = store.list()
-        val host = originOrNull()?.let { try { Uri.parse(it).host } catch (_: Exception) { null } }
         return PanelJson.settingsList(
-            plugins.size, plugins.count { it.enabled }, host, serverConfig.defaultFolder(), AppLang.isJa(this)
+            plugins.size, plugins.count { it.enabled }, originAuthority(), serverConfig.defaultFolder(), AppLang.isJa(this)
         )
     }
 
