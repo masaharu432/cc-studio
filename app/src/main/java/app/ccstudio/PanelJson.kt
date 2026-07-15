@@ -35,13 +35,20 @@ object PanelJson {
     }
 
     /** 設定側の一覧（switcher が描く）。項目追加はここに1エントリ足すだけで済ませる。 */
-    fun settingsList(total: Int, enabled: Int, ja: Boolean): String {
+    fun settingsList(total: Int, enabled: Int, originHost: String?, defaultFolder: String?, ja: Boolean): String {
         fun t(en: String, jp: String) = if (ja) jp else en
         val arr = JSONArray()
         arr.put(
             JSONObject().put("id", "plugins").put("group", t("Plugins", "プラグイン")).put("icon", "🧩")
                 .put("label", t("Plugin manager", "プラグイン管理"))
                 .put("sub", t("$total installed · $enabled enabled", "$total 個インストール · $enabled 有効"))
+        )
+        val serverSub = if (originHost != null)
+            originHost + (defaultFolder?.let { " · $it" } ?: "")
+        else t("Not set — tap to configure", "未設定 — タップして設定")
+        arr.put(
+            JSONObject().put("id", "server").put("group", t("System", "システム")).put("icon", "🖥️")
+                .put("label", t("Server", "接続先")).put("sub", serverSub)
         )
         arr.put(
             JSONObject().put("id", "notify").put("group", t("System", "システム")).put("icon", "🔔")

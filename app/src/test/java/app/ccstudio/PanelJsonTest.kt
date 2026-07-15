@@ -3,6 +3,7 @@ package app.ccstudio
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Test
 
 class PanelJsonTest {
@@ -49,20 +50,21 @@ class PanelJsonTest {
 
     @Test
     fun `settingsList はプラグイン数を sub に埋める`() {
-        val arr = JSONArray(PanelJson.settingsList(3, 2, ja = true))
+        val arr = JSONArray(PanelJson.settingsList(3, 2, null, null, ja = true))
         assertEquals("plugins", arr.getJSONObject(0).getString("id"))
         assertEquals("3 個インストール · 2 有効", arr.getJSONObject(0).getString("sub"))
-        assertEquals("notify", arr.getJSONObject(1).getString("id"))
-        assertEquals("log", arr.getJSONObject(2).getString("id"))
-        assertEquals("lang", arr.getJSONObject(3).getString("id"))
+        assertEquals("server", arr.getJSONObject(1).getString("id"))
+        assertEquals("notify", arr.getJSONObject(2).getString("id"))
+        assertEquals("log", arr.getJSONObject(3).getString("id"))
+        assertEquals("lang", arr.getJSONObject(4).getString("id"))
     }
 
     @Test
     fun `settingsList は言語で文言が切り替わる`() {
-        val en = JSONArray(PanelJson.settingsList(3, 2, ja = false)).getJSONObject(0)
+        val en = JSONArray(PanelJson.settingsList(3, 2, null, null, ja = false)).getJSONObject(0)
         assertEquals("Plugin manager", en.getString("label"))
         assertEquals("3 installed · 2 enabled", en.getString("sub"))
-        val jp = JSONArray(PanelJson.settingsList(3, 2, ja = true)).getJSONObject(0)
+        val jp = JSONArray(PanelJson.settingsList(3, 2, null, null, ja = true)).getJSONObject(0)
         assertEquals("プラグイン管理", jp.getString("label"))
     }
 
@@ -109,5 +111,30 @@ class PanelJsonTest {
     fun `effectiveSettings はネストした JSON になる`() {
         val json = JSONObject(PanelJson.effectiveSettings(mapOf("hud" to mapOf("visible" to false))))
         assertEquals(false, json.getJSONObject("hud").getBoolean("visible"))
+    }
+
+    @Test fun settingsList_hasServerEntry_withValueSub() {
+        val json = PanelJson.settingsList(0, 0, "workbench.tailnet.ts.net", "/home/user/projects", true)
+        val arr = org.json.JSONArray(json)
+        var server: org.json.JSONObject? = null
+        for (i in 0 until arr.length()) {
+            val o = arr.getJSONObject(i)
+            if (o.getString("id") == "server") server = o
+        }
+        assertNotNull(server)
+        assertEquals("システム", server!!.getString("group"))
+        assertEquals("接続先", server.getString("label"))
+        assertEquals("workbench.tailnet.ts.net · /home/user/projects", server.getString("sub"))
+    }
+
+    @Test fun settingsList_serverUnset_showsPrompt() {
+        val json = PanelJson.settingsList(0, 0, null, null, true)
+        val arr = org.json.JSONArray(json)
+        var sub = ""
+        for (i in 0 until arr.length()) {
+            val o = arr.getJSONObject(i)
+            if (o.getString("id") == "server") sub = o.getString("sub")
+        }
+        assertEquals("未設定 — タップして設定", sub)
     }
 }

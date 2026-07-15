@@ -518,7 +518,7 @@ class MainActivity : AppCompatActivity() {
     /** 設定側の一覧（switcher が描く）。 */
     private fun settingsListJson(): String {
         val plugins = store.list()
-        return PanelJson.settingsList(plugins.size, plugins.count { it.enabled }, AppLang.isJa(this))
+        return PanelJson.settingsList(plugins.size, plugins.count { it.enabled }, null, null, AppLang.isJa(this))
     }
 
     /** 設定エントリのタップ。遷移の実体はここで解決する（switcher は id を渡すだけ）。 */
