@@ -151,6 +151,12 @@ class MainActivity : AppCompatActivity() {
         // 通知タップでアプリが起動した場合（アプリが落ちていた状態でタップ）の処理
         intent.getStringExtra(KeepAliveService.EXTRA_OPEN_CWD)?.let { openScreenForCwd(it) }
 
+        // 接続先が未設定（シードも不可）なら、localhost へは繋がず設定パネルを促す。
+        // Nav.Server も積んでおく（他の設定導線と同様。積まないと戻るボタンがこのパネルを畳めない）。
+        if (serverConfig.origin() == null) {
+            nav.ensureSwitcher("settings"); nav.push(Nav.Server); openServer()
+        }
+
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() { popBack() }
         })
@@ -206,7 +212,7 @@ class MainActivity : AppCompatActivity() {
         // オーバーレイ（switcher 等）を開いたまま背面化していると、select しても
         // その上に被さったままスクリーン一覧が見え続けるため、先に全て畳む。
         nav.clear()
-        closeNotify(); closeLog(); closePluginSettings(); closeSwitcher()
+        closeNotify(); closeLog(); closePluginSettings(); closeServer(); closeSwitcher()
         val hit = screens.webScreens().firstOrNull {
             NotifyDecision.matches(ScreenUrl.folderPath(it.url), cwd)
         }
@@ -560,6 +566,7 @@ class MainActivity : AppCompatActivity() {
             PopAction.ClosePluginSettings -> closePluginSettings()  // 下の PluginsScreen（表示中）に戻る
             PopAction.CloseNotifyToSettings -> { closeNotify(); showSwitcher("settings") }
             PopAction.CloseLogToSettings -> { closeLog(); showSwitcher("settings") }
+            PopAction.CloseServerToSettings -> { closeServer(); showSwitcher("settings") }
             PopAction.ShowSettingsSwitcher -> showSwitcher("settings")
             PopAction.SwitchToScreensTab -> setSwitcherTabJs("screens")
             PopAction.CloseSwitcher -> {
@@ -571,10 +578,10 @@ class MainActivity : AppCompatActivity() {
             }
             PopAction.Fallback -> {
                 // 防御: スタックと表示がズレていたら、見えているオーバーレイを畳むだけにする。
-                val visible = listOf(notifyPanel, logPanel, settingsPanel, switcherPanel)
+                val visible = listOf(notifyPanel, logPanel, settingsPanel, serverPanel, switcherPanel)
                     .any { it.isVisible() }
                 if (visible) {
-                    closeNotify(); closeLog(); closePluginSettings(); closeSwitcher()
+                    closeNotify(); closeLog(); closePluginSettings(); closeServer(); closeSwitcher()
                     return
                 }
                 val a = screens.activeOrNull()
@@ -608,6 +615,7 @@ class MainActivity : AppCompatActivity() {
             }
             "notify" -> { closeSwitcher(); nav.push(Nav.Notify); openNotify() }
             "log" -> { closeSwitcher(); nav.push(Nav.Log); openLog() }
+            "server" -> { closeSwitcher(); nav.push(Nav.Server); openServer() }
             "lang" -> openLanguageDialog()   // ダイアログ表示のみ。switcher は裏に残す
         }
     }
@@ -646,6 +654,11 @@ class MainActivity : AppCompatActivity() {
     private fun openLog() { logPanel.show() }
 
     private fun closeLog() { logPanel.hide() }
+
+    // ── 接続先設定（server.html オーバーレイ・notify と同型） ──
+    private fun openServer() { serverPanel.show() }
+
+    private fun closeServer() { serverPanel.hide() }
 
     /** 表示用ログ本文（末尾を上限で切る。ダウンロードは全文）。 */
     private fun observerLogForDisplay(): String {

@@ -12,11 +12,12 @@ sealed class Nav {
     object Notify : Nav()
     object Log : Nav()
     object PluginSettings : Nav()
+    object Server : Nav()                          // 設定から開いた接続先設定オーバーレイ（server.html）
 }
 
 /**
  * pop の結果として呼び出し側が実行すべき表示副作用。spec の遷移表:
- * PluginSettings → plugins / Notify・Log → switcher(設定側) / PluginsScreen → switcher(設定側)
+ * PluginSettings → plugins / Notify・Log・Server → switcher(設定側) / PluginsScreen → switcher(設定側)
  * / Switcher(設定側) → スクリーン側 / Switcher(スクリーン側) → 閉じる
  * / 空 → WebView 履歴 → moveTaskToBack。
  */
@@ -24,6 +25,7 @@ sealed class PopAction {
     object ClosePluginSettings : PopAction()   // 下の PluginsScreen（表示中）に戻る
     object CloseNotifyToSettings : PopAction()
     object CloseLogToSettings : PopAction()
+    object CloseServerToSettings : PopAction()
     object ShowSettingsSwitcher : PopAction()
     object SwitchToScreensTab : PopAction()    // 設定側→スクリーン側（Switcher はスタックに残る）
     object CloseSwitcher : PopAction()
@@ -60,6 +62,7 @@ class NavModel {
         is Nav.PluginSettings -> PopAction.ClosePluginSettings
         is Nav.Notify -> PopAction.CloseNotifyToSettings
         is Nav.Log -> PopAction.CloseLogToSettings
+        is Nav.Server -> PopAction.CloseServerToSettings
         is Nav.PluginsScreen -> PopAction.ShowSettingsSwitcher
         is Nav.Switcher ->
             if (top.tab == "settings") {

@@ -1,0 +1,348 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>接続先設定</title>
+<style>
+  :root{
+    --chassis:#11151C; --module:#1B222E; --line:#2A3342; --ink:#E8EDF4; --dim:#7C8694;
+    --brand:#2E90E8; --brand-soft:#8FC2F2; --live:#3FD79A; --live-dim:#1f6d52;
+    --warn:#E8646C; --field:#0e1620;
+    --sans:-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+    --mono:ui-monospace,"Roboto Mono","JetBrains Mono",Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{background:var(--chassis);color:var(--ink);font-family:var(--sans)}
+  .screen{height:100%;display:flex;flex-direction:column;position:relative}
+  .bar{display:flex;align-items:center;gap:10px;padding:16px 16px 12px;border-bottom:1px solid var(--line);flex:0 0 auto;
+    padding-top:calc(16px + env(safe-area-inset-top))}
+  .title{font:600 13px/1 var(--mono);letter-spacing:.24em;color:var(--dim);text-transform:uppercase}
+  .navback{border:1px solid var(--line);background:transparent;color:var(--dim);border-radius:8px;
+    font:600 12px/1 var(--sans);padding:7px 10px 7px 8px;cursor:pointer;display:inline-flex;align-items:center;gap:5px}
+  .navback .chev{font-size:14px;color:var(--brand-soft)}
+
+  .body{flex:1;overflow:auto;padding:6px 16px 20px;min-height:0}
+  .sect{margin-top:15px}
+  .sect:first-child{margin-top:8px}
+  .sect-h{font:700 10px/1 var(--mono);letter-spacing:.18em;text-transform:uppercase;color:var(--dim);margin:0 0 9px;
+    display:flex;align-items:center;gap:8px}
+  .sect-h .num{color:var(--brand-soft)}
+
+  .scheme-lab{display:flex;align-items:center;gap:7px;margin:0 2px 7px;
+    font:600 10.5px/1 var(--mono);letter-spacing:.06em;color:var(--live)}
+  .scheme-lab svg{width:12px;height:12px}
+  .scheme-lab .fixed{color:var(--brand-soft)}
+  .scheme-lab .tag{margin-left:auto;color:var(--dim);letter-spacing:.12em}
+  .hostbox{display:flex;align-items:center;border:1px solid var(--line);border-radius:12px;background:var(--field);
+    transition:border-color .18s, box-shadow .18s}
+  .hostbox:focus-within{border-color:var(--brand);box-shadow:0 0 0 3px #2e90e825}
+  .hostbox.bad:focus-within{border-color:var(--warn);box-shadow:0 0 0 3px #e8646c22}
+  .hostbox input{flex:1;min-width:0;width:100%;border:0;outline:0;background:transparent;color:var(--ink);
+    font:600 15px/1 var(--mono);padding:15px 14px;letter-spacing:.01em}
+  .hostbox input::placeholder{color:#4c5563;font-weight:500}
+
+  .tele{margin-top:10px;display:flex;flex-direction:column;gap:1px;border:1px solid var(--line);border-radius:12px;overflow:hidden}
+  .tl{display:flex;align-items:center;gap:10px;padding:9px 12px;background:var(--module)}
+  .tl .dot{width:8px;height:8px;border-radius:50%;flex:0 0 auto;background:#39424f;transition:background .18s, box-shadow .18s}
+  .tl .lab{flex:1;min-width:0}
+  .tl .lab b{display:block;font:600 12px/1.2 var(--sans);color:var(--ink)}
+  .tl .lab i{display:block;font:500 10px/1.3 var(--mono);color:var(--dim);font-style:normal;margin-top:2px}
+  .tl .mark{font:700 12px/1 var(--mono);color:var(--dim);flex:0 0 auto}
+  .tl.ok .dot{background:var(--live);box-shadow:0 0 0 4px #3fd79a1e}
+  .tl.ok .mark{color:var(--live)}
+  .tl.bad .dot{background:var(--warn);box-shadow:0 0 0 4px #e8646c1e}
+  .tl.bad .mark{color:var(--warn)}
+
+  .why{margin-top:9px;font:500 11px/1.55 var(--sans);color:#5d6675}
+  .why.err{color:var(--brand-soft);display:none}
+  .why.err.show{display:block}
+
+  .folder{display:flex;gap:8px;align-items:stretch}
+  .folder .fbox{flex:1;min-width:0;display:flex;align-items:center;gap:9px;border:1px solid var(--line);border-radius:12px;
+    background:var(--field);padding:0 12px}
+  .folder .fbox .fic{font-size:14px;flex:0 0 auto}
+  .folder .fbox input{flex:1;min-width:0;width:100%;border:0;outline:0;background:transparent;color:var(--ink);
+    font:500 13px/1 var(--mono);padding:13px 0}
+  .browse{flex:0 0 auto;border:1px solid var(--line);background:#0b131b;color:var(--brand-soft);border-radius:12px;
+    font:600 12px/1 var(--sans);padding:0 15px;cursor:pointer;display:flex;align-items:center;gap:6px;transition:border-color .18s}
+  .browse:hover{border-color:var(--brand)}
+  .browse:disabled{color:#4b5460;cursor:not-allowed;border-color:var(--line)}
+
+  .browser{margin-top:10px;border:1px solid var(--line);border-radius:12px;overflow:hidden;display:none}
+  .browser.open{display:block}
+  .crumb{display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--line);background:#0b131b}
+  .crumb .up{border:1px solid var(--line);background:transparent;color:var(--brand-soft);border-radius:7px;
+    font:600 12px/1 var(--sans);padding:6px 9px 6px 7px;cursor:pointer;display:inline-flex;align-items:center;gap:4px}
+  .crumb .up:disabled{color:#434c58;cursor:not-allowed}
+  .crumb .path{flex:1;min-width:0;font:500 11.5px/1.3 var(--mono);color:var(--ink);
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .dirlist{max-height:180px;overflow:auto}
+  .di{display:flex;align-items:center;gap:11px;padding:11px 13px;cursor:pointer;border-top:1px solid #1a2230;background:var(--module)}
+  .di:first-child{border-top:0}
+  .di:hover{background:#20293860}
+  .di .dic{font-size:14px;flex:0 0 auto}
+  .di .dn{flex:1;min-width:0;font:500 13px/1 var(--sans);color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .di .go{font:600 15px/1 var(--sans);color:#3a4453}
+  .di.empty{color:var(--dim);cursor:default;justify-content:center;font:500 12px/1 var(--mono)}
+  .di.empty:hover{background:var(--module)}
+  .browser .pick{width:100%;border:0;border-top:1px solid var(--line);
+    background:#0d1a16;color:var(--live);font:600 13px/1 var(--sans);padding:13px;cursor:pointer;
+    display:flex;align-items:center;justify-content:center;gap:8px}
+  .browser .pick:hover{background:#0f211b}
+
+  .hint{margin-top:9px;font:500 11px/1.55 var(--sans);color:#5d6675}
+  .hint.off{color:#6a5a3f;display:none}
+  .hint.off.show{display:block}
+
+  .foot{flex:0 0 auto;border-top:1px solid var(--line);padding:12px 15px calc(18px + env(safe-area-inset-bottom));
+    background:linear-gradient(180deg,#0f141b,#0c1017)}
+  .save{width:100%;border:0;border-radius:12px;padding:15px;font:700 14px/1 var(--sans);cursor:pointer;
+    background:var(--brand);color:#04121f;letter-spacing:.02em;transition:filter .18s}
+  .save:disabled{background:#233240;color:#59647240;cursor:not-allowed}
+  .save:not(:disabled):hover{filter:brightness(1.06)}
+
+  @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+  <div class="screen">
+    <div class="bar">
+      <button class="navback" id="back"><span class="chev">‹</span><span id="backLabel">設定</span></button>
+      <span class="title" id="pageTitle">接続先</span>
+    </div>
+
+    <div class="body">
+      <div class="sect">
+        <p class="sect-h"><span class="num">01</span> <span id="sect1">Workbench Origin</span></p>
+        <div class="scheme-lab">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
+          <span id="schemeLab">HTTPS 固定 ·</span> <span class="fixed">https://</span><span class="tag" id="schemeTag">DOMAIN ONLY</span>
+        </div>
+        <div class="hostbox" id="hostbox">
+          <input id="host" inputmode="url" autocapitalize="off" autocorrect="off" spellcheck="false"
+                 placeholder="workbench.tailnet.ts.net">
+        </div>
+
+        <div class="tele" id="tele">
+          <div class="tl" data-k="https"><span class="dot"></span>
+            <span class="lab"><b id="teleHttpsT">HTTPS</b><i id="teleHttpsD">必須 — 暗号化された接続</i></span><span class="mark">—</span></div>
+          <div class="tl" data-k="domain"><span class="dot"></span>
+            <span class="lab"><b id="teleDomainT">ドメイン名</b><i id="teleDomainD">FQDN が必要（例 host.example.ts.net）</i></span><span class="mark">—</span></div>
+          <div class="tl" data-k="ip"><span class="dot"></span>
+            <span class="lab"><b id="teleIpT">IP アドレス</b><i id="teleIpD">直打ちは不可 — 証明書が効かない</i></span><span class="mark">—</span></div>
+        </div>
+
+        <p class="why" id="why">公式拡張は HTTPS ドメインでのみ動作。tailnet は MagicDNS 名（例 xxx.ts.net）を使用。</p>
+        <p class="why err" id="whyErr"></p>
+      </div>
+
+      <div class="sect">
+        <p class="sect-h"><span class="num">02</span> <span id="sect2">最初に開くフォルダ</span></p>
+        <div class="folder">
+          <div class="fbox"><span class="fic">📁</span>
+            <input id="folder" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="/home/user">
+          </div>
+          <button class="browse" id="browseBtn">参照</button>
+        </div>
+
+        <div class="browser" id="browser">
+          <div class="crumb">
+            <button class="up" id="up"><span>‹</span> <span id="upLabel">親へ</span></button>
+            <span class="path" id="crumbPath"></span>
+          </div>
+          <div class="dirlist" id="dirlist"></div>
+          <button class="pick" id="pick">📍 <span id="pickLabel">ここを選択</span></button>
+        </div>
+
+        <p class="hint" id="hint1">未設定なら、サーバの既定フォルダ（ホーム）を開きます。</p>
+        <p class="hint off" id="offHint">サーバに接続すると、フォルダを参照して選べます。手入力はいつでも可能です。</p>
+      </div>
+    </div>
+
+    <div class="foot">
+      <button class="save" id="save">接続先を保存</button>
+    </div>
+  </div>
+<script>
+(function(){
+  var $=function(s){return document.querySelector(s)};
+  function api(){ return window.CCStudio || {}; }
+  // 表示言語（ja/en）。ブリッジ不在時は ja に倒す。
+  var JA=(function(){ try{ return (api().getUiLang && api().getUiLang())!=='en'; }catch(_){ return true; } })();
+  var T=JA?{
+    back:'設定', title:'接続先',
+    sect1:'Workbench Origin', schemeLab:'HTTPS 固定 ·', schemeTag:'ドメインのみ',
+    teleHttpsT:'HTTPS', teleHttpsD:'必須 — 暗号化された接続',
+    teleDomainT:'ドメイン名', teleDomainD:'FQDN が必要（例 host.example.ts.net）',
+    teleIpT:'IP アドレス', teleIpD:'直打ちは不可 — 証明書が効かない',
+    why:'公式拡張は HTTPS ドメインでのみ動作。tailnet は MagicDNS 名（例 xxx.ts.net）を使用。',
+    sect2:'最初に開くフォルダ', browse:'参照', up:'親へ', pick:'ここを選択',
+    hint1:'未設定なら、サーバの既定フォルダ（ホーム）を開きます。',
+    offHint:'サーバに接続すると、フォルダを参照して選べます。手入力はいつでも可能です。',
+    dirBrowseNeedsConn:'サーバに接続すると参照できます',
+    empty:'（サブフォルダなし）',
+    save:'接続先を保存',
+    hostPlaceholder:'workbench.tailnet.ts.net',
+    ERR:{
+      not_https:'HTTPS が必要です。https のドメインを入力してください。',
+      is_ip:'IP アドレスは使えません。証明書付きのドメイン名（例 xxx.ts.net）を入力してください。',
+      no_dot:'ドメイン名を入力してください（例 host.example.ts.net）。',
+      empty:'接続先のドメインを入力してください。'
+    }
+  }:{
+    back:'Settings', title:'Server',
+    sect1:'Workbench Origin', schemeLab:'HTTPS only ·', schemeTag:'DOMAIN ONLY',
+    teleHttpsT:'HTTPS', teleHttpsD:'Required — encrypted connection',
+    teleDomainT:'Domain name', teleDomainD:'FQDN required (e.g. host.example.ts.net)',
+    teleIpT:'IP address', teleIpD:'Not allowed — certificates do not cover raw IPs',
+    why:'The official extension only works over an HTTPS domain. Tailnets use MagicDNS names (e.g. xxx.ts.net).',
+    sect2:'Folder to open first', browse:'Browse', up:'Up', pick:'Choose this folder',
+    hint1:'If unset, the server’s default folder (home) is opened.',
+    offHint:'Connect to the server to browse folders. Manual entry is always available.',
+    dirBrowseNeedsConn:'Connect to the server to browse',
+    empty:'(no subfolders)',
+    save:'Save server',
+    hostPlaceholder:'workbench.tailnet.ts.net',
+    ERR:{
+      not_https:'HTTPS is required. Enter an https domain.',
+      is_ip:'IP addresses are not allowed. Enter a domain name with a certificate (e.g. xxx.ts.net).',
+      no_dot:'Enter a domain name (e.g. host.example.ts.net).',
+      empty:'Enter the server domain.'
+    }
+  };
+
+  function applyText(){
+    document.title=T.title;
+    $('#backLabel').textContent=T.back;
+    $('#pageTitle').textContent=T.title;
+    $('#sect1').textContent=T.sect1;
+    $('#schemeLab').textContent=T.schemeLab;
+    $('#schemeTag').textContent=T.schemeTag;
+    $('#teleHttpsT').textContent=T.teleHttpsT;
+    $('#teleHttpsD').textContent=T.teleHttpsD;
+    $('#teleDomainT').textContent=T.teleDomainT;
+    $('#teleDomainD').textContent=T.teleDomainD;
+    $('#teleIpT').textContent=T.teleIpT;
+    $('#teleIpD').textContent=T.teleIpD;
+    $('#why').textContent=T.why;
+    $('#sect2').textContent=T.sect2;
+    $('#browseBtn').textContent=T.browse;
+    $('#upLabel').textContent=T.up;
+    $('#pickLabel').textContent=T.pick;
+    $('#hint1').textContent=T.hint1;
+    $('#offHint').textContent=T.offHint;
+    $('#save').textContent=T.save;
+    $('#host').setAttribute('placeholder', T.hostPlaceholder);
+  }
+
+  // ── 検証（Kotlin ServerConfig.normalizeOrigin と同じ判定） ──
+  function classify(raw){
+    var v=(raw||"").trim();
+    if(!v) return {code:"empty"};
+    if(/^http:\/\//i.test(v)) return {code:"not_https"};
+    v=v.replace(/^https?:\/\//i,"").replace(/[\/?#].*$/,"");
+    var hostOnly=v.replace(/:\d+$/,"");
+    if(!hostOnly) return {code:"empty"};
+    var ipv4=/^\d{1,3}(\.\d{1,3}){3}$/.test(hostOnly);
+    var ipv6=/^\[?[0-9a-f:]+\]?$/i.test(hostOnly) && hostOnly.indexOf(":")>=0;
+    if(ipv4||ipv6) return {code:"is_ip"};
+    if(hostOnly.indexOf(".")<0) return {code:"no_dot"};
+    return {code:"ok", host:hostOnly.toLowerCase()};
+  }
+  function setTL(k,state,mark){
+    var el=$('.tl[data-k="'+k+'"]'); el.classList.remove('ok','bad');
+    if(state) el.classList.add(state);
+    el.querySelector('.mark').textContent=mark;
+  }
+  function validate(){
+    var r=classify($('#host').value);
+    var ok=r.code==="ok";
+    var httpsOk=r.code!=="not_https";
+    setTL('https', httpsOk?'ok':'bad', httpsOk?'✓':'✗');
+    setTL('domain', ok?'ok':((r.code==="no_dot"||r.code==="empty")?'bad':''), ok?'✓':(r.code==="no_dot"?'✗':'—'));
+    setTL('ip', r.code==="is_ip"?'bad':(ok?'ok':''), r.code==="is_ip"?'✗':'—');
+    $('#hostbox').classList.toggle('bad', !ok && r.code!=="empty");
+    var e=$('#whyErr');
+    if(ok||r.code==="empty"){ e.classList.remove('show'); e.textContent=""; }
+    else { e.textContent=T.ERR[r.code]||""; e.classList.add('show'); }
+    $('#save').disabled=!ok;
+  }
+  $('#host').addEventListener('input',validate);
+
+  // ── ディレクトリブラウザ（ネイティブ browseDir/__ccDirResult 往復） ──
+  var currentPath="";
+  function paint(res){
+    currentPath = res.path || "";
+    $('#crumbPath').textContent=currentPath;
+    $('#up').disabled=!res.parent;
+    var list=$('#dirlist'); list.innerHTML="";
+    var dirs=res.dirs||[];
+    if(!dirs.length){ var em=document.createElement('div'); em.className="di empty"; em.textContent=T.empty; list.appendChild(em); return; }
+    dirs.forEach(function(name){
+      var row=document.createElement('div'); row.className="di";
+      row.innerHTML='<span class="dic">📁</span><span class="dn"></span><span class="go">›</span>';
+      row.querySelector('.dn').textContent=name;
+      row.addEventListener('click',function(){
+        var next=(currentPath==="/"?"":currentPath)+"/"+name;
+        api().browseDir(next);
+      });
+      list.appendChild(row);
+    });
+  }
+  window.__ccDirResult=function(res){
+    res = res || {};
+    if(res.error){
+      $('#browser').classList.remove('open');
+      $('#offHint').textContent=T.dirBrowseNeedsConn;
+      $('#offHint').classList.add('show');
+      return;
+    }
+    $('#offHint').classList.remove('show');
+    $('#browser').classList.add('open');
+    paint(res);
+    if (res.parent !== undefined) {
+      window.__ccDirParent = res.parent;
+    }
+  };
+  $('#browseBtn').addEventListener('click',function(){
+    var b=$('#browser');
+    if(b.classList.contains('open')){ b.classList.remove('open'); return; }
+    var start = $('#folder').value || "";
+    try{ api().browseDir(start); }catch(_){ }
+  });
+  $('#up').addEventListener('click',function(){
+    if(window.__ccDirParent){ try{ api().browseDir(window.__ccDirParent); }catch(_){ } }
+  });
+  $('#pick').addEventListener('click',function(){
+    $('#folder').value=currentPath;
+    try{ api().saveDefaultFolder(currentPath); }catch(_){ }
+    $('#browser').classList.remove('open');
+  });
+  $('#folder').addEventListener('blur',function(){
+    try{ api().saveDefaultFolder($('#folder').value); }catch(_){ }
+  });
+
+  // ── 保存 ──
+  $('#save').addEventListener('click',function(){
+    if(this.disabled) return;
+    try{ api().saveServerOrigin($('#host').value); }catch(_){ }
+  });
+
+  $('#back').addEventListener('click',function(){ try{ api().navBack(); }catch(_){ } });
+
+  function readCfg(){ try{ return JSON.parse(api().getServerConfig()||"{}"); }catch(_){ return {}; } }
+  window.__ccRenderServer=function(){
+    applyText();
+    var cfg=readCfg();
+    $('#host').value = cfg.host || "";
+    $('#folder').value = cfg.defaultFolder || "";
+    $('#browser').classList.remove('open');
+    validate();
+  };
+  document.addEventListener('DOMContentLoaded', window.__ccRenderServer);
+})();
+</script>
+</body>
+</html>

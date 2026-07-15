@@ -14,11 +14,13 @@ class NavModelTest {
     }
 
     @Test
-    fun `Notify と Log は設定側 switcher へ戻る`() {
+    fun `Notify と Log と Server は設定側 switcher へ戻る`() {
         val m = NavModel(); m.push(Nav.Notify)
         assertEquals(PopAction.CloseNotifyToSettings, m.pop())
         val m2 = NavModel(); m2.push(Nav.Log)
         assertEquals(PopAction.CloseLogToSettings, m2.pop())
+        val m3 = NavModel(); m3.push(Nav.Server)
+        assertEquals(PopAction.CloseServerToSettings, m3.pop())
     }
 
     @Test
