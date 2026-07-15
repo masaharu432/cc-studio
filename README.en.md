@@ -63,6 +63,12 @@ description doubles as a record of the bug it kills.</sub></p>
 - **Notifications** — OS notifications for Claude Code's **turn completion** and **permission waits**
   (suppressed for the screen you are currently viewing). Toggle each kind under switcher →
   Notifications. Tapping a notification jumps to the screen for that folder (creating one if needed).
+- **Server connection** — set the workbench's connection (an HTTPS domain) and the folder to open
+  first **from inside the app** (switcher → Settings → **Server** / **Folder to open first**, two
+  separate entries). The connection accepts HTTPS domains only (raw IPs are rejected — the official
+  extension needs a certificate). When connected, you can browse the server's directories to pick the
+  initial folder. Settings are saved to a file and survive process death and app updates. Only when the
+  host actually changes does it ask whether to reopen screens on the new host.
 - **Copy & paste** — copy with the two plugins above (long-press / rectangle). Paste with Gboard's
   clipboard (the clipboard icon above the keyboard).
 - **Observer log** — switcher → Log shows a timeline of busy/connection/unexpected-cancel records
@@ -86,7 +92,7 @@ HTTPS → building the app → first-run setup on the phone. The short version:
 ./server/provision/setup.sh                # server: code-server + extensions + notifications
 tailscale serve --bg 127.0.0.1:8088        # once, on the front host (Windows side if WSL)
 tailscale serve --bg --set-path /cc-notify http://127.0.0.1:8770
-./gradlew assembleDebug                    # app: put the URL in local.properties and build
+./gradlew assembleDebug                    # build the app (set the connection in-app via Settings → Server; the local.properties URL is just an optional first-run seed)
 ```
 
 ## Usage
