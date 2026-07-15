@@ -404,19 +404,23 @@ class MainActivity : AppCompatActivity() {
 
     // ── 接続先設定（server.html） ──────────────────────────────────────
 
-    /** ホスト入力を検証・保存し、旧スクリーンを捨てて新オリジンで作り直す。KeepAlive も再起動。 */
+    /**
+     * ホスト入力を検証・保存し、KeepAlive を新ホストへ再購読する。
+     * 開いているスクリーンは閉じない（ユーザーの作業を壊さないため）。
+     * Web スクリーンが1枚も無い（初回設定など）ときだけ、初期フォルダのスクリーンを1枚だけ用意する。
+     */
     private fun applyServerOrigin(host: String) {
         val r = ServerConfigCodec.normalizeOrigin(host)
         if (r !is OriginResult.Ok) { toast(getString(R.string.toast_origin_invalid)); return }
         serverConfig.setOrigin(r.origin)
-        screenStore.save(emptyList(), 0)
-        screens.webScreens().forEach { screens.close(it.id) }
-        val s = createWebScreen(initialScreenUrl() ?: "${r.origin}/", reloadOnFirstLoad = true)
-        screens.add(s); screens.select(s.id); persistScreens()
+        if (screens.webScreens().isEmpty()) {
+            val s = createWebScreen(initialScreenUrl() ?: "${r.origin}/", reloadOnFirstLoad = true)
+            screens.add(s); screens.select(s.id); persistScreens()
+        }
         stopService(Intent(this, KeepAliveService::class.java))
         ContextCompat.startForegroundService(this, Intent(this, KeepAliveService::class.java))
         toast(getString(R.string.toast_server_updated))
-        // 保存成功でパネルを畳んで新しい workbench スクリーンを見せる（openScreenForCwd と同じ畳み方）。
+        // 設定パネルを畳んで、開いていたスクリーン（or 初回に用意した1枚）に戻る。既存スクリーンは保持。
         nav.clear()
         closeNotify(); closeLog(); closePluginSettings(); closeServer(); closeSwitcher()
     }
