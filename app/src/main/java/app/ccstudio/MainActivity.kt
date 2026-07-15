@@ -32,6 +32,14 @@ class MainActivity : AppCompatActivity() {
     private val downloader = DownloadController(this) { toast(it) }
     private var settingsTarget: String? = null
 
+    private val serverConfig by lazy { ServerConfig.forContext(this) }
+
+    /** 現在の接続先オリジン（末尾スラッシュ無し）。未設定なら null。 */
+    private fun originOrNull(): String? = serverConfig.origin()
+
+    /** origin + "/" を返す。未設定なら null。 */
+    private fun originRootUrl(): String? = originOrNull()?.let { "$it/" }
+
     // ── 全画面オーバーレイ（遅延生成・使い回し）。表示順序・再描画 JS は従来と同一。 ──
     private fun overlayWebView(): WebView =
         screenFactory.newConfiguredWebView().also { it.webViewClient = screenFactory.baseWebViewClient() }
@@ -98,6 +106,10 @@ class MainActivity : AppCompatActivity() {
         root = FrameLayout(this)
         setContentView(root)
         screens = ScreenManager(root)
+        // 初回シード: server.json 未設定かつ BuildConfig が実 HTTPS ドメインなら移送。
+        if (serverConfig.origin() == null) {
+            ServerConfigCodec.seedOriginFrom(SEED_TARGET_URL)?.let { serverConfig.setOrigin(it) }
+        }
         screens.onActiveChanged = { s ->
             NotifyState.activeFolder =
                 if (s != null && s.kind == ScreenKind.WEB) ScreenUrl.folderPath(s.url) else null
@@ -115,7 +127,10 @@ class MainActivity : AppCompatActivity() {
         // アプリ更新後などに既存スクリーンでキーボード抑制が効かないことがある。
         val state = screenStore.load()
         if (state.urls.isEmpty()) {
-            screens.add(createWebScreen(TARGET_URL, reloadOnFirstLoad = true))
+            val initial = originOrNull()?.let { org ->
+                serverConfig.defaultFolder()?.let { UrlPolicy.folderUrl(org, it) } ?: "$org/"
+            }
+            if (initial != null) screens.add(createWebScreen(initial, reloadOnFirstLoad = true))
         } else {
             state.urls.forEach { screens.add(createWebScreen(it, reloadOnFirstLoad = true)) }
         }
@@ -191,7 +206,7 @@ class MainActivity : AppCompatActivity() {
             screens.select(hit.id)
             return
         }
-        val url = UrlPolicy.folderUrl(TARGET_URL, cwd) ?: return
+        val url = originOrNull()?.let { UrlPolicy.folderUrl(it, cwd) } ?: return
         val s = createWebScreen(url, reloadOnFirstLoad = true)
         screens.add(s); screens.select(s.id); persistScreens()
     }
@@ -257,9 +272,8 @@ class MainActivity : AppCompatActivity() {
         screenFactory.createWebScreen(url, reloadOnFirstLoad)
 
     /** workbench（アプリが開く code-server）のホスト。これ以外の http(s) ホストは「外部」とみなす。 */
-    private val workbenchHost: String? by lazy {
-        try { Uri.parse(TARGET_URL).host } catch (_: Exception) { null }
-    }
+    private val workbenchHost: String?
+        get() = originOrNull()?.let { try { Uri.parse(it).host } catch (_: Exception) { null } }
 
     /** workbench 以外の http(s) ホストへのナビゲーションか（＝外部ブラウザで開くべきか）。 */
     private fun isExternalHttp(uri: Uri): Boolean =
@@ -312,7 +326,7 @@ class MainActivity : AppCompatActivity() {
         onCloseScreen = { id -> runOnUiThread { screens.close(id); persistScreens(); refreshSwitcher() } },
         onNewScreen = {
             runOnUiThread {
-                val s = createWebScreen(TARGET_URL, reloadOnFirstLoad = true)
+                val s = createWebScreen(originRootUrl() ?: return@runOnUiThread, reloadOnFirstLoad = true)
                 screens.add(s); screens.select(s.id); persistScreens()
                 nav.clear(); closeSwitcher()
             }
@@ -518,7 +532,10 @@ class MainActivity : AppCompatActivity() {
     /** 設定側の一覧（switcher が描く）。 */
     private fun settingsListJson(): String {
         val plugins = store.list()
-        return PanelJson.settingsList(plugins.size, plugins.count { it.enabled }, null, null, AppLang.isJa(this))
+        val host = originOrNull()?.let { try { Uri.parse(it).host } catch (_: Exception) { null } }
+        return PanelJson.settingsList(
+            plugins.size, plugins.count { it.enabled }, host, serverConfig.defaultFolder(), AppLang.isJa(this)
+        )
     }
 
     /** 設定エントリのタップ。遷移の実体はここで解決する（switcher は id を渡すだけ）。 */
@@ -692,8 +709,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     companion object {
-        // 既定で開くワークベンチ URL。実値は local.properties の ccstudio.targetUrl から
-        // BuildConfig 経由で注入する（build.gradle 参照）。個人ホストはコミットしない。
-        private val TARGET_URL = BuildConfig.TARGET_URL
+        // 既定で開くワークベンチ URL のビルド時シード。実値は local.properties から BuildConfig 経由。
+        // ランタイムの真実源は ServerConfig（server.json）。ここは初回シードにのみ使う。
+        private val SEED_TARGET_URL = BuildConfig.TARGET_URL
     }
 }

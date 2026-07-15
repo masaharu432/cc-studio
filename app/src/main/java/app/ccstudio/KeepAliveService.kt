@@ -75,22 +75,20 @@ class KeepAliveService : Service() {
 
     // ── WebSocket ───────────────────────────────────────────────────────
 
-    /** TARGET_URL（https://host[:port]/…）から wss://host[:port]/cc-notify/ws を作る。 */
+    /** ServerConfig の origin から wss://host[:port]/cc-notify/ws を作る。 */
     private fun wsUrl(): String? {
-        val base = BuildConfig.TARGET_URL.ifEmpty { return null }
-        val schemeEnd = base.indexOf("://")
-        if (schemeEnd < 0) return null
+        val base = ServerConfig.forContext(this).origin() ?: return null
+        val schemeEnd = base.indexOf("://"); if (schemeEnd < 0) return null
         val scheme = base.substring(0, schemeEnd)
         val host = base.substring(schemeEnd + 3).substringBefore('/')
         val wsScheme = if (scheme == "https") "wss" else "ws"
         return "$wsScheme://$host/cc-notify/ws"
     }
 
-    /** TARGET_URL から https://host/cc-notify を作る（ログアップロード先）。 */
+    /** ServerConfig の origin から https://host/cc-notify を作る（ログアップロード先）。 */
     private fun postUrl(): String? {
-        val base = BuildConfig.TARGET_URL.ifEmpty { return null }
-        val schemeEnd = base.indexOf("://")
-        if (schemeEnd < 0) return null
+        val base = ServerConfig.forContext(this).origin() ?: return null
+        val schemeEnd = base.indexOf("://"); if (schemeEnd < 0) return null
         val host = base.substring(schemeEnd + 3).substringBefore('/')
         return "https://$host/cc-notify"
     }
