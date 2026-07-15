@@ -406,23 +406,16 @@ class MainActivity : AppCompatActivity() {
 
     /**
      * ホスト入力を検証・保存し、KeepAlive を新ホストへ再購読する。
-     * 開いているスクリーンは閉じない（ユーザーの作業を壊さないため）。
-     * Web スクリーンが1枚も無い（初回設定など）ときだけ、初期フォルダのスクリーンを1枚だけ用意する。
+     * 保存するだけ — スクリーンは作らない・画面遷移しない・設定パネルも閉じない。設定ページはそのまま残す。
+     * 既存スクリーンも保持（旧ホストを指したままだが、リロード/新規スクリーンで新ホストに切り替わる）。
      */
     private fun applyServerOrigin(host: String) {
         val r = ServerConfigCodec.normalizeOrigin(host)
         if (r !is OriginResult.Ok) { toast(getString(R.string.toast_origin_invalid)); return }
         serverConfig.setOrigin(r.origin)
-        if (screens.webScreens().isEmpty()) {
-            val s = createWebScreen(initialScreenUrl() ?: "${r.origin}/", reloadOnFirstLoad = true)
-            screens.add(s); screens.select(s.id); persistScreens()
-        }
         stopService(Intent(this, KeepAliveService::class.java))
         ContextCompat.startForegroundService(this, Intent(this, KeepAliveService::class.java))
         toast(getString(R.string.toast_server_updated))
-        // 設定パネルを畳んで、開いていたスクリーン（or 初回に用意した1枚）に戻る。既存スクリーンは保持。
-        nav.clear()
-        closeNotify(); closeLog(); closePluginSettings(); closeServer(); closeSwitcher()
     }
 
     /** …/ls を OkHttp で非同期取得し、生 JSON を window.__ccDirResult に渡す。未接続/失敗は {error}。 */
