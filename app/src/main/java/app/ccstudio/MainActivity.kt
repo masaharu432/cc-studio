@@ -38,8 +38,15 @@ class MainActivity : AppCompatActivity() {
     /** 現在の接続先オリジン（末尾スラッシュ無し）。未設定なら null。 */
     private fun originOrNull(): String? = serverConfig.origin()
 
-    /** origin + "/" を返す。未設定なら null。 */
-    private fun originRootUrl(): String? = originOrNull()?.let { "$it/" }
+    /**
+     * 起動時・新規スクリーンで開く URL。初期フォルダ（defaultFolder）が設定されていればそのフォルダ、
+     * 無ければオリジンのルート。origin 未設定なら null。
+     * ルート（"$origin/"）だと code-server が直近ワークスペースを復元してしまい、
+     * 設定した初期フォルダが無視されるため、既定フォルダがあれば必ず folderUrl を使う。
+     */
+    private fun initialScreenUrl(): String? = originOrNull()?.let { org ->
+        serverConfig.defaultFolder()?.let { UrlPolicy.folderUrl(org, it) } ?: "$org/"
+    }
 
     // ── 全画面オーバーレイ（遅延生成・使い回し）。表示順序・再描画 JS は従来と同一。 ──
     private fun overlayWebView(): WebView =
@@ -135,10 +142,7 @@ class MainActivity : AppCompatActivity() {
         // アプリ更新後などに既存スクリーンでキーボード抑制が効かないことがある。
         val state = screenStore.load()
         if (state.urls.isEmpty()) {
-            val initial = originOrNull()?.let { org ->
-                serverConfig.defaultFolder()?.let { UrlPolicy.folderUrl(org, it) } ?: "$org/"
-            }
-            if (initial != null) screens.add(createWebScreen(initial, reloadOnFirstLoad = true))
+            initialScreenUrl()?.let { screens.add(createWebScreen(it, reloadOnFirstLoad = true)) }
         } else {
             state.urls.forEach { screens.add(createWebScreen(it, reloadOnFirstLoad = true)) }
         }
@@ -350,7 +354,7 @@ class MainActivity : AppCompatActivity() {
         onCloseScreen = { id -> runOnUiThread { screens.close(id); persistScreens(); refreshSwitcher() } },
         onNewScreen = {
             runOnUiThread {
-                val s = createWebScreen(originRootUrl() ?: return@runOnUiThread, reloadOnFirstLoad = true)
+                val s = createWebScreen(initialScreenUrl() ?: return@runOnUiThread, reloadOnFirstLoad = true)
                 screens.add(s); screens.select(s.id); persistScreens()
                 nav.clear(); closeSwitcher()
             }
@@ -407,9 +411,7 @@ class MainActivity : AppCompatActivity() {
         serverConfig.setOrigin(r.origin)
         screenStore.save(emptyList(), 0)
         screens.webScreens().forEach { screens.close(it.id) }
-        val folder = serverConfig.defaultFolder()
-        val url = folder?.let { UrlPolicy.folderUrl(r.origin, it) } ?: "${r.origin}/"
-        val s = createWebScreen(url, reloadOnFirstLoad = true)
+        val s = createWebScreen(initialScreenUrl() ?: "${r.origin}/", reloadOnFirstLoad = true)
         screens.add(s); screens.select(s.id); persistScreens()
         stopService(Intent(this, KeepAliveService::class.java))
         ContextCompat.startForegroundService(this, Intent(this, KeepAliveService::class.java))
