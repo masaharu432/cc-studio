@@ -78,6 +78,16 @@ VS Code 側の設定では分割を止められないため（タブ内表示に
 編集に戻すときはタブの「Reopen Editor With… → Text Editor」。プレビュー既定をやめたい人は
 この 2 行を消すか、各自の `settings.json` で上書きすればよい（merge は非破壊）。
 
+## 推奨設定：`claudeCode.autosave: false`（背面での突発キャンセル防止・必須級）
+
+Claude Code 拡張の autosave 機能（既定 ON）は、Edit/Write/Read のたびに PreToolUse フックで
+`openTextDocument` を呼ぶ。この呼び出しはワークベンチ（＝スマホの WebView）への RPC を要し、
+**アプリが背面で WebView が凍結していると約 11 分ハングした末にツールが自動 deny され、
+ターンが「The user doesn't want to take this action…」で突然止まる**。OFF にするとフックが
+即 return するため、この経路が根絶される。詳細は
+`docs/notes/2026-07-02-tool-cancel-analysis.md`（7〜9 回目）を参照。
+トレードオフはエディタ上の未保存変更が自動保存されなくなることのみ（スマホ運用では実害なし）。
+
 ## 拡張の指定とローカル追加
 
 インストールする拡張は [`extensions.txt`](extensions.txt)（1 行 1 ID、`#` でコメント）で指定する。

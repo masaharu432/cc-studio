@@ -329,6 +329,151 @@ Write/Edit 発行（bypass でも拡張バグでプロンプト生成 #36219）
   『The user doesn't want to take this action』に化ける」挙動には触れていない。凍結クライアント
   （モバイル/code-server）での実測データ付きで新規報告する価値がある。
 
+## 真の根本原因の確定と対処（7回目・2026-07-05）: 犯人は権限プロンプトではなく拡張の autosave フック
+
+### きっかけ
+
+facebook-friend セッション（CLI/拡張とも 2.1.201 = 最新でも再発）で同日 2 件の突発キャンセル。
+transcript と exthost ログのミリ秒突合で、これまでの「bypass 無視の権限プロンプト（#36219）」説を**上書き修正**する決定的証拠が得られた。
+
+### 証拠（facebook-friend 4da57fb3、2026-07-05 JST）
+
+| 事象 | Edit 発行 | 拒否（uQ） | デルタ |
+|---|---|---|---|
+| 1件目（content.js） | 14:12:37.961 | 14:23:46.113 | **668.15 s** |
+| 2件目（messages.json） | 14:25:43.183 | 14:36:51.358 | **668.18 s** |
+
+決定打は 2 件目の exthost ログ:
+
+```
+14:25:43.200  [DiagnosticTracking] Captured baseline diagnostics for …/messages.json  ← captureBaseline は 17ms で完了
+（11分間 沈黙）
+14:36:51.359  PreToolUse hook timed out (per-hook abort)                              ← ハングしたのは「もう一方」のフック
+```
+
+### 機構（extension.js 実コードで確認）
+
+拡張は SDK 経由で PreToolUse フックを **2 本だけ**登録している:
+
+```js
+hooks:{PreToolUse:[
+  {matcher:"Edit|Write|MultiEdit", hooks:[(T)=>d.captureBaseline(T)]},   // 診断ベースライン取得。exthost 内で完結・同期・数ms
+  {matcher:"Edit|Write|Read",      hooks:[(T)=>this.saveFileIfNeeded(T)]} // ★ claudeCode.autosave（既定 true）
+]}
+```
+
+`saveFileIfNeeded` は `await vscode.workspace.openTextDocument(file)` を呼ぶ。
+この API は **メインスレッド（＝レンダラ＝phone の WebView 上のワークベンチ）への RPC を必要とする**。
+背面で WebView が凍結していると RPC が永遠に返らず、フックがハング →
+CLI の per-hook タイムアウト（≈668 s）で abort → **フックタイムアウト = 自動 deny** として
+uQ「The user doesn't want to take this action…」がターンに注入される。
+
+```
+Edit/Write/Read 発行
+ → 拡張の autosave フック saveFileIfNeeded が openTextDocument を await
+ → レンダラ（phone WebView）凍結中は RPC 応答なし
+ → ≈668 s で per-hook abort → 自動 deny → uQ ＝ 突発キャンセル
+```
+
+### 6回目の結論の訂正
+
+- **プロンプトはそもそも表示されていない**。「bypass が Edit/Write プロンプトを抑止しないバグ（#36219）」は本件の主因ではなかった。
+- bypass で防げない理由も自明になった: **フックは permissionMode と無関係に走る**。
+- acceptEdits への切替も**効かない**見込み（同じくフックは走る）。0/37 の実績はサンプル薄の偶然と解釈。
+- 対象が Edit/Write だった理由はフックの matcher（Edit|Write|MultiEdit / Edit|Write|Read）。
+  理論上は **Read も同経路で死にうる**（実測 8 件に無かったのは、Read はターン序盤＝前面中に多いためと推測）。
+- ユーザ実測とも整合: キャンセル通知→即復帰→「続けて」で何事もなく進む（凍結が解ければフックは即完走する）。
+
+### 対処（実施済み・2026-07-05）
+
+`~/.local/share/code-server/User/settings.json` に **`"claudeCode.autosave": false`** を設定。
+`saveFileIfNeeded` は先頭で `Cn("autosave")`（= `getConfiguration("claudeCode").get("autosave")`、毎回ライブ読み）を
+チェックして即 return するため、レンダラ RPC 自体が発生しなくなる。
+残る PreToolUse フック captureBaseline は exthost 内で完結（同期・実測 17ms）でハングしない。
+
+- トレードオフ: エディタ上の未保存変更が Claude の Read/Edit 前に自動保存されなくなる
+  （phone 運用では手動編集がほぼ無いため実害は小さい。PC 側で編集する時は手動保存を意識する）。
+- 検証方法: bypass セッションで Write を含むタスク → phone を 12 分以上背面放置 → 完走すれば確定。
+- 限界: AskUserQuestion 等「本当にユーザ応答が要る」対話は引き続き背面凍結で死にうる（これは原理的に不可避。通知で応答するしかない）。
+
+## 追補（8回目・2026-07-05 15時台）: 対処後の再発 — 原因は「実行中スクリーンへ設定が伝播していなかった」
+
+### 再発の実測（facebook-friend 4da57fb3）
+
+- 15:16〜15:17 前面中: Read/Edit×5 が各 1 秒前後で成功（レンダラ生存中はフックは即完走）。
+- 15:17:24.393 manifest.json への Edit 発行 → 直後に背面化 → **15:28:28.965 に同じ uQ 拒否（664.6 s）**。
+- exthost ログも前回と同型: captureBaseline は 15:17:24.409（16ms）に完了ログ → 11 分沈黙 → per-hook abort。
+- 設定書き込みは **14:53:50**（発生の 24 分前）。つまり `claudeCode.autosave: false` は
+  ディスク上には在ったが、**その画面のワークベンチには届いていなかった**。
+
+### 伝播しなかった理由（見立て）
+
+設定は各ワークベンチウィンドウ（＝各スクリーンのレンダラ）が settings.json を watch して
+在メモリ構成を更新し、それを exthost に押し込む方式。14:53 の書き込み時点で全スクリーンが
+背面凍結中だったため変更イベントを取りこぼし、凍結解除（15:16）後も古い構成
+（autosave=true）のまま動き続けた。**設定はスクリーンのリロード時には必ず読み直される**。
+
+### 追加対応
+
+1. 前面中に watcher を再発火させるため settings.json を touch（15:33）。
+2. 運用ルール: **設定変更後は各スクリーンをリロード（またはアプリ再起動）してから検証する**。
+   15:16 起動の「スクリーン5」以降の新規スクリーンは最初から autosave=false。
+
+### 副次的な発見（通知と検知の変化）
+
+- 今回、phone への通知は「⚠️中断」ではなく **「✅応答が完了しました」**。
+  Claude(2.1.201) が uQ 拒否を受けて「手を止めました。…どう進めますか?」と丁寧に停止し、
+  ターンが正常終了（Stop hook）した。**下層の 668s 自動 deny は同じ**で、見え方だけ変わった。
+- UI 上の表示も「Edit failed」で、uQ の文言はチャット DOM に出ない
+  → `state-observer.js` の detectCancel（本文文字列検知）は**この形の拒否を検知できない**。
+  DOM 検知は既に補助へ格下げ済みだが、この検知漏れパターンも記録しておく。
+- おまけ: この追補を書き込む Edit 自体も cc-studio セッション側で同じ uQ 拒否を一度食らった
+  （＝機構が現役であることの実演）。
+
+## 検証完了（9回目・2026-07-15）: 根治を確認 — 効いたのは autosave=false。上流 2.1.210 は別レイヤの保険
+
+### 実地検証の結果
+
+- ユーザ実測: 実装タスクを **15 分以上背面**で走らせて停止なし（従来なら確実に 668s deny の条件）。
+- ログ裏付け: exthost 全ログの `per-hook abort` は **2026-07-05 15:45:28 が最後**
+  （＝リロード前の cc-studio スクリーンで本メモ追記の Edit が弾かれた件）。以後 **10 日間ゼロ**。
+- トランスクリプト全走査: 7/5 16:00 以降、全プロジェクトで**本物の uQ 拒否は 0 件**
+  （ヒットは全て引用文）。この間の Edit/Write は **約 833 回**。
+
+### どちらの修正で直ったかの切り分け
+
+**主因の解消は `claudeCode.autosave: false`（当方の対処）**。根拠:
+
+1. 拡張 2.1.210 でも `saveFileIfNeeded` は**一字も変わっていない**
+   （autosave 設定を毎回読み、`openTextDocument` を await する構造のまま。既定も true のまま）。
+   → 上流はハング自体を直していない。設定を戻せば背面凍結中のフックハングは今も再現するはず。
+2. ハングが起きていれば結果がどうであれ exthost ログに `per-hook abort` が残るが、
+   リロード徹底後は**タイムアウト自体が一度も発生していない**＝フックが即 return している
+   ＝ autosave=false が全スクリーンで効いている。
+3. 無拒否期間の大半は 2.1.201 のまま運用されており、上流修正の到着前から直っていた。
+
+**上流の動き（2026-07-15 時点の Web 調査）:**
+
+- [#36219](https://github.com/anthropics/claude-code/issues/36219)（bypass でも Edit/Write プロンプト）は
+  **closed as not planned のまま**。修正版の言及なし。
+- ただし **CLI 2.1.210 の CHANGELOG** に本件の症状ど真ん中の修正が入った:
+  *"Fixed a hook callback timeout being misreported to the model as a user rejection,
+  which made unattended sessions stop and wait"*
+  → フックタイムアウトが「ユーザ拒否（uQ）」に化けて無人セッションが止まる、という
+  **誤報告の方**が修正された。ハング（〜11 分停滞）自体は残るが、deny には化けなくなる。
+  本調査（6 回目）で特定した機構そのものであり、時期的にも報告価値ありとした問題が上流で認知された形。
+
+### 結論（防御の全体像）
+
+| レイヤ | 状態 |
+|---|---|
+| ハングの発生源（autosave フックのレンダラ RPC） | **autosave=false で根絶**（当方対処・実証済み） |
+| タイムアウト→uQ 拒否化 | 2.1.210 で上流修正（保険。autosave を戻しても「11 分停滞」止まりになる見込み） |
+| 残存リスク | AskUserQuestion 等の真の対話待ちは背面凍結で依然死にうる（通知で応答するしかない） |
+
+運用上の注意: 拡張の既定は今も autosave=true のため、**設定の消失（プロファイル再作成・
+別サーバ構築時）で再発する**。vsserver 構築手順に `claudeCode.autosave: false` を含めること。
+
 ## 次の一手（優先度順）
 
 1. **CANCEL を永続ログに載せる（最小・低リスク・推奨）**
