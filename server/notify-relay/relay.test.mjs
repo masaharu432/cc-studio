@@ -77,6 +77,9 @@ test("POST broadcasts to a connected ws client", async () => {
   assert.equal(msg.branch, "")
 })
 
+import fs from "node:fs"
+import os from "node:os"
+import path from "node:path"
 import { isObserverBatch, formatBatchRecords, serverKeepaliveLine } from "./relay.mjs"
 
 test("isObserverBatch detects observer batch bodies", () => {
@@ -168,4 +171,39 @@ test("txCancelEvent suppresses stale (backfill) cancels", () => {
   const now = 1782975800000
   assert.equal(txCancelEvent({ t: now - 11 * 60_000, cwd: "/x", session: "s" }, now), null)
   assert.equal(txCancelEvent(null, now), null)
+})
+
+import { listDirs } from "./relay.mjs"
+
+test("listDirs lists subdirectories sorted, ignores files", () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "ls-"))
+  fs.mkdirSync(path.join(tmp, "b")); fs.mkdirSync(path.join(tmp, "a"))
+  fs.writeFileSync(path.join(tmp, "f.txt"), "x")
+  const r = listDirs(tmp)
+  assert.deepEqual(r.dirs, ["a", "b"])
+  assert.equal(r.truncated, false)
+  assert.equal(r.parent, path.dirname(tmp))
+})
+
+test("listDirs falls back to home when path is empty", () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "ls-home-"))
+  fs.mkdirSync(path.join(tmp, "sub"))
+  const r = listDirs("", { home: tmp })
+  assert.equal(r.path, tmp)
+  assert.deepEqual(r.dirs, ["sub"])
+})
+
+test("listDirs returns null for missing path or a file", () => {
+  assert.equal(listDirs("/no/such/dir/xyz"), null)
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "ls-file-"))
+  const file = path.join(tmp, "f"); fs.writeFileSync(file, "x")
+  assert.equal(listDirs(file), null)
+})
+
+test("listDirs truncates at limit", () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "ls-lim-"))
+  for (let i = 0; i < 5; i++) fs.mkdirSync(path.join(tmp, "d" + i))
+  const r = listDirs(tmp, { limit: 3 })
+  assert.equal(r.dirs.length, 3)
+  assert.equal(r.truncated, true)
 })

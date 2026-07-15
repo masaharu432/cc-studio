@@ -161,6 +161,36 @@ export function scanTranscriptsOnce(root = TX_ROOT) {
   return found
 }
 
+const LS_HOME = process.env.HOME || "/root"
+const LS_LIMIT = 500
+
+/** target 配下のサブディレクトリ名（昇順）。読めない/存在しない/ファイル → null。 */
+export function listDirs(target, { home = LS_HOME, limit = LS_LIMIT } = {}) {
+  const p = target && String(target).trim() ? String(target) : home
+  let st
+  try { st = fs.statSync(p) } catch { return null }
+  if (!st.isDirectory()) return null
+  let entries
+  try { entries = fs.readdirSync(p, { withFileTypes: true }) } catch { return null }
+  const dirs = []
+  for (const e of entries) {
+    let isDir = false
+    try {
+      isDir = e.isDirectory() ||
+        (e.isSymbolicLink() && fs.statSync(path.join(p, e.name)).isDirectory())
+    } catch { isDir = false }
+    if (isDir) dirs.push(e.name)
+  }
+  dirs.sort((a, b) => a.localeCompare(b))
+  const truncated = dirs.length > limit
+  return {
+    path: p,
+    parent: p === "/" ? "/" : path.dirname(p),
+    dirs: truncated ? dirs.slice(0, limit) : dirs,
+    truncated,
+  }
+}
+
 export function normalizeEvent(raw) {
   const o = raw && typeof raw === "object" ? raw : {}
   const cwd = asString(o.cwd)
@@ -241,6 +271,21 @@ function handleUpgrade(req, socket) {
 export function createServer() {
   const server = http.createServer((req, res) => {
     // tailscale serve のパス挙動に依存しないよう POST は method だけで判定（tailnet 前提）。
+    if (req.method === "GET") {
+      const u = new URL(req.url, "http://x")
+      if (u.pathname.endsWith("/ls")) {
+        const result = listDirs(u.searchParams.get("path"))
+        if (!result) {
+          res.writeHead(400, { "Content-Type": "application/json" })
+          res.end(JSON.stringify({ error: "not_a_directory" }))
+          return
+        }
+        res.writeHead(200, { "Content-Type": "application/json" })
+        res.end(JSON.stringify(result))
+        return
+      }
+      res.writeHead(404); res.end(); return
+    }
     if (req.method === "POST") {
       let body = ""
       req.on("data", (c) => {
