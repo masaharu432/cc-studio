@@ -1,6 +1,6 @@
 // ==CCStudioPlugin==
 // @name        chat-link-open
-// @version     1.0.0
+// @version     1.0.1
 // @description Stock code-server opens file links in chat replies to a blank page or "Not found". This plugin intercepts the tap and opens the file in an editor tab (.md opens as preview).
 // @description:ja 素の code-server ではチャット内のファイルリンクを開くと真っ白/Not found になる。このプラグインはタップを横取りしてエディタのタブで開く（.md はプレビュー表示）。
 // @run-at        document-start
@@ -86,6 +86,9 @@
     return { filePath: n, startLine: m[2] ? parseInt(m[2], 10) : undefined, endLine: m[3] ? parseInt(m[3], 10) : undefined };
   }
   var SCHEME = /^[a-z][a-z0-9+.-]*:/i;   // http: https: mailto: 等 scheme 付きはファイルでない
+  // ただし '.' は scheme に合法なため 'readme.md:10' も SCHEME にマッチしてしまう。
+  // 「名前:行[:桁|-行]」形式（'/' を含まない裸ファイル名＋行サフィックス）はファイルとして扱う。
+  var FILE_LINE = /^[^:\/]+:\d+(?:[:-]\d+)?$/;
 
   function onClick(ev) {
     try {
@@ -93,7 +96,7 @@
       if (!a) return;
       var href = a.getAttribute('href') || '';
       if (!href || href.charAt(0) === '#') return;   // 純フラグメントは触らない
-      if (SCHEME.test(href)) return;                 // 外部 URL 等は既定に委ねる
+      if (SCHEME.test(href) && !FILE_LINE.test(href)) return;   // 外部 URL 等は既定に委ねる
       var p = parsePath(href); if (!p) return;
       ev.preventDefault(); ev.stopImmediatePropagation();
       if (!(isOpener() && sendOpen(p))) relayOpen(p);
