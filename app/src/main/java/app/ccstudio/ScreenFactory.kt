@@ -213,7 +213,13 @@ class ScreenFactory(
     companion object {
         private const val SETTINGS_RUNTIME_KEY = "__ccSettingsRuntime"
 
-        /** document-start で window.__ccPluginSettings を用意し、ライブ更新の受け口を定義する。 */
+        /**
+         * document-start で window.__ccPluginSettings を用意し、ライブ更新の受け口を定義する。
+         * ライブ反映（pushSettingLive → evaluateJavascript）はメインフレームにしか届かないため、
+         * __ccApplyPluginSetting は自フレームへ適用したあと直下の子フレームへ message で再伝搬し、
+         * 各フレームの受信側が同関数を呼ぶことでフレームツリー全体へ行き渡らせる
+         * （「全 WEB スクリーンへリロード無しでライブ反映」の契約はフレーム単位で成立させる）。
+         */
         private const val SETTINGS_RUNTIME_JS = """
 (function(){
   try { window.__ccPluginSettings = JSON.parse(window.CCStudio.getPluginSettings() || '{}'); }
@@ -225,7 +231,22 @@ class ScreenFactory(
       window.dispatchEvent(new CustomEvent('ccstudio:setting',
         { detail: { plugin: plugin, key: key, value: val } }));
     } catch(_){}
+    // 直下の子フレームへ再伝搬（受信側が同関数を呼ぶので、ツリー全体へ下方に行き渡る）。
+    try {
+      for (var i = 0; i < window.frames.length; i++) {
+        try {
+          window.frames[i].postMessage({ __ccSettingApply: { plugin: plugin, key: key, value: val } }, '*');
+        } catch(_){}
+      }
+    } catch(_){}
   };
+  // 親フレームからのライブ設定変更を受けて自フレームへ適用する（直上の親からのみ受ける）。
+  window.addEventListener('message', function(ev){
+    var d = ev && ev.data && ev.data.__ccSettingApply;
+    if (!d || typeof d.plugin !== 'string' || typeof d.key !== 'string') return;
+    if (ev.source !== window.parent || ev.source === window) return;
+    window.__ccApplyPluginSetting(d.plugin, d.key, d.value);
+  });
 })();
 """
     }

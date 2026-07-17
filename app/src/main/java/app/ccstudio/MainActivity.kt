@@ -776,7 +776,11 @@ class MainActivity : AppCompatActivity() {
         return PanelJson.settingsView(info, AppLang.isJa(this)) { ns, key -> store.settingValue(ns, key) }
     }
 
-    /** 設定変更を全 WEB スクリーンへリロード無しで配信する（generation は上げない）。 */
+    /**
+     * 設定変更を全 WEB スクリーンへリロード無しで配信する（generation は上げない）。
+     * evaluateJavascript が届くのはメインフレームのみ。サブフレームへは
+     * __ccApplyPluginSetting（SETTINGS_RUNTIME_JS）が message で下方に再伝搬する。
+     */
     private fun pushSettingLive(name: String, key: String, value: Boolean) {
         val js = "window.__ccApplyPluginSetting && window.__ccApplyPluginSetting(" +
             "${JSONObject.quote(name)}, ${JSONObject.quote(key)}, $value);"
