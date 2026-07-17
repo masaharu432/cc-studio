@@ -69,9 +69,19 @@ elif command -v systemctl >/dev/null && systemctl --user show-environment >/dev/
   mkdir -p "$(dirname "$UNIT")"
   sed -e "s#@NODE_BIN@#$(sed_escape "$NODE_BIN")#g" -e "s#@RELAY_JS@#$(sed_escape "$RELAY_JS")#g" \
       -e "s#@RELAY_PORT@#$(sed_escape "$RELAY_PORT")#g" \
-      "$HERE/notify-relay.service.tmpl" > "$UNIT"
+      "$HERE/notify-relay.service.tmpl" > "$UNIT.new"
+  # unit の内容が変わった時だけ稼働中サービスを restart（ポート変更等を反映。無変更なら触らない）
+  unit_changed=1
+  if cmp -s "$UNIT.new" "$UNIT" 2>/dev/null; then unit_changed=0; fi
+  was_active=0
+  if systemctl --user is-active --quiet notify-relay 2>/dev/null; then was_active=1; fi
+  mv "$UNIT.new" "$UNIT"
   systemctl --user daemon-reload
   systemctl --user enable --now notify-relay
+  if [[ $unit_changed -eq 1 && $was_active -eq 1 ]]; then
+    log "unit の変更を検出 — notify-relay を restart して新しい設定を反映"
+    systemctl --user restart notify-relay
+  fi
   log "relay を systemd user で常駐化（確認: systemctl --user status notify-relay）"
 else
   log "systemd user 不可 — relay は start-vsserver.sh 起動時に立ち上がります"

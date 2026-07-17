@@ -82,11 +82,21 @@ if command -v systemctl >/dev/null && systemctl --user show-environment >/dev/nu
   mkdir -p "$(dirname "$UNIT")"
   sed -e "s#@CC_BIN@#$(sed_escape "$CC_BIN")#g" -e "s#@CC_BIND@#$(sed_escape "$CC_BIND")#g" \
       -e "s#@CC_PORT@#$(sed_escape "$CC_PORT")#g" -e "s#@CC_FOLDER@#$(sed_escape "$CC_FOLDER")#g" \
-      "$HERE/vsserver.service.tmpl" > "$UNIT"
+      "$HERE/vsserver.service.tmpl" > "$UNIT.new"
+  # unit の内容が変わった時だけ稼働中サービスを restart（設定変更を反映。無変更ならセッションを殺さない）
+  unit_changed=1
+  if cmp -s "$UNIT.new" "$UNIT" 2>/dev/null; then unit_changed=0; fi
+  was_active=0
+  if systemctl --user is-active --quiet vsserver 2>/dev/null; then was_active=1; fi
+  mv "$UNIT.new" "$UNIT"
   loginctl enable-linger "$USER" >/dev/null 2>&1 || \
     warn "enable-linger 失敗（boot 時自動起動が効かないかも）"
   systemctl --user daemon-reload
   systemctl --user enable --now vsserver
+  if [[ $unit_changed -eq 1 && $was_active -eq 1 ]]; then
+    log "unit の変更を検出 — vsserver を restart して新しい設定を反映"
+    systemctl --user restart vsserver
+  fi
   log "vsserver service enabled + started（$CC_BIND:$CC_PORT, folder $CC_FOLDER）"
 else
   warn "systemd user instance が使えません — service はスキップ。"
