@@ -1,6 +1,6 @@
 // ==CCStudioPlugin==
 // @name        region-grab
-// @version     0.1.0
+// @version     0.1.1
 // @description Stock code-server has no way to bulk-copy text from read-only areas on mobile. This plugin adds a □ button: trace a rectangle with your finger and everything inside is copied at once.
 // @description:ja 素の code-server では編集できない画面の文字をまとめてコピーする手段がない。このプラグインは左端の □ ボタンから指で範囲を囲うと、中の文字を一括コピーできるようにする。
 // @run-at        document-start
@@ -26,7 +26,7 @@
   var RECT_ID = 'cc-rg-rect';
   var TOAST_ID = 'cc-rg-toast';
   var TAG = '__cc_rg';
-  var VER = '0.1.0';
+  var VER = '0.1.1';
 
   var MOVE_MIN_PX = 8;       // これ未満のドラッグは「タップ＝キャンセル」とみなす
   var ROW_TOL_PX = 6;        // 連結時、行が変わったと判断する縦差
@@ -56,7 +56,7 @@
     switch (m.type) {
       case 'enter': showOverlay(); broadcastDown('enter'); break;
       case 'exit':  hideOverlay(); broadcastDown('exit'); break;
-      case 'exitAll': if (isTop) { hideOverlay(); broadcastDown('exit'); } break;
+      case 'exitAll': if (isTop) { modeOn = false; hideOverlay(); broadcastDown('exit'); } break;  // FAB の状態も戻す（次のタップで再度 ON にできる）
       case 'copy': if (isTop) writeClipboard(m.data && m.data.text); break;
     }
   }, false);
