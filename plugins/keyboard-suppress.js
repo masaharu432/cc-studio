@@ -215,11 +215,15 @@
         if (!p) return;
         var dx = p.x - doc.__ccStudioGX, dy = p.y - doc.__ccStudioGY;
         if (dx * dx + dy * dy > GESTURE_MOVE_PX * GESTURE_MOVE_PX) {
-          // スクロール等のドラッグ → タップ許可を無効化し、フォーカス済みの編集領域はキーボードを閉じる。
+          // スクロール等のドラッグ。ただし操作中（engaged）や「フォーカス中の枠の内側で始まった
+          // ドラッグ」（自分の下書きをスクロール等）は不変条件どおり絶対に blur しない。
           doc.__ccStudioGActive = false;
-          doc.__ccStudioLastTapTime = 0;
           var a = doc.activeElement;
-          if (a && suppressBox(a)) {
+          var box = suppressBox(a);
+          if (doc.__ccStudioEngaged || (box && doc.__ccStudioTapBoxEl === box)) return;
+          // 枠外で始まったドラッグ → タップ許可を無効化し、フォーカス済みの編集領域はキーボードを閉じる。
+          doc.__ccStudioLastTapTime = 0;
+          if (box) {
             kbLog('deny-scroll ' + kbFrame());
             denyKb(a);
           }
