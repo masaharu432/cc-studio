@@ -18,6 +18,9 @@ SETTINGS="$CLAUDE_DIR/settings.json"
 
 log(){ echo "[notify] $*"; }
 
+# sed の置換値エスケープ（\ と & と区切り文字 # を無害化。パスに含まれると式が壊れる）
+sed_escape() { local s=${1//\\/\\\\}; s=${s//&/\\&}; printf '%s' "${s//#/\\#}"; }
+
 # ── 1) user スコープのフック（全プロジェクト/スクリーンで発火） ──
 # プロジェクト単位だとそのプロジェクトでしか発火しないため、~/.claude に入れる。
 mkdir -p "$CLAUDE_DIR"
@@ -64,8 +67,8 @@ if [[ -z "$NODE_BIN" ]]; then
 elif command -v systemctl >/dev/null && systemctl --user show-environment >/dev/null 2>&1; then
   UNIT="$HOME/.config/systemd/user/notify-relay.service"
   mkdir -p "$(dirname "$UNIT")"
-  sed -e "s#@NODE_BIN@#$NODE_BIN#g" -e "s#@RELAY_JS@#$RELAY_JS#g" \
-      -e "s#@RELAY_PORT@#$RELAY_PORT#g" \
+  sed -e "s#@NODE_BIN@#$(sed_escape "$NODE_BIN")#g" -e "s#@RELAY_JS@#$(sed_escape "$RELAY_JS")#g" \
+      -e "s#@RELAY_PORT@#$(sed_escape "$RELAY_PORT")#g" \
       "$HERE/notify-relay.service.tmpl" > "$UNIT"
   systemctl --user daemon-reload
   systemctl --user enable --now notify-relay

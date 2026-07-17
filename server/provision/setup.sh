@@ -19,6 +19,9 @@ log()  { printf '\033[36m[setup]\033[0m %s\n' "$*"; }
 warn() { printf '\033[33m[setup] warn:\033[0m %s\n' "$*" >&2; }
 die()  { printf '\033[31m[setup] error:\033[0m %s\n' "$*" >&2; exit 1; }
 
+# sed の置換値エスケープ（\ と & と区切り文字 # を無害化。パスに含まれると式が壊れる）
+sed_escape() { local s=${1//\\/\\\\}; s=${s//&/\\&}; printf '%s' "${s//#/\\#}"; }
+
 # ---- 1) env ----
 if [[ -f "$HERE/cc-studio.env" ]]; then set -a; . "$HERE/cc-studio.env"; set +a; fi
 CC_PORT="${CC_PORT:-8088}"
@@ -77,8 +80,8 @@ fi
 if command -v systemctl >/dev/null && systemctl --user show-environment >/dev/null 2>&1; then
   UNIT="$HOME/.config/systemd/user/vsserver.service"
   mkdir -p "$(dirname "$UNIT")"
-  sed -e "s#@CC_BIN@#$CC_BIN#g" -e "s#@CC_BIND@#$CC_BIND#g" \
-      -e "s#@CC_PORT@#$CC_PORT#g" -e "s#@CC_FOLDER@#$CC_FOLDER#g" \
+  sed -e "s#@CC_BIN@#$(sed_escape "$CC_BIN")#g" -e "s#@CC_BIND@#$(sed_escape "$CC_BIND")#g" \
+      -e "s#@CC_PORT@#$(sed_escape "$CC_PORT")#g" -e "s#@CC_FOLDER@#$(sed_escape "$CC_FOLDER")#g" \
       "$HERE/vsserver.service.tmpl" > "$UNIT"
   loginctl enable-linger "$USER" >/dev/null 2>&1 || \
     warn "enable-linger 失敗（boot 時自動起動が効かないかも）"
