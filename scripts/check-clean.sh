@@ -31,13 +31,24 @@ else
 fi
 
 PATTERN="$(IFS='|'; printf '%s' "${patterns[*]}")"
+if [[ -z "$PATTERN" ]]; then
+  echo "error: assembled pattern is empty ($TOKENS_FILE has no usable lines) — refusing to report clean" >&2
+  exit 2
+fi
 
-hits="$(git grep -nIE "$PATTERN" -- . ':(exclude)server/code-server' || true)"
-
-if [[ -n "$hits" ]]; then
+# git grep: 0 = hits, 1 = clean, anything else (e.g. 128 invalid ERE) = real error.
+# Do NOT mask non-1 failures with `|| true` — that would print "clean" having scanned nothing.
+set +e
+hits="$(git grep -nIE "$PATTERN" -- . ':(exclude)server/code-server')"
+status=$?
+set -e
+if [[ $status -eq 0 ]]; then
   echo "✗ personal tokens found in tracked files:" >&2
   echo "$hits" >&2
   exit 1
+elif [[ $status -ne 1 ]]; then
+  echo "error: git grep failed with exit $status (invalid pattern?) — scan did not complete" >&2
+  exit "$status"
 fi
 
 echo "✓ clean — no personal tokens in tracked files (submodule excluded)"
