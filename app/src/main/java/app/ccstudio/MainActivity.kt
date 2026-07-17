@@ -518,12 +518,20 @@ class MainActivity : AppCompatActivity() {
         // 反映は各スクリーンの手動リロードで（他セッションに影響しないよう自動リロードはしない）。
     }
 
+    /** 直近アクティブだった WEB スクリーンの index（保存用）。非 WEB 表示中の保存で 0 に潰さないため。 */
+    private var lastActiveWebIndex = 0
+
     private fun persistScreens() {
         if (tearingDown) return  // 破棄中の onScreenNavigated 等で空になりかけのリストを保存しない
         val web = screens.webScreens()
         val urls = web.map { it.url }
         val activeIdx = web.indexOfFirst { it.id == screens.activeOrNull()?.id }
-        screenStore.save(urls, if (activeIdx < 0) 0 else activeIdx)
+        // 非 WEB（Plugins 等）がアクティブなときは -1 になる。0 で上書きすると
+        // プロセス死をまたいで「最後に居た WEB スクリーン」が失われるため、直近の値を保つ。
+        if (activeIdx >= 0) lastActiveWebIndex = activeIdx
+        val saveIdx = if (activeIdx >= 0) activeIdx
+        else lastActiveWebIndex.coerceIn(0, maxOf(urls.size - 1, 0))
+        screenStore.save(urls, saveIdx)
         refreshKeepAliveScreenCount()
     }
 
