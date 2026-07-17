@@ -70,7 +70,17 @@ class DownloadController(
                     val meta = url.substring(5, if (comma >= 0) comma else 5)
                     val mime = meta.substringBefore(';').ifEmpty { mimeType ?: "application/octet-stream" }
                     val data = if (comma >= 0) url.substring(comma + 1) else ""
-                    saveBase64("download", mime, data)
+                    // data: は base64 とは限らない。';base64' 指定が無ければパーセントエンコード本文。
+                    if (meta.split(';').any { it.equals("base64", ignoreCase = true) }) {
+                        saveBase64("download", mime, data)
+                    } else {
+                        val charset = meta.split(';')
+                            .firstOrNull { it.startsWith("charset=", ignoreCase = true) }
+                            ?.substringAfter('=')?.trim()?.ifEmpty { null } ?: "UTF-8"
+                        // data: URI の '+' はリテラル。URLDecoder が空白へ潰さないよう先に退避する。
+                        val decoded = java.net.URLDecoder.decode(data.replace("+", "%2B"), charset)
+                        saveBytes("download", mime, decoded.toByteArray(java.nio.charset.Charset.forName(charset)))
+                    }
                 }
                 else -> {
                     val request = DownloadManager.Request(Uri.parse(url)).apply {
@@ -92,9 +102,18 @@ class DownloadController(
 
     /** base64 のダウンロードデータを端末の Downloads フォルダへ保存する。JS スレッドから呼ばれる。 */
     fun saveBase64(name: String, mime: String, base64: String) {
+        val bytes = try { Base64.decode(base64, Base64.DEFAULT) } catch (e: Exception) {
+            Log.w("CcStudio", "saveBase64Download decode failed: $name", e)
+            activity.runOnUiThread { onToast(activity.getString(R.string.toast_save_failed)) }
+            return
+        }
+        saveBytes(name, mime, bytes)
+    }
+
+    /** 生バイトを Downloads へ保存する共通経路（saveBase64 / 非 base64 data: から使う）。 */
+    private fun saveBytes(name: String, mime: String, bytes: ByteArray) {
         var err: String? = null
         val ok = try {
-            val bytes = Base64.decode(base64, Base64.DEFAULT)
             val filename = sanitizeFilename(name)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 val values = ContentValues().apply {
@@ -118,7 +137,7 @@ class DownloadController(
             }
             true
         } catch (e: Exception) {
-            Log.w("CcStudio", "saveBase64Download failed: $name", e)
+            Log.w("CcStudio", "saveBytesDownload failed: $name", e)
             err = e.message
             false
         }
