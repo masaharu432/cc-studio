@@ -2,6 +2,5 @@
   "workbench.editorAssociations": {
     "*.md": "vscode.markdown.preview.editor",
     "*.html": "aios.htmlPreview"
-  },
-  "claudeCode.autosave": false
+  }
 }

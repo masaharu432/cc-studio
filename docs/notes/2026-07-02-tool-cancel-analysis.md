@@ -474,6 +474,10 @@ Edit/Write/Read 発行
 運用上の注意: 拡張の既定は今も autosave=true のため、**設定の消失（プロファイル再作成・
 別サーバ構築時）で再発する**。vsserver 構築手順に `claudeCode.autosave: false` を含めること。
 
+（訂正 2026-07-17: 方針変更により provision の settings.json には投入**しない**ことにした。
+トレードオフ込みで各自が選ぶ設定とし、`server/provision/README.md` の案内に従って
+各自の User settings に手動設定＋スクリーンリロードで反映する。）
+
 ## 次の一手（優先度順）
 
 1. **CANCEL を永続ログに載せる（最小・低リスク・推奨）**

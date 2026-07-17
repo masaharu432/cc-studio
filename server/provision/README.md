@@ -78,15 +78,20 @@ VS Code 側の設定では分割を止められないため（タブ内表示に
 編集に戻すときはタブの「Reopen Editor With… → Text Editor」。プレビュー既定をやめたい人は
 この 2 行を消すか、各自の `settings.json` で上書きすればよい（merge は非破壊）。
 
-## 推奨設定：`claudeCode.autosave: false`（背面での突発キャンセル防止・必須級）
+## 任意設定：`claudeCode.autosave: false`（背面での突発キャンセル回避）
 
 Claude Code 拡張の autosave 機能（既定 ON）は、Edit/Write/Read のたびに PreToolUse フックで
 `openTextDocument` を呼ぶ。この呼び出しはワークベンチ（＝スマホの WebView）への RPC を要し、
-**アプリが背面で WebView が凍結していると約 11 分ハングした末にツールが自動 deny され、
-ターンが「The user doesn't want to take this action…」で突然止まる**。OFF にするとフックが
-即 return するため、この経路が根絶される。詳細は
-`docs/notes/2026-07-02-tool-cancel-analysis.md`（7〜9 回目）を参照。
-トレードオフはエディタ上の未保存変更が自動保存されなくなることのみ（スマホ運用では実害なし）。
+**アプリが背面で WebView が凍結していると約 11 分ハングする**（CLI 2.1.209 以前では
+さらにツールが自動 deny され、ターンが「The user doesn't want to take this action…」で
+突然止まる）。OFF にするとフックが即 return するため、この経路を回避できる。詳細は
+[docs/notes/2026-07-02-tool-cancel-analysis.md](../../docs/notes/2026-07-02-tool-cancel-analysis.md)（7〜9 回目）を参照。
+
+この設定は **setup.sh では投入しない**（トレードオフ込みで各自が選ぶ）。効かせたい場合は
+各自の User `settings.json`（`~/.local/share/code-server/User/settings.json`）に手動で追加し、
+開いているスクリーンをリロードして反映する（動作中のワークベンチはディスク上の変更を
+取りこぼすことがある）。トレードオフはエディタ上の未保存変更が自動保存されなくなること
+（スマホ運用では実害はほぼ無いが、PC 側で編集する時は手動保存を意識する）。
 
 ## 拡張の指定とローカル追加
 
