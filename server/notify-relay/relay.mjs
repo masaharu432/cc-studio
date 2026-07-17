@@ -3,7 +3,7 @@ import crypto from "node:crypto"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
-import { fileURLToPath } from "node:url"
+import { fileURLToPath, pathToFileURL } from "node:url"
 
 const PORT = parseInt(process.env.CC_NOTIFY_RELAY_PORT || "8770", 10)
 const HOST = "127.0.0.1"
@@ -320,7 +320,9 @@ export function createServer() {
   return server
 }
 
-const isMain = import.meta.url === `file://${process.argv[1]}`
+// 文字列連結の file:// 比較はパスに空白・非 ASCII があると percent-encoding で一致せず
+// 起動しない（exit 0 なので Restart=on-failure も効かない）。pathToFileURL で正規化して比較。
+const isMain = !!process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href
 if (isMain) {
   createServer().listen(PORT, HOST, () => {
     console.log(`notify-relay on ${HOST}:${PORT}`)
