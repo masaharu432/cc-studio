@@ -22,7 +22,16 @@ object ServerConfigCodec {
         if (s.isEmpty()) return OriginResult.Err("empty")
         // IPv6 リテラル（角括弧 or コロン2つ以上）は IP 扱いで拒否
         if (s.startsWith("[") || s.count { it == ':' } >= 2) return OriginResult.Err("is_ip")
-        val host = s.replace(Regex(":\\d+$"), "")
+        // port は明示検証する。":8o80" のような非数値 port を素通しで永続化しない。
+        val colon = s.indexOf(':')
+        val host: String
+        if (colon >= 0) {
+            val port = s.substring(colon + 1).toIntOrNull()
+            if (port == null || port !in 1..65535) return OriginResult.Err("no_dot")
+            host = s.substring(0, colon)
+        } else {
+            host = s
+        }
         if (host.isEmpty()) return OriginResult.Err("empty")
         if (Regex("^\\d{1,3}(\\.\\d{1,3}){3}$").matches(host)) return OriginResult.Err("is_ip")
         if (!host.contains('.')) return OriginResult.Err("no_dot")
