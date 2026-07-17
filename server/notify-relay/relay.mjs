@@ -292,12 +292,17 @@ export function createServer() {
       res.writeHead(404); res.end(); return
     }
     if (req.method === "POST") {
-      let body = ""
+      // Buffer のまま蓄積して最後に一括デコード（チャンク境界でマルチバイト UTF-8 が
+      // 割れると文字列連結では U+FFFD に化ける）。上限もバイト数で数える。
+      const chunks = []
+      let total = 0
       req.on("data", (c) => {
-        body += c
-        if (body.length > 1_000_000) req.destroy()
+        total += c.length
+        if (total > 1_000_000) { req.destroy(); return }
+        chunks.push(c)
       })
       req.on("end", () => {
+        const body = Buffer.concat(chunks).toString("utf8")
         let parsed
         try { parsed = body ? JSON.parse(body) : {} } catch { parsed = {} }
         if (isObserverBatch(parsed)) {

@@ -77,6 +77,67 @@ test("POST broadcasts to a connected ws client", async () => {
   assert.equal(msg.branch, "")
 })
 
+test("POST body keeps multibyte UTF-8 intact across chunk boundaries", async () => {
+  const server = createServer()
+  await new Promise((r) => server.listen(0, "127.0.0.1", r))
+  const port = server.address().port
+  const key = crypto.randomBytes(16).toString("base64")
+  const ws = net.connect(port, "127.0.0.1")
+  const msg = await new Promise((resolve, reject) => {
+    let buf = Buffer.alloc(0)
+    let upgraded = false
+    ws.on("error", reject)
+    ws.on("connect", () => {
+      ws.write(
+        `GET /cc-notify/ws HTTP/1.1\r\nHost: x\r\nUpgrade: websocket\r\n` +
+        `Connection: Upgrade\r\nSec-WebSocket-Key: ${key}\r\nSec-WebSocket-Version: 13\r\n\r\n`
+      )
+    })
+    ws.on("data", (d) => {
+      buf = Buffer.concat([buf, d])
+      if (!upgraded) {
+        const idx = buf.indexOf("\r\n\r\n")
+        if (idx === -1) return
+        upgraded = true
+        buf = buf.subarray(idx + 4)
+        // 生ソケットで POST し、マルチバイト文字（「語」= 3 bytes）の途中でボディを 2 チャンクに割る
+        const body = Buffer.from(
+          JSON.stringify({ hook_event_name: "Stop", cwd: "/a/日本語", session_id: "s1", message: "こんにちは" }),
+          "utf8"
+        )
+        const split = body.indexOf(Buffer.from("語", "utf8")) + 1
+        const post = net.connect(port, "127.0.0.1", () => {
+          post.write(
+            `POST /cc-notify HTTP/1.1\r\nHost: x\r\nContent-Type: application/json\r\n` +
+            `Content-Length: ${body.length}\r\n\r\n`
+          )
+          post.write(body.subarray(0, split))
+          setTimeout(() => post.write(body.subarray(split)), 20)
+        })
+        post.on("error", reject)
+      }
+      if (upgraded && buf.length >= 2) {
+        let len = buf[1] & 0x7f
+        let headerLen = 2
+        if (len === 126) {
+          if (buf.length < 4) return
+          len = buf.readUInt16BE(2)
+          headerLen = 4
+        }
+        if (buf.length >= headerLen + len) {
+          resolve(JSON.parse(buf.subarray(headerLen, headerLen + len).toString("utf8")))
+        }
+      }
+    })
+  })
+  ws.destroy()
+  await new Promise((r) => server.close(r))
+  // 文字列連結蓄積だとチャンク境界の「語」が U+FFFD に化けて JSON.parse が失敗し、project が "" になる
+  assert.equal(msg.project, "日本語")
+  assert.equal(msg.message, "こんにちは")
+  assert.ok(!JSON.stringify(msg).includes("�"))
+})
+
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
