@@ -25,20 +25,29 @@ object DownloadNames {
         return cleaned.ifEmpty { "download_${fallbackStamp()}" }
     }
 
-    /** 同名ファイルが存在する場合に name(1).ext のような一意名を返す（API<29 用）。 */
-    fun unique(dir: File, name: String): File {
-        var candidate = File(dir, name)
-        if (!candidate.exists()) return candidate
+    private val uniqueLock = Any()
+
+    /**
+     * 同名ファイルが存在する場合に name(1).ext のような一意名を返す（API<29 用）。
+     * exists 確認と作成の間の競合（同名同時ダウンロードが同じ File を得て壊し合う）を防ぐため、
+     * ロック内で createNewFile により名前を原子的に予約する。
+     */
+    fun unique(dir: File, name: String): File = synchronized(uniqueLock) {
         val dot = name.lastIndexOf('.')
         val base = if (dot > 0) name.substring(0, dot) else name
         val ext = if (dot > 0) name.substring(dot) else ""
+        var candidate = File(dir, name)
         var i = 1
-        while (candidate.exists()) {
+        while (!tryReserve(candidate)) {
             candidate = File(dir, "$base($i)$ext")
             i++
         }
-        return candidate
+        candidate
     }
+
+    /** createNewFile で名前を予約。既存なら false。I/O エラーは後続の open で表面化させるため true。 */
+    private fun tryReserve(f: File): Boolean =
+        try { f.createNewFile() } catch (_: Exception) { true }
 }
 
 /**
