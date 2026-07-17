@@ -493,6 +493,8 @@ class MainActivity : AppCompatActivity() {
         wv.requestFocus()
         // focus が落ち着いてから送る。
         wv.postDelayed({
+            // 遅延中にスクリーンが閉じられ WebView が破棄済みなら送らない（destroy 後の操作防止）。
+            if (!wv.isAttachedToWindow) return@postDelayed
             val ctrl = KeyEvent.META_CTRL_ON or KeyEvent.META_CTRL_LEFT_ON
             val ctrlShift = ctrl or KeyEvent.META_SHIFT_ON or KeyEvent.META_SHIFT_LEFT_ON
             fun ev(action: Int, code: Int, meta: Int) =
