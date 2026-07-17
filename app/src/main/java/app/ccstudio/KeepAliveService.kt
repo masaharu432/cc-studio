@@ -93,14 +93,17 @@ class KeepAliveService : Service() {
         return "https://$host/cc-notify"
     }
 
-    /** 未送信分(t>lastUploadedT)を relay へ POST。成功で lastUploadedT を更新。失敗は次回再試行。 */
+    /** 未送信分（カーソル (lastT, countAtLastT) より後）を relay へ POST。成功でカーソルを更新。失敗は次回再試行。 */
     private fun triggerUpload() {
         if (uploading || stopped) return
         val url = postUrl() ?: return
         uploading = true
         try {
             val lastT = prefs.getLong("last_uploaded_t", 0L)
-            val delta = UploadDelta.select(ObserverLog.readAll(this), lastT)
+            // 同ミリ秒追記の取りこぼし防止カーソル (lastT, countAtLastT)。キー欠落（旧版からの移行）は 0
+            // → lastT と同ミリ秒の行を一度だけ再送する側に倒す。
+            val lastN = prefs.getInt("last_uploaded_t_count", 0)
+            val delta = UploadDelta.select(ObserverLog.readAll(this), lastT, lastN)
             if (delta.count == 0) { uploading = false; return }
             val payload = JSONObject()
                 .put("type", "cc-observer").put("device", deviceId())
@@ -110,7 +113,12 @@ class KeepAliveService : Service() {
             client.newCall(req).enqueue(object : okhttp3.Callback {
                 override fun onFailure(call: okhttp3.Call, e: java.io.IOException) { uploading = false }
                 override fun onResponse(call: okhttp3.Call, response: Response) {
-                    try { if (response.isSuccessful) prefs.edit().putLong("last_uploaded_t", delta.maxT).apply() }
+                    try {
+                        if (response.isSuccessful) prefs.edit()
+                            .putLong("last_uploaded_t", delta.maxT)
+                            .putInt("last_uploaded_t_count", delta.countAtMaxT)
+                            .apply()
+                    }
                     finally { response.close(); uploading = false }
                 }
             })
