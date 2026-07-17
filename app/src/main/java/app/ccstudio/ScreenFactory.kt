@@ -78,6 +78,13 @@ class ScreenFactory(
                 resultMsg: Message,
             ): Boolean {
                 val temp = WebView(activity)
+                // 破棄は一度だけ（行き先確定・レンダラ死・タイムアウトの3経路から呼ばれるため）。
+                var settled = false
+                fun settle() {
+                    if (settled) return
+                    settled = true
+                    temp.post { try { temp.destroy() } catch (_: Exception) {} }
+                }
                 temp.webViewClient = object : WebViewClient() {
                     override fun shouldOverrideUrlLoading(v: WebView, request: WebResourceRequest): Boolean {
                         if (deps.isExternalHttp(request.url)) {
@@ -85,12 +92,23 @@ class ScreenFactory(
                         } else {
                             view.loadUrl(request.url.toString())
                         }
-                        v.post { v.destroy() }
+                        settle()
+                        return true
+                    }
+
+                    // 一時 WebView でもレンダラ死を処理しないと Android はアプリごと強制終了する
+                    // （CcWebViewClient と同じ穴）。行き先確定前の使い捨てなので、全体復旧は
+                    // 走らせず自身を破棄して true を返すだけでよい。
+                    override fun onRenderProcessGone(v: WebView, detail: RenderProcessGoneDetail): Boolean {
+                        settle()
                         return true
                     }
                 }
                 (resultMsg.obj as WebView.WebViewTransport).webView = temp
                 resultMsg.sendToTarget()
+                // window.open('') のように一度もナビゲーションが来ない popup はそのままリークする。
+                // 正規の _blank は直後にナビゲーションが来るため、30 秒待って未確定なら破棄する。
+                temp.postDelayed({ settle() }, 30_000L)
                 return true
             }
         }
