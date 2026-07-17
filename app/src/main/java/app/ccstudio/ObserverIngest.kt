@@ -20,6 +20,7 @@ object ObserverIngest {
      * プラグインからの生 JSON を解釈する。
      * event=cancel は「中断メッセージが履歴に残るため、リロード（背面 kill→復帰の再作成含む）ごとに
      * 同じ中断が再検知される」問題があるので、直近 cancel から CANCEL_DEDUP_MS 未満の再報告は捨てる。
+     * lastCancelAtMs は「同じスクリーン」の直近 cancel 時刻を渡すこと（呼び出し側がスクリーン単位で管理）。
      */
     fun decide(json: String, lastCancelAtMs: Long, nowMs: Long): Action = try {
         val o = JSONObject(json)

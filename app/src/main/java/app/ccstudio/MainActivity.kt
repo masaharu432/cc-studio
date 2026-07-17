@@ -551,18 +551,23 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * cancel の重複除去時刻（screenId → 最終記録時刻）。リロード再検知の吸収が目的なので
+     * スクリーン単位で持つ（グローバル1個だと、別スクリーンの正規キャンセルまで 15 秒窓で落ちる）。
+     * 各 WebView の JavaBridge スレッドから触るため ConcurrentHashMap。
+     */
+    private val lastCancelAtByScreen = java.util.concurrent.ConcurrentHashMap<Long, Long>()
+
     /** プラグインからの生の状態遷移を、スクリーン情報＋端末時刻を付けて永続ログへ書く。 */
     private fun onObserverLog(screenId: Long, json: String) {
         try {
             val s = screens.byId(screenId)
             val screen = if (s?.kind == ScreenKind.WEB) ScreenUrl.folderName(s.url) else (s?.title ?: "")
             val cwd = if (s?.kind == ScreenKind.WEB) (ScreenUrl.folderPath(s.url) ?: "") else ""
-            // cancel の重複除去時刻は SharedPreferences に持つので Activity 再作成をまたいでも効く。
-            val prefs = getSharedPreferences("cc_observer", MODE_PRIVATE)
             val now = System.currentTimeMillis()
-            when (val a = ObserverIngest.decide(json, prefs.getLong("last_cancel_t", 0L), now)) {
+            when (val a = ObserverIngest.decide(json, lastCancelAtByScreen[screenId] ?: 0L, now)) {
                 ObserverIngest.Action.RecordCancel -> {
-                    prefs.edit().putLong("last_cancel_t", now).apply()
+                    lastCancelAtByScreen[screenId] = now
                     ObserverLog.cancel(this, screen, cwd)
                 }
                 is ObserverIngest.Action.RecordState ->
