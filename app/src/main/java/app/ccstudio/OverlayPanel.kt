@@ -43,4 +43,12 @@ class OverlayPanel(
 
     /** 生成済みのときだけ JS を評価する（未生成なら何もしない）。 */
     fun evaluate(js: String) { viewOrNull?.evaluateJavascript(js, null) }
+
+    /** Activity 破棄時に WebView を外して destroy する（未生成なら何もしない）。 */
+    fun destroy() {
+        val v = viewOrNull ?: return
+        viewOrNull = null
+        root.removeView(v)
+        try { v.destroy() } catch (_: Exception) {}
+    }
 }

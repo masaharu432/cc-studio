@@ -204,6 +204,23 @@ class MainActivity : AppCompatActivity() {
         ObserverLog.lifecycle(this, if (hasFocus) "winfocus" else "winblur")
     }
 
+    /** 破棄処理中フラグ。破棄中に届くナビゲーション等のコールバックが空のリストを永続化しないため。 */
+    private var tearingDown = false
+
+    /**
+     * recreate()（言語変更・レンダラ死復旧）や実終了時に、全スクリーン WebView と
+     * オーバーレイ WebView を確実に破棄する（未処理だと接続を持ったままリークし、
+     * 旧 Activity のコールバックが新 Activity の永続状態を壊しうる）。
+     * ScreenStore への保存はここではしない: 破棄途中のリストを保存すると復元内容が壊れる。
+     * 次回 onCreate が ScreenStore から再構築するので破棄自体は安全。
+     */
+    override fun onDestroy() {
+        tearingDown = true
+        if (::screens.isInitialized) screens.destroyAll()
+        listOf(switcherPanel, notifyPanel, logPanel, settingsPanel, serverPanel).forEach { it.destroy() }
+        super.onDestroy()
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
@@ -502,6 +519,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun persistScreens() {
+        if (tearingDown) return  // 破棄中の onScreenNavigated 等で空になりかけのリストを保存しない
         val web = screens.webScreens()
         val urls = web.map { it.url }
         val activeIdx = web.indexOfFirst { it.id == screens.activeOrNull()?.id }

@@ -73,6 +73,24 @@ class ScreenManager(private val container: FrameLayout) {
         return true
     }
 
+    /**
+     * Activity 破棄時の一括破棄（System 含む全スクリーン）。UI スレッドから呼ぶこと。
+     * 永続化はしない・onActiveChanged も呼ばない（破棄途中の状態を外へ波及させない）。
+     * 復元は次回 onCreate が ScreenStore から行う。
+     */
+    fun destroyAll() {
+        val snapshot = synchronized(lock) {
+            val copy = screens.toList()
+            screens.clear()
+            activeId = -1
+            copy
+        }
+        for (s in snapshot) {
+            container.removeView(s.webView)
+            try { s.webView.destroy() } catch (_: Exception) {}
+        }
+    }
+
     /** switcher 用の行データ。集合順（Plugins 先頭、続いて Web を追加順）。 */
     fun rows(currentGeneration: Int): List<ScreenRow> = synchronized(lock) {
         screens.map { s ->
