@@ -53,6 +53,10 @@
           <div class="row-t" id="permT">許可待ち (Notification)</div>
           <div class="row-d" id="permD">入力 / 許可待ちのとき通知</div></div>
           <button class="tgl" id="tgl-permission" aria-pressed="true" onclick="window.__ccToggleNotify('Notification')"><span class="knob"></span></button></div>
+        <div class="row"><div class="ic">⚠️</div><div class="row-main">
+          <div class="row-t" id="cancelT">中断 (Cancel)</div>
+          <div class="row-d" id="cancelD">応答が中断されたとき通知</div></div>
+          <button class="tgl" id="tgl-cancel" aria-pressed="true" onclick="window.__ccToggleNotify('Cancel')"><span class="knob"></span></button></div>
       </div>
       <p class="note" id="pageNote">通知は端末の OS 通知として届きます。今見ているスクリーンの結果は通知しません。</p>
     </div>
@@ -65,11 +69,13 @@
     back:'設定', title:'通知設定', byType:'種類別',
     stopT:'応答完了 (Stop)', stopD:'AI が応答を終えたとき通知',
     permT:'許可待ち (Notification)', permD:'入力 / 許可待ちのとき通知',
+    cancelT:'中断 (Cancel)', cancelD:'応答が中断されたとき通知',
     note:'通知は端末の OS 通知として届きます。今見ているスクリーンの結果は通知しません。'
   }:{
     back:'Settings', title:'Notifications', byType:'By type',
     stopT:'Response finished (Stop)', stopD:'Notify when the AI finishes a response',
     permT:'Waiting for permission (Notification)', permD:'Notify when input or permission is needed',
+    cancelT:'Interrupted (Cancel)', cancelD:'Notify when a response is interrupted',
     note:'Delivered as OS notifications. Results from the screen you are viewing are not notified.'
   };
   function applyText(){
@@ -81,18 +87,21 @@
     document.getElementById('stopD').textContent=T.stopD;
     document.getElementById('permT').textContent=T.permT;
     document.getElementById('permD').textContent=T.permD;
+    document.getElementById('cancelT').textContent=T.cancelT;
+    document.getElementById('cancelD').textContent=T.cancelD;
     document.getElementById('pageNote').textContent=T.note;
   }
-  function readPrefs(){ try{ return JSON.parse(api().getNotifyPrefs()); }catch(_){ return {stop:true, permission:true}; } }
+  function readPrefs(){ try{ return JSON.parse(api().getNotifyPrefs()); }catch(_){ return {stop:true, permission:true, cancel:true}; } }
   window.__ccRenderNotify=function(){
     applyText();
     var p=readPrefs();
-    var s=document.getElementById('tgl-stop'), n=document.getElementById('tgl-permission');
+    var s=document.getElementById('tgl-stop'), n=document.getElementById('tgl-permission'), c=document.getElementById('tgl-cancel');
     if(s) s.setAttribute('aria-pressed', String(!!p.stop));
     if(n) n.setAttribute('aria-pressed', String(!!p.permission));
+    if(c) c.setAttribute('aria-pressed', String(p.cancel!==false));
   };
   window.__ccToggleNotify=function(kind){
-    var id = kind==='Stop' ? 'tgl-stop' : 'tgl-permission';
+    var id = kind==='Stop' ? 'tgl-stop' : kind==='Cancel' ? 'tgl-cancel' : 'tgl-permission';
     var elx=document.getElementById(id); if(!elx) return;
     var next = elx.getAttribute('aria-pressed')!=='true';
     try{ api().setNotifyPref(kind, next); }catch(_){ }

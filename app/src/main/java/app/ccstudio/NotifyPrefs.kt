@@ -11,6 +11,7 @@ object NotifyPrefs {
     fun keyFor(kind: String): String? = when (kind) {
         "Stop" -> "stop"
         "Notification" -> "permission"
+        "Cancel" -> "cancel"
         else -> null
     }
 
@@ -29,6 +30,7 @@ object NotifyPrefs {
         return JSONObject()
             .put("stop", p.getBoolean("stop", true))
             .put("permission", p.getBoolean("permission", true))
+            .put("cancel", p.getBoolean("cancel", true))
             .toString()
     }
 }
