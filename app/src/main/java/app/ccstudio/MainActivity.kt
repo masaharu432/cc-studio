@@ -595,7 +595,9 @@ class MainActivity : AppCompatActivity() {
 
     /** switcher の WebView を（必要なら作って）表示し、指定タブに合わせる。スタックは触らない。 */
     private fun showSwitcherView(tab: String) {
-        switcherPanel.show()
+        // 初回生成時は loadUrl が非同期で evaluate が届かない（ページ既定は screens タブ）ため、
+        // 初期タブは URL クエリで渡す。生成済み（ロード済み）のときは従来どおり evaluate で合わせる。
+        switcherPanel.show("tab=$tab")
         setSwitcherTabJs(tab)
         refreshSwitcher()
     }

@@ -114,7 +114,9 @@
   function screensData(){ try { return JSON.parse(api().listScreens()||'[]'); } catch(_){ return []; } }
   function settingsData(){ try { return JSON.parse(api().listSettings()||'[]'); } catch(_){ return []; } }
 
-  var curTab='screens';
+  // 初期タブは URL クエリ（?tab=settings）から。ネイティブがパネル初回生成時に渡す
+  // （ロード完了前の evaluate は届かないため、初期値はクエリで受ける）。
+  var curTab=(function(){ try{ return /[?&]tab=settings(&|$)/.test(location.search) ? 'settings' : 'screens'; }catch(_){ return 'screens'; } })();
   var counts={screens:0, settings:0};
 
   function paintSummary(){
@@ -229,7 +231,10 @@
   };
   document.getElementById('tabScreens').addEventListener('click', function(){ setTab('screens'); });
   document.getElementById('tabSettings').addEventListener('click', function(){ setTab('settings'); });
-  document.addEventListener('DOMContentLoaded', window.__ccRenderScreens);
+  document.addEventListener('DOMContentLoaded', function(){
+    setTab(curTab, true);   // クエリ由来の初期タブを DOM に反映（ネイティブ発なので silent）
+    window.__ccRenderScreens();
+  });
 </script>
 </body>
 </html>

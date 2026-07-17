@@ -18,8 +18,9 @@ class OverlayPanel(
     var viewOrNull: WebView? = null
         private set
 
-    private fun ensure(): WebView = viewOrNull ?: newWebView().also {
-        it.loadUrl("file:///android_asset/$asset")
+    private fun ensure(initialQuery: String?): WebView = viewOrNull ?: newWebView().also {
+        val q = if (initialQuery.isNullOrEmpty()) "" else "?$initialQuery"
+        it.loadUrl("file:///android_asset/$asset$q")
         root.addView(
             it,
             FrameLayout.LayoutParams(
@@ -30,8 +31,12 @@ class OverlayPanel(
         viewOrNull = it
     }
 
-    fun show() {
-        val v = ensure()
+    /**
+     * 表示する。initialQuery は初回生成時のみページ URL のクエリとして渡る（生成済みなら無視）。
+     * loadUrl は非同期でロード完了前の evaluate は届かないため、初期状態はクエリで渡す用途。
+     */
+    fun show(initialQuery: String? = null) {
+        val v = ensure(initialQuery)
         v.visibility = View.VISIBLE
         v.bringToFront()
         v.evaluateJavascript(renderJs, null)
