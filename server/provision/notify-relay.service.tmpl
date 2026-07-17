@@ -7,7 +7,8 @@ After=network.target
 [Service]
 Type=exec
 Environment=CC_NOTIFY_RELAY_PORT=@RELAY_PORT@
-ExecStart=@NODE_BIN@ @RELAY_JS@
+# パスは空白を含んでも 1 引数になるよう引用する（systemd の ExecStart は "" 引用対応）。
+ExecStart="@NODE_BIN@" "@RELAY_JS@"
 Restart=on-failure
 RestartSec=2
 
