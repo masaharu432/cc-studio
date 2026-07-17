@@ -124,7 +124,11 @@
     mod.appendChild(top);
     if(p.description){ var desc=el('div','mod-desc'); desc.textContent=p.description; mod.appendChild(desc); }
     var foot=el('div','mod-foot');
-    var meta=el('div','mod-meta'); meta.innerHTML=fmtSize(p.size)+' · <span class="st">'+(on?'ON':'OFF')+'</span> · all frames';
+    // 注入範囲/タイミングは PanelJson が送る実データ(allFrames/runAt)から描く。
+    // runAt は既定(document-start)以外のときだけ表示する。
+    var metaTxt=fmtSize(p.size)+' · <span class="st">'+(on?'ON':'OFF')+'</span> · '+(p.allFrames===false?'main frame':'all frames');
+    if(p.runAt && p.runAt!=='document-start') metaTxt+=' · '+p.runAt;
+    var meta=el('div','mod-meta'); meta.innerHTML=metaTxt;
     var acts=el('div','mod-actions');
     if(p.hasSettings){
       var g=el('button','iconbtn gear'); g.textContent='⚙'; g.title=T.gear;
