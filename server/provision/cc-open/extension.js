@@ -1,10 +1,11 @@
 // cc-open — チャットのファイルリンクを Explorer と同じ既定エディタ（関連付け尊重＝.md はプレビュー）で開く補助拡張。
 //
-// 2経路（フロントは URI を使う。自動変換は保険）:
-//  (1) URI ハンドラ: code-oss://ccstudio.cc-open/open?path=<相対 or 絶対>&line=<n> を受け、vscode.open で開く。
-//      vscode.open は既定エディタ（editorAssociations 尊重）＝ *.md はプレビュー、他は通常エディタ。最初から
-//      プレビューで開けるのでテキストのチラつきが無い。
-//  (2) 自動変換（保険）: 何らかの理由で .md がテキストエディタで開かれたら、そのタブを閉じてプレビューで開き直す。
+// 2経路（現状 (2) 自動変換が主経路。フロント（chat-link-open.js）は open_file webview メッセージ経由で
+// 開くため (1) の URI は構築しておらず、URI ハンドラは将来/手動用に残している）:
+//  (1) URI ハンドラ（現状未使用）: code-oss://ccstudio.cc-open/open?path=<相対 or 絶対>&line=<n> を受け、
+//      vscode.open で開く。vscode.open は既定エディタ（editorAssociations 尊重）＝ *.md はプレビュー、
+//      他は通常エディタ。最初からプレビューで開けるのでテキストのチラつきが無い。
+//  (2) 自動変換（主経路）: .md がテキストエディタで開かれたら、そのタブをプレビューへ切り替える。
 const vscode = require('vscode');
 
 function resolveTarget(p) {
