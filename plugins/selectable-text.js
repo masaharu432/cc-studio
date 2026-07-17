@@ -1,6 +1,6 @@
 // ==CCStudioPlugin==
 // @name        selectable-text
-// @version     0.11.0
+// @version     0.11.1
 // @description Stock code-server won't let you select or copy chat replies or preview text on mobile. This plugin adds long-press selection with a copy button and adjustable handles.
 // @description:ja 素の code-server ではチャットの返信やプレビューの文字をモバイルで選択・コピーできない。このプラグインは長押しでコピーボタンを出し、範囲を調整してコピーできるようにする。
 // @run-at        document-start
@@ -24,7 +24,7 @@
   var BTN_ID = 'cc-studio-copy-btn';
   var TOAST_ID = 'cc-studio-copy-toast';
   var COPY_MSG = '__cc_st_copy';
-  var VER = '0.11.0';
+  var VER = '0.11.1';
 
   var ENABLE_COPY_UI = true;
   var BTN_TIMEOUT_MS = 9000;
@@ -130,8 +130,12 @@
   }
 
   // ===== トップ: コピー依頼の保険受け口 =====
+  // document-start と DOMContentLoaded の二度呼びで message リスナが重複しないようフラグで冪等化
+  //（重複するとクリップボードへ二重書き込みされる）。
+  var relayInstalled = false;
   function installTopRelay() {
-    if (!isTop) return;
+    if (!isTop || relayInstalled) return;
+    relayInstalled = true;
     try {
       window.addEventListener('message', function (e) {
         var m = e.data;
@@ -196,12 +200,15 @@
   }
   var pending = false;
   function schedule() { if (pending) return; pending = true; setTimeout(function () { pending = false; ensureStyle(); }, DEBOUNCE_MS); }
+  var observerInstalled = false;  // 二度呼び(document-start + DOMContentLoaded)で observer を重複させない
   function installObserver() {
+    if (observerInstalled) return;
     try {
       var root = document.documentElement;
       if (!root) return;
+      observerInstalled = true;
       new MutationObserver(function () { schedule(); }).observe(root, { childList: true, subtree: true });
-    } catch (_) {}
+    } catch (_) { observerInstalled = false; }
   }
 
   function start() {
