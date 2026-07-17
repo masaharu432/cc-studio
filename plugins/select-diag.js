@@ -1,6 +1,6 @@
 // ==CCStudioPlugin==
 // @name        select-diag
-// @version     0.3.0
+// @version     0.3.1
 // @description Diagnostic tool. On long-press it shows a red test button and markers and records what fired; copy the log with the DIAG button. Delete it when the investigation is done.
 // @description:ja 不具合調査用の診断ツール。長押しで赤いテストボタンとマーカーを出して記録し、DIAG ボタンで内容をコピーできる。調査が終わったら削除してよい。
 // @run-at        document-start
@@ -13,7 +13,9 @@
 //     (3) append したボタンが実際に画面に見えるか(transform/クリップで飛んでいないか)
 //   長押し時、window/document 両方の contextmenu 発火を記録し、指の位置に赤い「TESTBTN」と、
 //   固定位置(右上)に「CTX✓」マーカーを出し、ボタンの実座標(getBoundingClientRect)も記録する。
-//   非トップ(webview)では selectable-text と同様に preventDefault+stopImmediatePropagation して VS Code メニューを止める。
+//   非トップ(webview)では preventDefault のみで VS Code メニュー転送を抑える。stopImmediatePropagation は
+//   しない（プラグインは名前順注入で本診断が selectable-text より先に登録されるため、止めると診断対象の
+//   コピーボタン機能そのものを殺してしまう。診断は観測に徹する）。
 (function () {
   'use strict';
 
@@ -78,7 +80,8 @@
 
   function onCtxWin(e) {
     send('CTXwin cx=' + e.clientX + ' cy=' + e.clientY + ' selLen=' + selLen());
-    if (!isTop) { try { e.preventDefault(); e.stopImmediatePropagation(); } catch (_) {} appendTestUI(e.clientX, e.clientY); }
+    // 観測に徹する: 後続リスナ(selectable-text 等)を殺さないよう stopImmediatePropagation はしない。
+    if (!isTop) { try { e.preventDefault(); } catch (_) {} appendTestUI(e.clientX, e.clientY); }
   }
   function onCtxDoc(e) { send('CTXdoc cx=' + e.clientX + ' cy=' + e.clientY + ' selLen=' + selLen()); }
   function onSelStart(e) { send('selectstart selLen=' + selLen()); }
