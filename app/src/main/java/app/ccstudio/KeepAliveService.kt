@@ -29,7 +29,8 @@ class KeepAliveService : Service() {
     @Volatile private var backoffMs = 2000L
     private val reconnectRunnable = Runnable { connect() }
 
-    @Volatile private var uploading = false
+    // main looper と OkHttp スレッド双方から触るため、check-then-set が原子な AtomicBoolean。
+    private val uploading = java.util.concurrent.atomic.AtomicBoolean(false)
     private val uploadRunnable = object : Runnable {
         override fun run() {
             triggerUpload()
@@ -95,23 +96,25 @@ class KeepAliveService : Service() {
 
     /** 未送信分（カーソル (lastT, countAtLastT) より後）を relay へ POST。成功でカーソルを更新。失敗は次回再試行。 */
     private fun triggerUpload() {
-        if (uploading || stopped) return
-        val url = postUrl() ?: return
-        uploading = true
+        if (stopped) return
+        if (!uploading.compareAndSet(false, true)) return
+        // enqueue に成功したら解放は非同期コールバック側に委譲。それ以外は finally で必ず解放。
+        var releaseHere = true
         try {
+            val url = postUrl() ?: return
             val lastT = prefs.getLong("last_uploaded_t", 0L)
             // 同ミリ秒追記の取りこぼし防止カーソル (lastT, countAtLastT)。キー欠落（旧版からの移行）は 0
             // → lastT と同ミリ秒の行を一度だけ再送する側に倒す。
             val lastN = prefs.getInt("last_uploaded_t_count", 0)
             val delta = UploadDelta.select(ObserverLog.readAll(this), lastT, lastN)
-            if (delta.count == 0) { uploading = false; return }
+            if (delta.count == 0) return
             val payload = JSONObject()
                 .put("type", "cc-observer").put("device", deviceId())
                 .put("sentAt", System.currentTimeMillis()).put("lines", delta.lines).toString()
             val req = Request.Builder().url(url)
                 .post(payload.toRequestBody("application/json".toMediaType())).build()
             client.newCall(req).enqueue(object : okhttp3.Callback {
-                override fun onFailure(call: okhttp3.Call, e: java.io.IOException) { uploading = false }
+                override fun onFailure(call: okhttp3.Call, e: java.io.IOException) { uploading.set(false) }
                 override fun onResponse(call: okhttp3.Call, response: Response) {
                     try {
                         if (response.isSuccessful) prefs.edit()
@@ -119,10 +122,13 @@ class KeepAliveService : Service() {
                             .putInt("last_uploaded_t_count", delta.countAtMaxT)
                             .apply()
                     }
-                    finally { response.close(); uploading = false }
+                    finally { response.close(); uploading.set(false) }
                 }
             })
-        } catch (e: Exception) { uploading = false }
+            releaseHere = false
+        } finally {
+            if (releaseHere) uploading.set(false)
+        }
     }
 
     private fun connect() {
