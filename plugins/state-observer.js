@@ -1,6 +1,6 @@
 // ==CCStudioPlugin==
 // @name        state-observer
-// @version     1.4.0
+// @version     1.4.1
 // @description There is no built-in way to see whether each screen is busy or disconnected. This plugin detects both and shows them in the screen list, the persistent notification, and the ︙ button. It only observes and never acts.
 // @description:ja 元々は各スクリーンが処理中か・接続切れかを知る手段がない。このプラグインが検知してスクリーン一覧・常駐通知・︙ ボタンに表示する。監視のみで操作はしない。
 // @run-at        document-start
@@ -102,9 +102,16 @@
     }
     return null;
   }
-  function detectCancel() {
-    try { return ((document.body && document.body.textContent) || '').indexOf("doesn't want to take this action") >= 0; }
-    catch (_) { return false; }
+  // キャンセル文言の「出現数」を数える。有無の boolean エッジだと (1)リロード後に残った既存
+  // メッセージで毎回再発火し (2)1件目が DOM に残ったままの2件目を取りこぼすため、数の増加で検知する。
+  var CANCEL_STR = "doesn't want to take this action";
+  function countCancels() {
+    try {
+      var t = (document.body && document.body.textContent) || '';
+      var n = 0, i = 0;
+      while ((i = t.indexOf(CANCEL_STR, i)) >= 0) { n++; i += CANCEL_STR.length; }
+      return n;
+    } catch (_) { return 0; }
   }
 
   // ---- DIAG: 処理中判定の内訳を1行で吐く（入力欄のあるチャット本体フレームのみ） ----
@@ -220,17 +227,19 @@
   }
 
   // ---- 各フレーム: ローカル検知を集約系へ渡す ----
-  var lastCancel = false;
+  // キャンセルの基準数。起動時の現在値で初期化し（既存メッセージでは発火させない）、
+  // 増加したときだけ報告する。減少（メッセージ消滅）にも毎回追従する。
+  var cancelBase = 0;
   function scanLocal() {
     var bm = detectBusy(), dm = detectDisconnected();
     if (isTop) ingest(myId, !!bm, !!dm, bm || dm || '');
     else { try { window.top.postMessage({ k: MSG, id: myId, b: !!bm, d: !!dm, m: bm || dm || '' }, '*'); } catch (_) {} }
-    var c = detectCancel();
-    if (c && !lastCancel) {
+    var c = countCancels();
+    if (c > cancelBase) {
       if (isTop) { hudLog('CANCEL (b=' + (lastB ? 1 : 0) + ')'); persistCancel(); }
       else { try { window.top.postMessage({ k: MSG, id: myId, cancel: true }, '*'); } catch (_) {} }
     }
-    lastCancel = c;
+    cancelBase = c;
     diagDump();
   }
 
@@ -240,6 +249,7 @@
   function start() {
     if (started) return; started = true;
     if (isTop) startTop();
+    cancelBase = countCancels();           // 起動時点の既存メッセージ分を基準化（発火させない）
     emitLog('OBS start ' + frameName());   // フレーム到達確認（HUD に出れば注入できている）
     try {
       new MutationObserver(schedule).observe(document.documentElement || document.body,
