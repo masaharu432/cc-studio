@@ -95,24 +95,45 @@ mkdir -p "$CC_USER_DIR"
 US="$CC_USER_DIR/settings.json"
 PRODUCT="$HERE/settings.json"
 if [[ -s "$US" ]]; then
-  cp "$US" "$US.bak"
+  # merge は一時ファイルに書き、成功した時だけ本体・backup を更新する。
+  # （$US へ直接リダイレクトすると jq 実行前に本体が 0 バイトに切り詰められ、
+  #   JSONC 等で merge が失敗すると設定が消える。失敗時は merge をスキップして続行）
+  merge_status=fail
   if command -v jq >/dev/null; then
-    jq -s '.[0] * .[1]' "$US.bak" "$PRODUCT" > "$US"
+    if jq -s '.[0] * .[1]' "$US" "$PRODUCT" > "$US.tmp"; then merge_status=ok; fi
   elif command -v python3 >/dev/null; then
-    python3 - "$US.bak" "$PRODUCT" "$US" <<'PY'
+    if python3 - "$US" "$PRODUCT" "$US.tmp" <<'PY'
 import json, sys
 def deep(a, b):
     for k, v in b.items():
         if isinstance(v, dict) and isinstance(a.get(k), dict): deep(a[k], v)
         else: a[k] = v
     return a
-user = json.load(open(sys.argv[1])); prod = json.load(open(sys.argv[2]))
+try:
+    user = json.load(open(sys.argv[1])); prod = json.load(open(sys.argv[2]))
+except Exception as e:
+    print(f"settings parse failed: {e}", file=sys.stderr); sys.exit(1)
 json.dump(deep(user, prod), open(sys.argv[3], "w"), indent=2, ensure_ascii=False)
 PY
+    then merge_status=ok; fi
   else
-    die "settings の merge に jq か python3 が必要です"
+    merge_status=notool
   fi
-  log "merged 推奨設定 → $US（backup: $US.bak）"
+  case "$merge_status" in
+    ok)
+      cp "$US" "$US.bak"   # backup は現行 $US が正常に merge できた時だけ更新（壊れた内容で .bak を潰さない）
+      mv "$US.tmp" "$US"
+      log "merged 推奨設定 → $US（backup: $US.bak）"
+      ;;
+    notool)
+      warn "settings merge をスキップ: jq か python3 が必要です（既存の $US は変更していません）"
+      ;;
+    *)
+      rm -f "$US.tmp"
+      warn "settings merge をスキップ: $US を JSON としてパースできません（コメント/末尾カンマ入りの JSONC が原因かも）"
+      warn "  既存の $US は変更していません（過去の backup: $US.bak）。推奨設定 $PRODUCT は手動で取り込んでください"
+      ;;
+  esac
 else
   cp "$PRODUCT" "$US"
   log "seeded $US（既存が無かったので推奨設定をそのまま採用）"
