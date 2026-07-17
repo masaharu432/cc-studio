@@ -99,15 +99,17 @@
   function api(){ return window.CCStudio || {}; }
   // 表示言語（ja/en）。ブリッジ不在時は ja に倒す。
   var JA=(function(){ try{ return (api().getUiLang && api().getUiLang())!=='en'; }catch(_){ return true; } })();
+  // フォルダ名等の外部文字列は innerHTML に混ぜる前に必ずエスケープする
+  function escHtml(s){ return String(s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
   var T=JA?{
     tabScreens:'スクリーン', tabSettings:'設定', items:'項目', del:'削除', disconnected:'接続切れ',
     confirmTitle:'リロードして起動しますか？',
-    confirmBody:function(f){ return '<b style="color:#E8EDF4;">'+f+'</b> を再読込してプラグインの変更を反映します。<span style="color:#e8b07e;">このスクリーンで実行中の処理があれば中断されます。</span>'; },
+    confirmBody:function(f){ return '<b style="color:#E8EDF4;">'+escHtml(f)+'</b> を再読込してプラグインの変更を反映します。<span style="color:#e8b07e;">このスクリーンで実行中の処理があれば中断されます。</span>'; },
     openAsIs:'そのまま開く', reload:'リロード'
   }:{
     tabScreens:'Screens', tabSettings:'Settings', items:'items', del:'Delete', disconnected:'disconnected',
     confirmTitle:'Reload and open?',
-    confirmBody:function(f){ return 'Reload <b style="color:#E8EDF4;">'+f+'</b> to apply plugin changes. <span style="color:#e8b07e;">Anything running on this screen will be interrupted.</span>'; },
+    confirmBody:function(f){ return 'Reload <b style="color:#E8EDF4;">'+escHtml(f)+'</b> to apply plugin changes. <span style="color:#e8b07e;">Anything running on this screen will be interrupted.</span>'; },
     openAsIs:'Open as is', reload:'Reload'
   };
   function el(t,c){ var e=document.createElement(t); if(c) e.className=c; return e; }
