@@ -77,10 +77,14 @@ class PluginStore(private val context: Context) {
 
         val targetName = findExisting(incomingName, sanitized) ?: sanitized
         val out = fileFor(targetName) ?: return null
+        // bridge スレッドの読み手が書きかけを読まないよう、同ディレクトリの tmp に書いて rename で
+        // 原子的に置換する（.tmp は .js でないので list()/注入対象にならない）。
+        val tmp = File(pluginsDir(), "$targetName.tmp")
         return try {
-            out.outputStream().use { it.write(bytes) }
-            targetName
+            tmp.outputStream().use { it.write(bytes) }
+            if (tmp.renameTo(out)) targetName else { tmp.delete(); null }
         } catch (e: Exception) {
+            try { tmp.delete() } catch (_: Exception) {}
             null
         }
     }
