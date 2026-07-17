@@ -23,24 +23,34 @@ log(){ echo "[notify] $*"; }
 mkdir -p "$CLAUDE_DIR"
 [[ -f "$SETTINGS" ]] || echo '{}' > "$SETTINGS"
 RELAY_PORT="$RELAY_PORT" python3 - "$SETTINGS" <<'PY'
-import json, os, sys
+import json, os, shutil, sys
 p = sys.argv[1]
 port = os.environ.get("RELAY_PORT", "8770")
 cmd = ("curl -s -m 3 -X POST -H 'Content-Type: application/json' --data-binary @- "
        '"http://127.0.0.1:${CC_NOTIFY_RELAY_PORT:-' + port + '}/cc-notify" >/dev/null 2>&1 || true')
+# パース不能な settings.json を {} で潰すと既存のユーザ設定が全て消えるため、
+# 失敗時は何も書かずにエラー終了する。
 try:
     d = json.load(open(p))
-    if not isinstance(d, dict):
-        d = {}
-except Exception:
-    d = {}
+except Exception as e:
+    print(f"[notify] error: {p} を JSON としてパースできません（{e}）。修正してから再実行してください。",
+          file=sys.stderr)
+    sys.exit(1)
+if not isinstance(d, dict):
+    print(f"[notify] error: {p} のトップレベルが object ではありません。修正してから再実行してください。",
+          file=sys.stderr)
+    sys.exit(1)
 h = d.get("hooks") or {}
 # Stop / Notification だけ差し替え（他イベントの既存フックは温存）。
 h["Stop"] = [{"hooks": [{"type": "command", "command": cmd, "timeout": 5}]}]
 h["Notification"] = [{"matcher": "permission_prompt",
                       "hooks": [{"type": "command", "command": cmd, "timeout": 5}]}]
 d["hooks"] = h
-json.dump(d, open(p, "w"), ensure_ascii=False, indent=2)
+shutil.copy2(p, p + ".bak")           # 書き換え前に backup
+tmp = p + ".tmp"
+with open(tmp, "w") as f:
+    json.dump(d, f, ensure_ascii=False, indent=2)
+os.replace(tmp, p)                     # temp + rename で途中失敗しても本体を壊さない
 print("ok")
 PY
 log "user フック登録: $SETTINGS （Stop / Notification → notify-relay へ POST）"
