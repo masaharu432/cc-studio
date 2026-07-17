@@ -449,7 +449,8 @@ class MainActivity : AppCompatActivity() {
     private fun fetchDirs(path: String) {
         val origin = originOrNull()
         if (origin == null) {
-            serverPanel.evaluate("window.__ccDirResult({\"error\":\"not_connected\"})"); return
+            // このメソッドは JavaBridge スレッドから呼ばれる。WebView 操作は UI スレッドで（他分岐と同様）。
+            runOnUiThread { serverPanel.evaluate("window.__ccDirResult({\"error\":\"not_connected\"})") }; return
         }
         val url = "$origin/cc-notify/ls" + if (path.isNotEmpty()) "?path=" + Uri.encode(path) else ""
         okHttp.newCall(Request.Builder().url(url).build()).enqueue(object : okhttp3.Callback {
