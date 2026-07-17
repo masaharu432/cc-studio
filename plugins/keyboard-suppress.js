@@ -304,16 +304,19 @@
   //      自分で ensureSuppressor(document) するため、これらは冪等な保険として働くだけ。 ----
 
   // document に MutationObserver を設置（冪等）。サブツリーに iframe 等が追加されたら即再設置。
+  // 設置済みフラグは ensureSuppressor と同じく **documentElement** に付ける
+  // （document に付けると document.open()/write() で root が差し替わってもフラグが残り、
+  //   observer が切り離された旧 root を見続けたままになるため）。
   function ensureObserver(doc) {
-    if (!doc || doc.__ccStudioKbObs) return;
+    if (!doc) return;
     var root = doc.documentElement || doc.body;
-    if (!root || typeof MutationObserver === 'undefined') return;
-    doc.__ccStudioKbObs = true;
+    if (!root || root.__ccStudioKbObs || typeof MutationObserver === 'undefined') return;
+    root.__ccStudioKbObs = true;
     try {
       var obs = new MutationObserver(scheduleInstall);
       obs.observe(root, { childList: true, subtree: true });
     } catch (_) {
-      doc.__ccStudioKbObs = false;
+      root.__ccStudioKbObs = false;
     }
   }
 
