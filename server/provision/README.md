@@ -108,6 +108,7 @@ setup.sh が両方を読む。
 | `CC_FOLDER` | `$HOME` | 起動時に開く既定フォルダ |
 | `CC_USER_DIR` | `$HOME/.local/share/code-server/User` | User 設定ディレクトリ |
 | `CC_PREFIX` | `$HOME/.local` | code-server install prefix |
+| `CC_NOTIFY_RELAY_PORT` | `8770` | notify-relay のバインドポート（`tailscale serve --set-path /cc-notify` の転送先と一致） |
 
 `cc-studio.env`・`config.yaml`・`*.bak` は gitignore 済み（個人値・秘密はコミットしない）。
 
