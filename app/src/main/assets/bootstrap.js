@@ -134,8 +134,11 @@
     var offset = 0;
     function next() {
       if (offset >= size) {
-        try { window.CCStudio.downloadEnd(token); } catch (_) {}
-        ovDone(name);
+        // downloadEnd の失敗（flush/確定エラー）を無視すると失敗でも「保存しました」になる。
+        // 失敗時は Kotlin 側が書きかけを自前で破棄するので downloadAbort は呼ばない。
+        var ended = false;
+        try { ended = window.CCStudio.downloadEnd(token); } catch (_) {}
+        if (ended) ovDone(name); else ovFail();
         return;
       }
       var end = Math.min(offset + CHUNK, size);

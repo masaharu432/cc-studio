@@ -204,9 +204,9 @@ class DownloadController(
         }
     }
 
-    /** 書き込み完了 → 保存確定。 */
+    /** 書き込み完了 → 保存確定。失敗時は書きかけを自前で破棄してから false を返す。 */
     fun end(token: String): Boolean {
-        val sink = downloads.remove(token) ?: return false
+        val sink = downloads[token] ?: return false
         return try {
             sink.out.flush(); sink.out.close()
             if (sink.uri != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -216,10 +216,19 @@ class DownloadController(
                     null, null
                 )
             }
+            // 成功が確定してから map から外す（途中で外すと失敗時に abort が後始末できない）。
+            downloads.remove(token)
             // 完了表示は JS 側の進捗バー（オーバーレイ）に一本化。ここではトーストを出さない。
             true
         } catch (e: Exception) {
             Log.w("CcStudio", "downloadEnd failed", e)
+            // abort 相当の後始末（IS_PENDING の孤児行 / 書きかけファイルを残さない）。
+            downloads.remove(token)
+            try { sink.out.close() } catch (_: Exception) {}
+            try {
+                if (sink.uri != null) activity.contentResolver.delete(sink.uri, null, null)
+                else sink.file?.delete()
+            } catch (_: Exception) {}
             false
         }
     }
