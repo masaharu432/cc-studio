@@ -6,7 +6,8 @@ import java.net.URLDecoder
 /** code-server の URL から「開いているフォルダ」を読み取る純ヘルパー。 */
 object ScreenUrl {
     fun folderPath(url: String): String? {
-        val q = url.substringAfter('?', "").ifEmpty { return null }
+        // '#fragment' はクエリの一部ではないので先に落とす（folder 値に混入すると照合が壊れる）。
+        val q = url.substringBefore('#').substringAfter('?', "").ifEmpty { return null }
         for (pair in q.split('&')) {
             val k = pair.substringBefore('=')
             if (k == "folder") {
