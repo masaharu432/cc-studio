@@ -237,16 +237,22 @@
         if (hit) out.push({ text: v.trim(), top: top, left: left });
       }
     } catch (_) {}
-    out.sort(function (a, b) {
-      return (Math.abs(a.top - b.top) > ROW_TOL_PX) ? (a.top - b.top) : (a.left - b.left);
-    });
-    var res = '', prevTop = null;
+    // 行グルーピング: top 昇順に並べ、行の基準 top から ROW_TOL_PX 以内を同じ行にまとめる。
+    // （top差とleft差を混ぜた比較器は非推移的で sort の結果が不定＝行が混ざるため使わない。）
+    out.sort(function (a, b) { return a.top - b.top; });
+    var rows = [];
     for (var j = 0; j < out.length; j++) {
-      if (prevTop !== null) res += (out[j].top - prevTop > ROW_TOL_PX) ? '\n' : ' ';
-      res += out[j].text;
-      prevTop = out[j].top;
+      var last = rows[rows.length - 1];
+      if (last && Math.abs(out[j].top - last.refTop) <= ROW_TOL_PX) last.items.push(out[j]);
+      else rows.push({ refTop: out[j].top, items: [out[j]] });
     }
-    return res.trim();
+    // 行内は left 順に空白連結、行同士は改行で連結。
+    var lines = [];
+    for (var k = 0; k < rows.length; k++) {
+      rows[k].items.sort(function (a, b) { return a.left - b.left; });
+      lines.push(rows[k].items.map(function (it) { return it.text; }).join(' '));
+    }
+    return lines.join('\n').trim();
   }
 
   // ---------- トースト(自フレーム) ----------
