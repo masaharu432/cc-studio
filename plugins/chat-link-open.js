@@ -80,10 +80,20 @@
   }
 
   function parsePath(href) {
-    var m = /^([^#]*?)(?:[:#]L?(\d+)(?:-L?(\d+))?)?$/.exec(href);
-    if (!m) return null;
-    var n = (m[1] || '').trim(); if (!n) return null;
-    return { filePath: n, startLine: m[2] ? parseInt(m[2], 10) : undefined, endLine: m[3] ? parseInt(m[3], 10) : undefined };
+    // 例: 'a/b.js:10' 'a/b.js:10:5'(行:桁) 'a/b.js:10-20' 'b.md#L10' 'b.md#L10-L20' 'a/b.js'
+    var name = href, start, end, m;
+    var hi = href.indexOf('#');
+    if (hi >= 0) {
+      name = href.slice(0, hi);
+      m = /^L?(\d+)(?:-L?(\d+))?$/.exec(href.slice(hi + 1));
+      if (!m) return null;               // 数字以外のフラグメントは対象外（従来どおり）
+      start = parseInt(m[1], 10); if (m[2]) end = parseInt(m[2], 10);
+    } else if ((m = /^(.*?):(\d+)(?::\d+|-(\d+))?$/.exec(href))) {
+      // :line / :line:col / :line-line。桁(col)は open_file の location が非対応のため捨てる。
+      name = m[1]; start = parseInt(m[2], 10); if (m[3]) end = parseInt(m[3], 10);
+    }
+    name = (name || '').trim(); if (!name) return null;
+    return { filePath: name, startLine: start, endLine: end };
   }
   var SCHEME = /^[a-z][a-z0-9+.-]*:/i;   // http: https: mailto: 等 scheme 付きはファイルでない
   // ただし '.' は scheme に合法なため 'readme.md:10' も SCHEME にマッチしてしまう。
