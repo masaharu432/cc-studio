@@ -86,8 +86,8 @@
     if (hi >= 0) {
       name = href.slice(0, hi);
       m = /^L?(\d+)(?:-L?(\d+))?$/.exec(href.slice(hi + 1));
-      if (!m) return null;               // 数字以外のフラグメントは対象外（従来どおり）
-      start = parseInt(m[1], 10); if (m[2]) end = parseInt(m[2], 10);
+      // 数字以外のフラグメント（'#overview' 等の見出しアンカー）は捨てて行指定なしで開く
+      if (m) { start = parseInt(m[1], 10); if (m[2]) end = parseInt(m[2], 10); }
     } else if ((m = /^(.*?):(\d+)(?::\d+|-(\d+))?$/.exec(href))) {
       // :line / :line:col / :line-line。桁(col)は open_file の location が非対応のため捨てる。
       name = m[1]; start = parseInt(m[2], 10); if (m[3]) end = parseInt(m[3], 10);
