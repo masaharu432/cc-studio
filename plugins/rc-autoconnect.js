@@ -1,6 +1,6 @@
 // ==CCStudioPlugin==
 // @name        rc-autoconnect
-// @version     0.6.0
+// @version     0.7.0
 // @description Auto-enable Remote Control on newly started sessions by sending /remote-control (workbench only).
 // @description:ja 新規に起動したセッションで /remote-control を自動送信し、リモートコントロールを有効化する（workbench 用）。
 // @run-at      document-start
@@ -90,10 +90,10 @@
   }
   var TAG = frameTag();
 
-  // ---- 冪等ガード（フレーム内メモリのみ。sessionStorage は使わない） ----
-  //   0.5.0 まで sessionStorage を使っていたが、webview オリジンに貼り付いてタブをまたぐため
-  //   「一度撃つと同じブラウザでは次の新規セッションでも fired=1 のまま＝二度と発火しない」不具合が出た。
-  //   フレーム内フラグにし、会話が始まったら(amsg>0) tick でリセットして「次に空になったら＝新規」を拾う。
+  // ---- 冪等ガード（フレーム内メモリのみ・フレームにつき最大1回） ----
+  //   0.5.0 まで sessionStorage を使い、webview オリジンに貼り付いてタブをまたぐため二度と発火しない不具合。
+  //   0.6.0 は amsg>0 でリセットしていたが、送信失敗メッセージ等で再発火し RC セッションを乱造する危険が
+  //   あった。0.7.0 はリセットを撤去し「1フレーム＝1新規セッション＝最大1回」に固定（新規は新フレームで拾う）。
   var firedThisFrame = false;
   function alreadyFired() { return firedThisFrame; }
   function markFired() { firedThisFrame = true; }
@@ -139,15 +139,21 @@
     }
     emitLog('insert exec=' + (inserted ? 1 : 0) + ' text="' + composerText(composer).slice(0, 20) + '"');
     setTimeout(function () {
-      // 送信は「送信ボタンのクリック」を主、Enter キーを従（合成イベント無視される UI 向けの保険）。
+      // 送信は「送信ボタンのクリック」のみ。ボタンが在るのに Enter も撃つと二重送信になる（0.6.0 の不具合）。
+      // ボタンが見つからない時だけ Enter へフォールバック。
       var btn = null; try { btn = document.querySelector(SEND_BTN_SEL); } catch (_) {}
-      var clicked = 0;
-      if (btn) { try { btn.click(); clicked = 1; } catch (_) {} }
-      var tgt = composer; try { tgt = document.activeElement || composer; } catch (_) {}
-      ['keydown', 'keypress', 'keyup'].forEach(function (type) {
-        try { tgt.dispatchEvent(new KeyboardEvent(type, { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true })); } catch (_) {}
-      });
-      emitLog('submit btn=' + clicked + ' +enter');
+      var how;
+      if (btn) {
+        try { btn.click(); } catch (_) {}
+        how = 'btn';
+      } else {
+        var tgt = composer; try { tgt = document.activeElement || composer; } catch (_) {}
+        ['keydown', 'keypress', 'keyup'].forEach(function (type) {
+          try { tgt.dispatchEvent(new KeyboardEvent(type, { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true })); } catch (_) {}
+        });
+        how = 'enter';
+      }
+      emitLog('submit via ' + how);
       setTimeout(verifyAfterSend, 1500);
     }, SUBMIT_DELAY_MS);
   }
@@ -165,8 +171,8 @@
     if (!enabled()) return;
     var c = findComposer();
     if (!c) return;                        // composer 不在フレーム／未ロード → 対象外
-    if (assistantCount() !== 0) { firedThisFrame = false; return; } // 会話あり＝既存 → 触らず、次の空を新規扱いにリセット
-    if (alreadyFired()) return;            // この空セッションでは送信済み
+    if (assistantCount() !== 0) return;    // アシスタント応答あり＝既存/送信後 → 触らない（リセットしない＝二度撃たない）
+    if (alreadyFired()) return;            // このフレームでは送信済み
     markFired();
     emitLog('FIRE new session (0 msgs) via ' + c.sel.slice(0, 14) + ' in ' + SETTLE_MS + 'ms');
     setTimeout(function () {
