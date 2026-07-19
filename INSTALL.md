@@ -136,6 +136,7 @@ adb install -r app/build/outputs/apk/debug/cc-studio-*.apk
    - `chat-link-open` — チャットのファイルリンクをタブで開く
    - `selectable-text` / `region-grab` — コピー機能（長押し／範囲囲み）
    - `state-observer` — 処理中・接続切れの表示と通知連携
+   - `rc-autoconnect` — 新規セッション（とリロード直後）で Remote Control を自動 ON
    - （`focus-hud` / `select-diag` は不具合調査用。普段は不要）
 
    ON にしたら switcher に戻り、反映したいスクリーンを `⟳` でリロード。

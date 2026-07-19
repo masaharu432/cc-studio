@@ -1,8 +1,8 @@
 // ==CCStudioPlugin==
 // @name        rc-autoconnect
-// @version     0.7.0
-// @description Auto-enable Remote Control on newly started sessions by sending /remote-control (workbench only).
-// @description:ja 新規に起動したセッションで /remote-control を自動送信し、リモートコントロールを有効化する（workbench 用）。
+// @version     0.7.1
+// @description Auto-enable Remote Control by sending /remote-control on newly started sessions, and right after a screen reload (a reload drops RC, so it gets re-established).
+// @description:ja 新規セッション、およびスクリーンのリロード直後に /remote-control を自動送信して Remote Control を有効化する（リロードは RC を落とすため張り直しになる）。
 // @run-at      document-start
 // @all-frames  true
 // @setting     enabled boolean true 新規セッションで自動的にリモートコントロールに接続する
@@ -17,8 +17,12 @@
 //   公式のゲート開放を待たず、workbench 経由の「新規セッション」だけで /remote-control を 1 回自動送信して
 //   RC を有効化する。extension.js は改変せず、claude-code の webview UI（composer）を操作するだけ。
 //
-//   新規セッション限定の理由: /remote-control は接続済みで撃つと切断/トグル側になり得る。ユーザーの意図的
-//   無効化も尊重したい。よって「アシスタント応答 0 件＝新規」だけで撃つ（リロード後の張り直しはしない）。
+//   「アシスタント応答 0 件」だけで撃つ理由: /remote-control は接続済みで撃つと切断/トグル側になり得るため、
+//   会話が動いている既存セッションには触れない。ユーザーが意図的に RC を無効化した状態も尊重できる。
+//
+//   リロード直後も発火する（実測・許容）: リロード直後は既存セッションでもトランスクリプトが未描画で
+//   assistant-message が 0 件のため新規と判定されて撃つ。リロードは RC 接続を落とすので、そこで張り直すのは
+//   むしろ意図に沿う（＝この副作用は仕様として受け入れる）。
 //
 //   診断(diag): 私（サーバ側）からはブラウザの生 DOM を読めないため、プラグイン自身が「このフレームで何が
 //   見えているか」を focus-hud の共有バッファへ出す。クロスオリジン(webview)フレームは window.top へ直接

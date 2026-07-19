@@ -34,6 +34,7 @@ CC Studio's announcement post being dictated to Claude by voice — the app is a
 | Tapping an external link navigates away from the workbench | External http(s) links open in the device's default browser |
 | File downloads never get saved | Saved to the device's Downloads — including `blob:`/`data:` — with a progress bar |
 | You can't tell whether it's busy or the connection dropped | `state-observer` plugin — shows "busy / disconnected" per screen on the ⋮ button, the screen list, and the persistent notification |
+| You must run `/remote-control` by hand every time before the mobile app / `claude.ai/code` can drive the session | `rc-autoconnect` plugin — automatically runs `/remote-control` on newly started sessions (and right after a reload) to turn Remote Control on |
 
 ## Features
 
@@ -49,7 +50,7 @@ CC Studio's announcement post being dictated to Claude by voice — the app is a
 background — queue up the next job while Claude is thinking hard on another screen.</sub></p>
 
 - **Plugins** — `.js` files that remove mobile friction; toggle / add / delete them on the full-screen
-  management screen. Eight bundled plugins live in [`plugins/`](plugins/) (the ones in the table above
+  management screen. Nine bundled plugins live in [`plugins/`](plugins/) (the ones in the table above
   plus the diagnostic `focus-hud` / `select-diag`). Plugins with `@setting` are configurable via ⚙,
   and changes apply **live, no reload needed**. To write your own, see
   [docs/specs/2026-07-02-architecture-and-implementation-notes.md](docs/specs/2026-07-02-architecture-and-implementation-notes.md).
