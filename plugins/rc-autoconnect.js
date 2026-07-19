@@ -1,6 +1,6 @@
 // ==CCStudioPlugin==
 // @name        rc-autoconnect
-// @version     0.4.0
+// @version     0.5.0
 // @description Auto-enable Remote Control on newly started sessions by sending /remote-control (workbench only).
 // @description:ja 新規に起動したセッションで /remote-control を自動送信し、リモートコントロールを有効化する（workbench 用）。
 // @run-at      document-start
@@ -36,6 +36,8 @@
   var COMPOSER_SELS = ['[aria-label="Message input"]', '[role="textbox"][aria-multiline="true"]'];
   // 新規判定＝アシスタント応答 0 件。assistant-message は webview の安定 data-testid。
   var ASSISTANT_MSG_SEL = '[data-testid="assistant-message"]';
+  // 送信ボタン。webview は sendButton_<hash> クラス。state-observer も同セレクタで停止ボタンを見ている。
+  var SEND_BTN_SEL = 'button[class*="sendButton"]';
   var HUD_MSG = 'cc-rc-hud';                    // 自前 HUD 中継のメッセージ種別
   var FIRED_KEY = 'cc-rc-autoconnect-fired';    // 1 セッション 1 回の冪等キー
   var POLL_MS = 700;
@@ -114,34 +116,22 @@
     catch (_) { return -1; }
   }
 
-  // ---- 診断: このフレームで見えている手掛かりを HUD へ（変化時のみ） ----
-  var lastDx = '';
-  function elemDesc(el) {
-    try {
-      var tag = (el.tagName || '?').toLowerCase();
-      var role = el.getAttribute('role'); var al = el.getAttribute('aria-label'); var ml = el.getAttribute('aria-multiline');
-      return tag + (role ? '[role=' + role + ']' : '') + (al ? '[al=' + al.slice(0, 18) + ']' : '') + (ml ? '[ml=' + ml + ']' : '');
-    } catch (_) { return '?'; }
-  }
+  // ---- 診断: composer フレームの状態だけを HUD へ（変化時のみ・非 composer フレームは無視） ----
+  var lastDx = '', frameLogged = false;
   function diag() {
     if (!diagOn()) return;
     var c = findComposer();
-    var line;
-    if (c) {
-      line = 'dx ' + TAG + ' cmp=1(' + c.sel.slice(0, 14) + ') amsg=' + assistantCount() +
-             ' new=' + (assistantCount() === 0 ? 1 : 0) + ' en=' + (enabled() ? 1 : 0) + ' fired=' + (alreadyFired() ? 1 : 0);
-    } else {
-      // composer 未一致フレーム: input 候補があればセレクタ確定用にダンプ（無ければ何も出さない＝ノイズ抑制）
-      var cand = null;
-      try { cand = document.querySelector('[role="textbox"],textarea,[contenteditable="true"]'); } catch (_) {}
-      if (!cand) return;
-      line = 'dx ' + TAG + ' cmp=0 cand=' + elemDesc(cand);
-    }
+    if (!c) return;                     // composer 不在フレームは出さない（armed 等のノイズ削減）
+    if (!frameLogged) { frameLogged = true; emitLog('cmp-frame ' + TAG + ' via ' + c.sel.slice(0, 14)); }
+    var amsg = assistantCount();
+    var line = 'dx ' + TAG + ' amsg=' + amsg + ' new=' + (amsg === 0 ? 1 : 0) +
+               ' en=' + (enabled() ? 1 : 0) + ' fired=' + (alreadyFired() ? 1 : 0);
     if (line === lastDx) return; lastDx = line;
     emitLog(line);
   }
 
   // ---- 送信 ----
+  function composerText(el) { try { return (el.textContent || el.value || '').trim(); } catch (_) { return ''; } }
   function sendCommand(composer) {
     try { composer.focus(); } catch (_) {}
     var inserted = false;
@@ -152,15 +142,26 @@
         composer.dispatchEvent(new InputEvent('input', { inputType: 'insertText', data: CMD, bubbles: true }));
       } catch (_) {}
     }
-    emitLog('insert exec=' + (inserted ? 1 : 0) + ' text="' + ((composer.textContent || composer.value || '').slice(0, 20)) + '"');
+    emitLog('insert exec=' + (inserted ? 1 : 0) + ' text="' + composerText(composer).slice(0, 20) + '"');
     setTimeout(function () {
+      // 送信は「送信ボタンのクリック」を主、Enter キーを従（合成イベント無視される UI 向けの保険）。
+      var btn = null; try { btn = document.querySelector(SEND_BTN_SEL); } catch (_) {}
+      var clicked = 0;
+      if (btn) { try { btn.click(); clicked = 1; } catch (_) {} }
+      var tgt = composer; try { tgt = document.activeElement || composer; } catch (_) {}
       ['keydown', 'keypress', 'keyup'].forEach(function (type) {
-        try {
-          composer.dispatchEvent(new KeyboardEvent(type, { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true }));
-        } catch (_) {}
+        try { tgt.dispatchEvent(new KeyboardEvent(type, { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true })); } catch (_) {}
       });
-      emitLog('enter dispatched (verify RC banner)');
+      emitLog('submit btn=' + clicked + ' +enter');
+      setTimeout(verifyAfterSend, 1500);
     }, SUBMIT_DELAY_MS);
+  }
+  function verifyAfterSend() {
+    var empty = 1, banner = 0;
+    try { var c = findComposer(); empty = (c && composerText(c.el)) ? 0 : 1; } catch (_) {}
+    // 送信直後は会話が空（新規）なので "Remote Control" 文言＝バナー出現とみなせる（誤ヒット源なし）。
+    try { banner = ((document.body && document.body.textContent) || '').indexOf('Remote Control') >= 0 ? 1 : 0; } catch (_) {}
+    emitLog('post empty=' + empty + ' banner=' + banner);
   }
 
   // ---- メインループ ----
@@ -184,7 +185,7 @@
 
   var pollTimer = null;
   function start() {
-    emitLog('armed ' + TAG);               // フレーム到達確認（HUD に出れば注入できている）
+    // armed は出さない（全フレームで出るとノイズ）。composer フレームだけ diag が 'cmp-frame' を1回出す。
     try { new MutationObserver(tick).observe(document.documentElement || document.body, { subtree: true, childList: true }); } catch (_) {}
     pollTimer = setInterval(tick, POLL_MS);
     tick();
