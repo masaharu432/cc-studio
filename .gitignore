@@ -19,3 +19,6 @@ server/provision/cc-studio.env
 # 各ユーザのローカル追加拡張（tracked リストを触らず足せる）
 server/provision/extensions.local.txt
 *.code-workspace
+
+# 個人の開発環境設定（ステータスバー表示など）は公開しない
+.vscode/
