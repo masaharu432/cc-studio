@@ -1,6 +1,6 @@
 // ==CCStudioPlugin==
 // @name        focus-hud
-// @version     1.6.7
+// @version     1.6.8
 // @description Diagnostic tool. Shows which element in which frame received focus or taps, as a timeline overlay at the top of the screen (for sharing screenshots).
 // @description:ja 不具合調査用の診断ツール。どの要素・どのフレームにフォーカスやタップが入ったかを画面上部に時系列表示する（スクショで状況共有する用）。
 // @run-at      document-start
@@ -244,7 +244,7 @@
       try {
         if (window.__ccHudRafLast) rafAge = Math.min(9999, Date.now() - window.__ccHudRafLast);
       } catch (_) { /* ignore */ }
-      var head = 'HUD1.6.7 vv:' + (vv ? Math.round(vv.height) : '?') +
+      var head = 'HUD1.6.8 vv:' + (vv ? Math.round(vv.height) : '?') +
         ' in:' + Math.round(window.innerHeight) +
         ' bd:' + bdH +
         ' wb:' + wbH +
@@ -260,17 +260,19 @@
       // 展開状態：フレーム木＋KB専用ログ＋共有ログを出す。
       el.style.maxHeight = '46vh';
       el.style.overflow = 'auto';
-      var frames = '', log = [], kbown = [];
+      var frames = '', log = [], kbown = [], rcown = [];
       try {
         frames = Object.keys(topWin().__ccStudioFocusFrames || {}).join(',');
         log = topWin().__ccStudioFocusLog || [];
         kbown = topWin().__ccStudioKbOwn || []; // keyboard-suppress 専用ログ（他プラグインに埋もれない）
+        rcown = topWin().__ccStudioRcOwn || []; // rc-autoconnect 専用ログ（同上）
       } catch (_) {}
       var active = '';
       try { active = elemDesc(document.activeElement); } catch (_) {}
       el.textContent = head + '  frames[' + frames + ']  active:' + active +
         '\n-- iframe tree (SO=届く/XO=届かない) --\n' + frameTree() +
         '\n-- KB (keyboard-suppress) --\n' + kbown.join('\n') +
+        '\n-- RC (rc-autoconnect) --\n' + rcown.join('\n') +
         '\n-- log (shared) --\n' + log.join('\n');
     } catch (_) { /* ignore */ }
   }

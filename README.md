@@ -33,6 +33,7 @@ UI 語彙は **Screen / スクリーン** と **Plugin / プラグイン** の 2
 | 外部リンクを踏むと workbench から離脱してしまう | 外部 http(s) リンクは端末の既定ブラウザで開く |
 | ファイルのダウンロードが保存されない | `blob:`/`data:` も含めて端末の Downloads へ保存（進捗バー付き） |
 | いま処理中なのか・接続が切れたのか分からない | `state-observer` プラグイン — 各スクリーンの「処理中 / 接続切れ」を ⋮ ボタン・スクリーン一覧・常駐通知に表示 |
+| セッションを開くたび手動で `/remote-control` しないと公式アプリ／`claude.ai/code` から操作できない | `rc-autoconnect` プラグイン — 新規セッション（およびリロード直後）で `/remote-control` を自動実行して Remote Control を有効化 |
 
 ## 機能
 
@@ -47,7 +48,7 @@ UI 語彙は **Screen / スクリーン** と **Plugin / プラグイン** の 2
 別スクリーンで Claude が長考している間に、次の仕事を仕込める。</sub></p>
 
 - **Plugins（プラグイン）** — モバイルの摩擦を潰す `.js` を全画面の管理スクリーンで ON/OFF・追加・削除。
-  同梱プラグインは [`plugins/`](plugins/) に 8 本（上表のほか、不具合調査用の `focus-hud` / `select-diag`）。
+  同梱プラグインは [`plugins/`](plugins/) に 9 本（上表のほか、不具合調査用の `focus-hud` / `select-diag`）。
   `@setting` を持つプラグインは ⚙ から設定でき、**リロード不要でライブ反映**。
   自作プラグインの書き方は [docs/specs/2026-07-02-architecture-and-implementation-notes.md](docs/specs/2026-07-02-architecture-and-implementation-notes.md)。
 
