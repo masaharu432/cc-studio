@@ -1,6 +1,6 @@
 // ==CCStudioPlugin==
 // @name        rc-autoconnect
-// @version     0.5.0
+// @version     0.6.0
 // @description Auto-enable Remote Control on newly started sessions by sending /remote-control (workbench only).
 // @description:ja 新規に起動したセッションで /remote-control を自動送信し、リモートコントロールを有効化する（workbench 用）。
 // @run-at      document-start
@@ -39,7 +39,6 @@
   // 送信ボタン。webview は sendButton_<hash> クラス。state-observer も同セレクタで停止ボタンを見ている。
   var SEND_BTN_SEL = 'button[class*="sendButton"]';
   var HUD_MSG = 'cc-rc-hud';                    // 自前 HUD 中継のメッセージ種別
-  var FIRED_KEY = 'cc-rc-autoconnect-fired';    // 1 セッション 1 回の冪等キー
   var POLL_MS = 700;
   var SETTLE_MS = 700;                          // 新規確定〜送信までの待ち
   var SUBMIT_DELAY_MS = 300;                    // 文字挿入〜Enter までの待ち
@@ -91,17 +90,13 @@
   }
   var TAG = frameTag();
 
-  // ---- 冪等ガード ----
+  // ---- 冪等ガード（フレーム内メモリのみ。sessionStorage は使わない） ----
+  //   0.5.0 まで sessionStorage を使っていたが、webview オリジンに貼り付いてタブをまたぐため
+  //   「一度撃つと同じブラウザでは次の新規セッションでも fired=1 のまま＝二度と発火しない」不具合が出た。
+  //   フレーム内フラグにし、会話が始まったら(amsg>0) tick でリセットして「次に空になったら＝新規」を拾う。
   var firedThisFrame = false;
-  function alreadyFired() {
-    if (firedThisFrame) return true;
-    try { if (sessionStorage.getItem(FIRED_KEY)) return true; } catch (_) {}
-    return false;
-  }
-  function markFired() {
-    firedThisFrame = true;
-    try { sessionStorage.setItem(FIRED_KEY, String(Date.now())); } catch (_) {}
-  }
+  function alreadyFired() { return firedThisFrame; }
+  function markFired() { firedThisFrame = true; }
 
   // ---- composer / 新規判定 ----
   function findComposer() {
@@ -168,10 +163,10 @@
   function tick() {
     diag();                                // 毎 tick 状態を診断出力（変化時のみ）
     if (!enabled()) return;
-    if (alreadyFired()) return;
     var c = findComposer();
     if (!c) return;                        // composer 不在フレーム／未ロード → 対象外
-    if (assistantCount() !== 0) return;    // アシスタント応答が既にある＝既存/接続済み → 触らない
+    if (assistantCount() !== 0) { firedThisFrame = false; return; } // 会話あり＝既存 → 触らず、次の空を新規扱いにリセット
+    if (alreadyFired()) return;            // この空セッションでは送信済み
     markFired();
     emitLog('FIRE new session (0 msgs) via ' + c.sel.slice(0, 14) + ' in ' + SETTLE_MS + 'ms');
     setTimeout(function () {
