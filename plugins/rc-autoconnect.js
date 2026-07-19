@@ -1,12 +1,14 @@
 // ==CCStudioPlugin==
 // @name        rc-autoconnect
-// @version     0.2.0
+// @version     0.3.0
 // @description Auto-enable Remote Control on newly started sessions by sending /remote-control (workbench only).
 // @description:ja 新規に起動したセッションで /remote-control を自動送信し、リモートコントロールを有効化する（workbench 用）。
 // @run-at      document-start
 // @all-frames  true
 // @setting     enabled boolean true 新規セッションで自動的にリモートコントロールに接続する
 // @setting:ja  enabled 新規セッションで自動的にリモートコントロールに接続する
+// @setting     diag boolean true 診断ログを focus-hud に出す
+// @setting:ja  diag 診断ログを focus-hud に出す
 // ==/CCStudioPlugin==
 // rc-autoconnect.js — CC Studio プラグイン。
 //
@@ -15,16 +17,14 @@
 //   公式のゲート開放を待たず、workbench 経由の「新規セッション」だけで /remote-control を 1 回自動送信して
 //   RC を有効化する。extension.js は改変せず、claude-code の webview UI（composer）を操作するだけ。
 //
-//   トリガーを新規セッション限定にする理由:
-//     - webview の /remote-control は未接続時に確認なしで即有効になるが、接続済みで撃つと切断/トグル側に
-//       なり得るため、無検知連打の事故を避ける。
-//     - ユーザーが意図的に RC を無効化する運用があるので「RC 表示が無い=張り直す」方式は採らない。新規限定なら
-//       既存セッションで無効化した状態を尊重できる（既存=会話が空でない=非該当）。
-//     - リロード（実質プラグイン/拡張更新時のみで稀）後の張り直しはしない（非ゴール）。
+//   新規セッション限定の理由: /remote-control は接続済みで撃つと切断/トグル側になり得る。ユーザーの意図的
+//   無効化も尊重したい。よって「アシスタント応答 0 件＝新規」だけで撃つ（リロード後の張り直しはしない）。
+//
+//   診断(diag): 私（サーバ側）からはブラウザの生 DOM を読めないため、プラグイン自身が「このフレームで何が
+//   見えているか」を focus-hud の共有バッファへ出す。クロスオリジン(webview)フレームは window.top へ直接
+//   書けないので、自前の top 中継（HUD_MSG）で送る（state-observer 等に依存しない）。'RC ' プレフィックス。
 //
 //   設計: docs/specs/2026-07-20-rc-autoconnect-plugin-design.md
-//   フレーム作法・DIAG は state-observer.js / chat-link-open.js を踏襲。
-//   ★印は実機 DOM で確定する spike ポイント（セレクタ・新規判定・送信手段）。壊れたら DIAG を見て詰める。
 (function () {
   'use strict';
   if (window.__ccRcAutoconnect) return;   // フレームごとに 1 度だけ武装
@@ -33,39 +33,60 @@
   var NAME = 'rc-autoconnect';
   var CMD = '/remote-control';
   // composer セレクタ。webview の安定ラベル aria-label="Message input" を第一候補、role をフォールバック。
-  // これが在るフレーム＝チャット本体フレームだけで作動。
-  var COMPOSER_SEL = '[aria-label="Message input"], [role="textbox"][aria-multiline="true"]';
-  // 新規セッション判定＝アシスタント応答 0 件。assistant-message は webview の安定 data-testid。
-  // ウェルカム文言はランダム（webview は候補配列から毎回抽選）なので使わない。会話本文テキストにも依存しない。
+  var COMPOSER_SELS = ['[aria-label="Message input"]', '[role="textbox"][aria-multiline="true"]'];
+  // 新規判定＝アシスタント応答 0 件。assistant-message は webview の安定 data-testid。
   var ASSISTANT_MSG_SEL = '[data-testid="assistant-message"]';
-  var FIRED_KEY = 'cc-rc-autoconnect-fired';   // 1 セッション 1 回の冪等キー（sessionStorage）
-  var POLL_MS = 700;                            // composer/新規判定の監視間隔
-  var SETTLE_MS = 700;                          // 新規確定〜送信までの待ち（UI 安定待ち）
-  var SUBMIT_DELAY_MS = 300;                    // 文字挿入〜Enter までの待ち（補完ポップアップ対策）
+  var HUD_MSG = 'cc-rc-hud';                    // 自前 HUD 中継のメッセージ種別
+  var FIRED_KEY = 'cc-rc-autoconnect-fired';    // 1 セッション 1 回の冪等キー
+  var POLL_MS = 700;
+  var SETTLE_MS = 700;                          // 新規確定〜送信までの待ち
+  var SUBMIT_DELAY_MS = 300;                    // 文字挿入〜Enter までの待ち
 
-  // ---- 設定（enabled=false で無効。⚙ からのライブ変更にも追従） ----
-  function enabled() {
-    try { var s = window.__ccPluginSettings && window.__ccPluginSettings[NAME]; return !(s && s.enabled === false); }
-    catch (_) { return true; }
-  }
-
-  // ---- 診断ログ: focus-hud 共有バッファへ 'RC ' プレフィックスで積む（state-observer と同じ配管） ----
   var isTop; try { isTop = (window === window.top); } catch (_) { isTop = false; }
+
+  // ---- 設定 ----
+  function setting(key, dflt) {
+    try { var s = window.__ccPluginSettings && window.__ccPluginSettings[NAME]; if (s && typeof s[key] === 'boolean') return s[key]; }
+    catch (_) {}
+    return dflt;
+  }
+  function enabled() { return setting('enabled', true); }
+  function diagOn() { return setting('diag', true); }
+
+  // ---- HUD ログ（自前中継。focus-hud が window.top.__ccStudioFocusLog を表示する） ----
+  function pushHud(line) {
+    try {
+      var a = window.__ccStudioFocusLog || (window.__ccStudioFocusLog = []);
+      if (a[a.length - 1] === line) return;
+      a.push(line); while (a.length > 28) a.shift();
+    } catch (_) {}
+  }
+  if (isTop) {
+    // 非トップ（webview 等クロスオリジン）フレームからの中継を受けてバッファへ積む。
+    try {
+      window.addEventListener('message', function (e) {
+        var m = e && e.data;
+        if (m && m.k === HUD_MSG && typeof m.log === 'string') pushHud(m.log);
+      }, false);
+    } catch (_) {}
+  }
   var lastLog = '';
   function emitLog(s) {
     var line = 'RC ' + s;
     if (line === lastLog) return; lastLog = line;
-    try {
-      if (isTop) {
-        var a = window.__ccStudioFocusLog || (window.__ccStudioFocusLog = []);
-        a.push(line); while (a.length > 24) a.shift();
-      } else {
-        // 非トップ（webview 本体フレーム）は cross-origin で window.top へ直接触れないため postMessage で送る。
-        // state-observer のトップ集約が {k:'__cc_session', log} を hud に積む。未導入でも無害。
-        window.top.postMessage({ k: '__cc_session', log: line }, '*');
-      }
-    } catch (_) { try { console.debug('[cc-' + NAME + ']', s); } catch (__) {} }
+    if (isTop) { pushHud(line); return; }
+    try { window.top.postMessage({ k: HUD_MSG, log: line }, '*'); }
+    catch (_) { try { console.debug('[cc-' + NAME + ']', s); } catch (__) {} }
   }
+
+  function frameTag() {
+    try {
+      if (isTop) return 'top';
+      var p = (location && location.pathname) || '';
+      return (decodeURIComponent(p.split('/').filter(Boolean).pop() || (location && location.host) || 'sub')).slice(0, 12);
+    } catch (_) { return 'xo'; }
+  }
+  var TAG = frameTag();
 
   // ---- 冪等ガード ----
   var firedThisFrame = false;
@@ -79,74 +100,92 @@
     try { sessionStorage.setItem(FIRED_KEY, String(Date.now())); } catch (_) {}
   }
 
-  // ---- 新規セッション判定 ----
-  //   会話が空（アシスタント応答 0 件）＝新規。assistant-message は webview の安定 data-testid。
-  //   既存/再開/接続済みセッションは応答が 1 件以上あるので発火しない（＝接続済みへ撃つトグル誤爆を回避）。
-  //   会話本文テキストには一切依存しない（旧 0.1.0 の body 全文スキャン誤ヒットを廃止）。
-  function isNewSession() {
-    try { return document.querySelectorAll(ASSISTANT_MSG_SEL).length === 0; }
-    catch (_) { return false; }
+  // ---- composer / 新規判定 ----
+  function findComposer() {
+    for (var i = 0; i < COMPOSER_SELS.length; i++) {
+      try { var el = document.querySelector(COMPOSER_SELS[i]); if (el) return { el: el, sel: COMPOSER_SELS[i] }; }
+      catch (_) {}
+    }
+    return null;
+  }
+  function assistantCount() {
+    try { return document.querySelectorAll(ASSISTANT_MSG_SEL).length; }
+    catch (_) { return -1; }
   }
 
-  // ---- 送信（★ spike: React/Lexical composer への挿入＋送信手段を実機で確定） ----
+  // ---- 診断: このフレームで見えている手掛かりを HUD へ（変化時のみ） ----
+  var lastDx = '';
+  function elemDesc(el) {
+    try {
+      var tag = (el.tagName || '?').toLowerCase();
+      var role = el.getAttribute('role'); var al = el.getAttribute('aria-label'); var ml = el.getAttribute('aria-multiline');
+      return tag + (role ? '[role=' + role + ']' : '') + (al ? '[al=' + al.slice(0, 18) + ']' : '') + (ml ? '[ml=' + ml + ']' : '');
+    } catch (_) { return '?'; }
+  }
+  function diag() {
+    if (!diagOn()) return;
+    var c = findComposer();
+    var line;
+    if (c) {
+      line = 'dx ' + TAG + ' cmp=1(' + c.sel.slice(0, 14) + ') amsg=' + assistantCount() +
+             ' new=' + (assistantCount() === 0 ? 1 : 0) + ' en=' + (enabled() ? 1 : 0) + ' fired=' + (alreadyFired() ? 1 : 0);
+    } else {
+      // composer 未一致フレーム: input 候補があればセレクタ確定用にダンプ（無ければ何も出さない＝ノイズ抑制）
+      var cand = null;
+      try { cand = document.querySelector('[role="textbox"],textarea,[contenteditable="true"]'); } catch (_) {}
+      if (!cand) return;
+      line = 'dx ' + TAG + ' cmp=0 cand=' + elemDesc(cand);
+    }
+    if (line === lastDx) return; lastDx = line;
+    emitLog(line);
+  }
+
+  // ---- 送信 ----
   function sendCommand(composer) {
     try { composer.focus(); } catch (_) {}
     var inserted = false;
-    // 1) 標準の insertText（contenteditable で最も素直）
     try { inserted = document.execCommand('insertText', false, CMD); } catch (_) {}
-    // 2) フォールバック: beforeinput/InputEvent
     if (!inserted) {
       try {
-        composer.dispatchEvent(new InputEvent('beforeinput',
-          { inputType: 'insertText', data: CMD, bubbles: true, cancelable: true }));
-        composer.dispatchEvent(new InputEvent('input',
-          { inputType: 'insertText', data: CMD, bubbles: true }));
+        composer.dispatchEvent(new InputEvent('beforeinput', { inputType: 'insertText', data: CMD, bubbles: true, cancelable: true }));
+        composer.dispatchEvent(new InputEvent('input', { inputType: 'insertText', data: CMD, bubbles: true }));
       } catch (_) {}
     }
-    // 3) Enter で送信。'/' 補完ポップアップが Enter を横取りしても、通常は選択中コマンドを確定＝実行になる。
-    //    横取り挙動が違えば DIAG を見て手順を差し替える。
+    emitLog('insert exec=' + (inserted ? 1 : 0) + ' text="' + ((composer.textContent || composer.value || '').slice(0, 20)) + '"');
     setTimeout(function () {
       ['keydown', 'keypress', 'keyup'].forEach(function (type) {
         try {
-          composer.dispatchEvent(new KeyboardEvent(type,
-            { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true }));
+          composer.dispatchEvent(new KeyboardEvent(type, { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true }));
         } catch (_) {}
       });
-      emitLog('sent ' + CMD + ' (verify RC banner)');
+      emitLog('enter dispatched (verify RC banner)');
     }, SUBMIT_DELAY_MS);
   }
 
   // ---- メインループ ----
   function tick() {
+    diag();                                // 毎 tick 状態を診断出力（変化時のみ）
     if (!enabled()) return;
     if (alreadyFired()) return;
-    var composer;
-    try { composer = document.querySelector(COMPOSER_SEL); } catch (_) { composer = null; }
-    if (!composer) return;                 // composer 不在フレーム／未ロード → 対象外
-    if (!isNewSession()) return;           // アシスタント応答が既にある＝既存/接続済み → 触らない
+    var c = findComposer();
+    if (!c) return;                        // composer 不在フレーム／未ロード → 対象外
+    if (assistantCount() !== 0) return;    // アシスタント応答が既にある＝既存/接続済み → 触らない
     markFired();
-    emitLog('new session (0 msgs) -> ' + CMD + ' in ' + SETTLE_MS + 'ms');
+    emitLog('FIRE new session (0 msgs) via ' + c.sel.slice(0, 14) + ' in ' + SETTLE_MS + 'ms');
     setTimeout(function () {
       try {
-        // 送信直前に enabled を再確認（この間に OFF されたら撃たない）
         if (!enabled()) { emitLog('aborted: disabled'); return; }
-        var c = document.querySelector(COMPOSER_SEL);
-        if (c) sendCommand(c); else emitLog('aborted: composer gone');
+        var c2 = findComposer();
+        if (c2) sendCommand(c2.el); else emitLog('aborted: composer gone');
       } catch (e) { emitLog('send error'); }
     }, SETTLE_MS);
   }
 
   var pollTimer = null;
   function start() {
-    emitLog('armed ' + (isTop ? 'top' : 'frame'));   // フレーム到達確認（HUD に出れば注入できている）
-    try {
-      new MutationObserver(tick).observe(document.documentElement || document.body,
-        { subtree: true, childList: true });
-    } catch (_) {}
-    pollTimer = setInterval(function () {
-      if (alreadyFired() && pollTimer) { clearInterval(pollTimer); pollTimer = null; return; }
-      tick();
-    }, POLL_MS);
+    emitLog('armed ' + TAG);               // フレーム到達確認（HUD に出れば注入できている）
+    try { new MutationObserver(tick).observe(document.documentElement || document.body, { subtree: true, childList: true }); } catch (_) {}
+    pollTimer = setInterval(tick, POLL_MS);
     tick();
   }
 
