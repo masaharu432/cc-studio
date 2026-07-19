@@ -1,6 +1,6 @@
 // ==CCStudioPlugin==
 // @name        rc-autoconnect
-// @version     0.1.0
+// @version     0.2.0
 // @description Auto-enable Remote Control on newly started sessions by sending /remote-control (workbench only).
 // @description:ja 新規に起動したセッションで /remote-control を自動送信し、リモートコントロールを有効化する（workbench 用）。
 // @run-at      document-start
@@ -32,10 +32,12 @@
 
   var NAME = 'rc-autoconnect';
   var CMD = '/remote-control';
-  // ★ composer セレクタ（state-observer 実績）。これが在るフレーム＝チャット本体フレームだけで作動。
-  var COMPOSER_SEL = '[role="textbox"][aria-multiline="true"]';
-  // ★ 新規セッション（空/ウェルカム画面）の手掛かり。ローカライズや UI 変更で要調整。クラス名には依存しない。
-  var WELCOME_MARKERS = ['Welcome back', 'Run /init', "What's new", 'Tips for getting'];
+  // composer セレクタ。webview の安定ラベル aria-label="Message input" を第一候補、role をフォールバック。
+  // これが在るフレーム＝チャット本体フレームだけで作動。
+  var COMPOSER_SEL = '[aria-label="Message input"], [role="textbox"][aria-multiline="true"]';
+  // 新規セッション判定＝アシスタント応答 0 件。assistant-message は webview の安定 data-testid。
+  // ウェルカム文言はランダム（webview は候補配列から毎回抽選）なので使わない。会話本文テキストにも依存しない。
+  var ASSISTANT_MSG_SEL = '[data-testid="assistant-message"]';
   var FIRED_KEY = 'cc-rc-autoconnect-fired';   // 1 セッション 1 回の冪等キー（sessionStorage）
   var POLL_MS = 700;                            // composer/新規判定の監視間隔
   var SETTLE_MS = 700;                          // 新規確定〜送信までの待ち（UI 安定待ち）
@@ -77,17 +79,13 @@
     try { sessionStorage.setItem(FIRED_KEY, String(Date.now())); } catch (_) {}
   }
 
-  // ---- 新規セッション判定（★ spike: 実機で手掛かりを確定） ----
-  //   ウェルカム/空会話の文言が可視なら「新規」とみなす。既存会話では出ないので、
-  //   誤検知（＝接続済みへ撃つ事故）方向に倒れにくい保守的な判定。false negative なら手動 /remote-control で済む。
-  function newSessionMarker() {
-    try {
-      var t = (document.body && document.body.textContent) || '';
-      for (var i = 0; i < WELCOME_MARKERS.length; i++) {
-        if (t.indexOf(WELCOME_MARKERS[i]) >= 0) return WELCOME_MARKERS[i];
-      }
-    } catch (_) {}
-    return null;
+  // ---- 新規セッション判定 ----
+  //   会話が空（アシスタント応答 0 件）＝新規。assistant-message は webview の安定 data-testid。
+  //   既存/再開/接続済みセッションは応答が 1 件以上あるので発火しない（＝接続済みへ撃つトグル誤爆を回避）。
+  //   会話本文テキストには一切依存しない（旧 0.1.0 の body 全文スキャン誤ヒットを廃止）。
+  function isNewSession() {
+    try { return document.querySelectorAll(ASSISTANT_MSG_SEL).length === 0; }
+    catch (_) { return false; }
   }
 
   // ---- 送信（★ spike: React/Lexical composer への挿入＋送信手段を実機で確定） ----
@@ -125,10 +123,9 @@
     var composer;
     try { composer = document.querySelector(COMPOSER_SEL); } catch (_) { composer = null; }
     if (!composer) return;                 // composer 不在フレーム／未ロード → 対象外
-    var mk = newSessionMarker();
-    if (!mk) return;                        // 既存/再開/接続済み → 触らない
+    if (!isNewSession()) return;           // アシスタント応答が既にある＝既存/接続済み → 触らない
     markFired();
-    emitLog('new session (' + mk + ') -> ' + CMD + ' in ' + SETTLE_MS + 'ms');
+    emitLog('new session (0 msgs) -> ' + CMD + ' in ' + SETTLE_MS + 'ms');
     setTimeout(function () {
       try {
         // 送信直前に enabled を再確認（この間に OFF されたら撃たない）
