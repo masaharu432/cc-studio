@@ -1,6 +1,6 @@
 // ==CCStudioPlugin==
 // @name        rc-autoconnect
-// @version     0.3.0
+// @version     0.4.0
 // @description Auto-enable Remote Control on newly started sessions by sending /remote-control (workbench only).
 // @description:ja 新規に起動したセッションで /remote-control を自動送信し、リモートコントロールを有効化する（workbench 用）。
 // @run-at      document-start
@@ -53,20 +53,21 @@
   function enabled() { return setting('enabled', true); }
   function diagOn() { return setting('diag', true); }
 
-  // ---- HUD ログ（自前中継。focus-hud が window.top.__ccStudioFocusLog を表示する） ----
-  function pushHud(line) {
+  // ---- HUD ログ: rc-autoconnect 専用バッファ __ccStudioRcOwn へ（focus-hud が "-- RC --" 区画で表示）。
+  //   共有バッファ(__ccStudioFocusLog)は focus/セッション系ログで溢れるため、KB と同様に専用バッファへ分離。
+  //   クロスオリジン(webview)フレームは window.top へ直書きできないので、自前 top 中継(HUD_MSG)で送る。
+  function pushOwn(line) {
     try {
-      var a = window.__ccStudioFocusLog || (window.__ccStudioFocusLog = []);
+      var a = window.__ccStudioRcOwn || (window.__ccStudioRcOwn = []);
       if (a[a.length - 1] === line) return;
-      a.push(line); while (a.length > 28) a.shift();
+      a.push(line); while (a.length > 20) a.shift();
     } catch (_) {}
   }
   if (isTop) {
-    // 非トップ（webview 等クロスオリジン）フレームからの中継を受けてバッファへ積む。
     try {
       window.addEventListener('message', function (e) {
         var m = e && e.data;
-        if (m && m.k === HUD_MSG && typeof m.log === 'string') pushHud(m.log);
+        if (m && m.k === HUD_MSG && typeof m.log === 'string') pushOwn(m.log);
       }, false);
     } catch (_) {}
   }
@@ -74,7 +75,7 @@
   function emitLog(s) {
     var line = 'RC ' + s;
     if (line === lastLog) return; lastLog = line;
-    if (isTop) { pushHud(line); return; }
+    if (isTop) { pushOwn(line); return; }
     try { window.top.postMessage({ k: HUD_MSG, log: line }, '*'); }
     catch (_) { try { console.debug('[cc-' + NAME + ']', s); } catch (__) {} }
   }
