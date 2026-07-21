@@ -1,6 +1,6 @@
 // ==CCStudioPlugin==
 // @name        rc-indicator
-// @version     0.7.0
+// @version     0.7.1
 // @description Hide the persistent "Remote Control is active" banner (RC stays on), and show a compact "R" pill above the ⋮ button instead; long-press the pill (fill gauge) to toggle RC manually.
 // @description:ja 常時表示の「Remote Control is active」バナーを非表示にし（RC は維持）、代わりに ⋮ ボタン直上の「R」ピルで状態表示。ピルの長押し（ゲージが満ちたら発火）で手動オン/オフ。
 // @run-at      document-start
@@ -306,7 +306,9 @@
     pill.addEventListener('pointerdown', pressStart);
     pill.addEventListener('pointerup', pressEnd);
     pill.addEventListener('pointercancel', pressCancel);
-    pill.addEventListener('pointerleave', pressCancel);
+    // pointerleave でのキャンセルはしない: 幅 30px のピルでは長押し中の指の揺れで接触点が
+    // 外に出て leave が発火し、600ms 完走できず hold fire に到達しない（0.7.0 の実害）。
+    // pressStart の setPointerCapture で指がずれてもイベントをピルに束縛する。
     // ネイティブの長押しジェスチャ（選択・コンテキストメニュー・スクロール）を根元から抑止
     pill.addEventListener('touchstart', function (ev) { try { ev.preventDefault(); } catch (_) {} }, { passive: false });
     pill.addEventListener('selectstart', function (ev) { try { ev.preventDefault(); } catch (_) {} });
@@ -339,11 +341,15 @@
   }
 
   // ---- top: 長押し判定（押下中フィルが HOLD_MS かけて満ちる＝離せばキャンセル/満ちれば実行） ----
-  var holdTimer = null;
+  var holdTimer = null, pressAt = 0;
   function resetFill() { if (fill) { try { fill.style.transition = 'none'; fill.style.height = '0'; } catch (_) {} } }
   function pressStart(e) {
     try { e.preventDefault(); } catch (_) {}
     if (!holdOn() || holdTimer) return;
+    // 指の揺れで接触点がピル外へ出ても pointerup までイベントをピルに束縛する（誤キャンセル防止）
+    try { if (pill && e.pointerId !== undefined) pill.setPointerCapture(e.pointerId); } catch (_) {}
+    pressAt = Date.now();
+    emitLog('press down');
     if (!reduced && fill) { try { fill.style.transition = 'height ' + HOLD_MS + 'ms linear'; fill.style.height = '100%'; } catch (_) {} }
     holdTimer = setTimeout(function () {
       holdTimer = null; resetFill();
@@ -353,10 +359,14 @@
   }
   function pressEnd(e) {
     try { e.preventDefault(); } catch (_) {}
-    pressCancel();
+    pressCancel('up');
   }
-  function pressCancel() {
-    if (holdTimer) { clearTimeout(holdTimer); holdTimer = null; }
+  function pressCancel(why) {
+    var w = (why && why.type) ? why.type : (typeof why === 'string' ? why : 'cancel');
+    if (holdTimer) {
+      clearTimeout(holdTimer); holdTimer = null;
+      emitLog('press cancel ' + w + ' dt=' + (Date.now() - pressAt));
+    }
     resetFill();
   }
 
