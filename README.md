@@ -2,7 +2,47 @@
 
 **日本語** | [English](README.en.md)
 
-スマホから Claude Code を「思い立ったら即」使うための、自前ホストの Android アプリ。
+**PC で動く Claude Code を、スマホからフル機能のまま使う**ための自前ホスト Android アプリ。
+
+- 公式の Remote Control が「PC 側で立ち上げ済みのセッションをチャットで操作する」ものなのに対し、
+  CC Studio は **PC 上の好きなプロジェクトフォルダを開いて、スマホからいつでも新しいセッションを
+  開始できる**。編集は Claude Code に任せる前提で、VS Code は成果物の**ビューワー**
+  （diff・プレビュー）と**ファイラー**として機能する。
+- 使うのは **Anthropic 公式の Claude Code 拡張そのもの**。独自クライアントの再実装ではないので、
+  機能も挙動も本家のまま。
+- ブラウザ利用の宿命だった「**裏に回ると数十秒で切断され、実行中のセッション処理が死ぬ**」問題は、
+  常駐サービスによる接続維持で解決済み。画面を消しても切れない。
+
+<p align="center">
+  <img src="docs/images/workbench.jpg" width="45%" alt="ワークベンチ — スマホの縦画面にフル VS Code + Claude Code" />
+</p>
+<p align="center"><sub>スマホの縦画面にフルの VS Code + Claude Code。ちなみにこのスクショ、まさに CC Studio の紹介文を
+音声入力で Claude に書かせているところ — つまりこのアプリはこのアプリの上で宣伝されている。</sub></p>
+
+## 全体像
+
+PC 側のローカルサーバ（code-server + Claude Code 拡張 + 通知サーバ）を、スマホ側のネイティブ
+アプリ（WebView + 常駐サービス）が Tailscale 越しに使う構成。
+
+```mermaid
+flowchart LR
+    subgraph app["📱 Phone — CC Studio app (mobile client)"]
+        direction TB
+        WV["WebView screens ×N<br/>VS Code workbench + plugins (JS injection)"]
+        SVC["Foreground Service<br/>keep-alive + OS notifications"]
+    end
+    subgraph pc["💻 PC — local server (tailnet-only, never public)"]
+        direction TB
+        TSV["tailscale serve<br/>HTTPS termination"]
+        CSV["code-server (VS Code server)<br/>+ official Claude Code extension"]
+        NREL["notify-relay<br/>Claude Code hooks → notifications"]
+        DIRS["any project folders<br/>one per screen, in parallel"]
+    end
+    WV <-- "Tailscale VPN (WireGuard)" --> TSV
+    TSV <--> CSV
+    CSV --- DIRS
+    NREL -- "done / permission-wait" --> SVC
+```
 
 土台はオープンソースの VS Code サーバ（**code-server** / Code-OSS, MIT）と Anthropic 公式の
 **Claude Code 拡張**。これをネイティブアプリの WebView で包む。**オープンソース側のソースコードは
@@ -10,12 +50,6 @@
 **独自の通知サーバ**、**サーバ側の設定と小さな補助拡張**で、すべて外側から回収する。
 
 UI 語彙は **Screen / スクリーン** と **Plugin / プラグイン** の 2 語に統一している。
-
-<p align="center">
-  <img src="docs/images/workbench.jpg" width="45%" alt="ワークベンチ — スマホの縦画面にフル VS Code + Claude Code" />
-</p>
-<p align="center"><sub>スマホの縦画面にフルの VS Code + Claude Code。ちなみにこのスクショ、まさに CC Studio の紹介文を
-音声入力で Claude に書かせているところ — つまりこのアプリはこのアプリの上で宣伝されている。</sub></p>
 
 ## 素の code-server をスマホで使うと何が困るか → CC Studio の答え
 

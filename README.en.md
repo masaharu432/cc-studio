@@ -2,7 +2,49 @@
 
 [日本語](README.md) | **English**
 
-A self-hosted Android app for using Claude Code from your phone the moment inspiration strikes.
+A self-hosted Android app that gives you **the Claude Code running on your PC, from your phone, at
+full power**.
+
+- Unlike the official Remote Control — which lets you chat with a session already started on the
+  PC — CC Studio can **open any project folder on your PC and start a fresh session from the phone,
+  anytime**. Editing is Claude Code's job; VS Code serves as the **viewer** for the results
+  (diffs, previews) and as the **file explorer**.
+- It runs **Anthropic's official Claude Code extension as-is**. No reimplemented client, so features
+  and behavior stay exactly upstream.
+- The classic mobile-browser failure — **going to the background kills the connection within
+  seconds, and the running turn with it** — is solved: a persistent Foreground Service keeps the
+  session alive even with the screen off.
+
+<p align="center">
+  <img src="docs/images/workbench.jpg" width="45%" alt="Workbench — full VS Code + Claude Code in a phone's portrait screen" />
+</p>
+<p align="center"><sub>Full VS Code + Claude Code in a phone's portrait screen. Fun fact: this very screenshot shows
+CC Studio's announcement post being dictated to Claude by voice — the app is advertising itself on itself.</sub></p>
+
+## The big picture
+
+A local server on the PC (code-server + the Claude Code extension + a notification relay), used over
+Tailscale by a native app on the phone (WebView + a persistent service).
+
+```mermaid
+flowchart LR
+    subgraph app["📱 Phone — CC Studio app (mobile client)"]
+        direction TB
+        WV["WebView screens ×N<br/>VS Code workbench + plugins (JS injection)"]
+        SVC["Foreground Service<br/>keep-alive + OS notifications"]
+    end
+    subgraph pc["💻 PC — local server (tailnet-only, never public)"]
+        direction TB
+        TSV["tailscale serve<br/>HTTPS termination"]
+        CSV["code-server (VS Code server)<br/>+ official Claude Code extension"]
+        NREL["notify-relay<br/>Claude Code hooks → notifications"]
+        DIRS["any project folders<br/>one per screen, in parallel"]
+    end
+    WV <-- "Tailscale VPN (WireGuard)" --> TSV
+    TSV <--> CSV
+    CSV --- DIRS
+    NREL -- "done / permission-wait" --> SVC
+```
 
 It builds on the open-source VS Code server (**code-server** / Code-OSS, MIT) and Anthropic's official
 **Claude Code extension**, wrapped in a native app's WebView. **None of the open-source code is
@@ -11,12 +53,6 @@ app's **plugins** (JS injection), a **dedicated notification server**, and **ser
 small helper extensions**.
 
 The UI vocabulary is unified around two words: **Screen** and **Plugin**.
-
-<p align="center">
-  <img src="docs/images/workbench.jpg" width="45%" alt="Workbench — full VS Code + Claude Code in a phone's portrait screen" />
-</p>
-<p align="center"><sub>Full VS Code + Claude Code in a phone's portrait screen. Fun fact: this very screenshot shows
-CC Studio's announcement post being dictated to Claude by voice — the app is advertising itself on itself.</sub></p>
 
 ## What hurts when you use stock code-server on a phone → CC Studio's answer
 
