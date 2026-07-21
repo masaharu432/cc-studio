@@ -1,6 +1,6 @@
 // ==CCStudioPlugin==
 // @name        rc-indicator
-// @version     0.3.0
+// @version     0.4.0
 // @description Hide the persistent "Remote Control is active" banner (RC stays on), and show a compact "R" pill above the ⋮ button instead; tap the pill to toggle RC manually (tap is provisional while verifying delivery; will return to long-press).
 // @description:ja 常時表示の「Remote Control is active」バナーを非表示にし（RC は維持）、代わりに ⋮ ボタン直上の「R」ピルで状態表示。ピルのタップで手動オン/オフ（経路検証のための暫定。確認後に長押しへ戻す）。
 // @run-at      document-start
@@ -83,14 +83,32 @@
   }
   function composerText(el) { try { return (el.textContent || el.value || '').trim(); } catch (_) { return ''; } }
 
-  // バナー容器の特定（設計 §5）。認定済み要素が生きていれば再走査しない。
-  //   1) TreeWalker で BANNER_TEXT を含むテキストノードを探す（transcript サブツリーは REJECT で丸ごと除外）
-  //   2) composer を含まない最上位の祖先へ登る（composer 巻き込み事故の構造的防止）
-  //   3) claude.ai リンクか button を内包することを確認（欠けば誤ヒットとして無視）
+  // バナー容器の認定条件（設計 §5、v0.4 で厳格化）。
+  //   - composer を巻き込まない / BANNER_TEXT を含む
+  //   - テキスト長 ≤300: 実バナーは 1 行（~80字）。トランスクリプト全域を巻き込んだ容器は数千字になるので排除。
+  //     （0.3.0 の実害: 会話履歴に "Remote Control is active…" のシステム転記が残っているセッションで
+  //     誤検知して RC オフでも緑になった。転記は data-testid を持たず除外をすり抜けた。）
+  //   - button 内包必須: 実バナーは × ボタンを持つ。転記テキストはリンクだけでボタンが無い。
+  function validBanner(cont, composer) {
+    try {
+      if (!cont || cont.contains(composer)) return false;
+      var txt = cont.textContent || '';
+      if (txt.indexOf(BANNER_TEXT) < 0) return false;
+      if (txt.length > 300) return false;
+      if (!cont.querySelector('button')) return false;
+      return true;
+    } catch (_) { return false; }
+  }
+
+  // バナー容器の特定。認定済み要素は毎回再検証し、外れていたら隠しを解除して認定を剥がす
+  // （誤認定のまま放置すると本文を隠し続け、緑表示も固着するため）。
   function findBanner(composer) {
     var marked = null;
     try { marked = document.querySelector('[' + MARK + ']'); } catch (_) {}
-    if (marked && document.contains(marked)) return marked;
+    if (marked && document.contains(marked)) {
+      if (validBanner(marked, composer)) return marked;
+      try { marked.style.removeProperty('display'); marked.removeAttribute(MARK); emitLog('banner unmark'); } catch (_) {}
+    }
     if (!document.body) return null;
     var walker;
     try {
@@ -110,10 +128,7 @@
       if (!el) continue;
       var cont = el;
       while (cont.parentElement && cont.parentElement !== document.body && !cont.parentElement.contains(composer)) cont = cont.parentElement;
-      if (cont.contains(composer)) continue;   // 安全弁: composer を巻き込む容器は絶対に採らない
-      var parts = false;
-      try { parts = !!(cont.querySelector('a[href*="claude.ai"]') || cont.querySelector('button')); } catch (_) {}
-      if (!parts) continue;
+      if (!validBanner(cont, composer)) continue;
       try { cont.setAttribute(MARK, '1'); } catch (_) {}
       emitLog('banner found');
       return cont;
@@ -143,18 +158,33 @@
     } catch (_) { return 'xo'; }
   }
   var TAG = frameTag() + '~' + Math.random().toString(36).slice(2, 6);   // 同一パスのフレーム衝突も避ける
-  var tickCount = 0, lastActive = null;
-  function report(active) {
-    try { window.top.postMessage({ k: MSG_STATE, tag: TAG, active: !!active }, '*'); } catch (_) {}
+  // chat 本体フレームの判定: composer だけでは足りない。フォールバックセレクタ
+  // [role="textbox"][aria-multiline="true"] は VS Code エディタ(Monaco)にもマッチするため、
+  // claude-code webview 固有の送信ボタンの存在も要求する（0.3.0 で偽 composer フレームが
+  // レジストリを汚染し fire sent=3 なのに toggle recv ゼロという症状を起こした対策）。
+  function chatFrame() {
+    try { return !!document.querySelector(SEND_BTN_SEL); } catch (_) { return false; }
+  }
+  // このフレームが画面に見えているか（裏タブ/退避 webview は getClientRects が空になる）
+  function frameVisible(composer) {
+    try { return composer.getClientRects().length > 0; } catch (_) { return true; }
+  }
+  var tickCount = 0, lastActive = null, lastVis = null, frameLogged = false;
+  function report(active, vis) {
+    try { window.top.postMessage({ k: MSG_STATE, tag: TAG, active: !!active, vis: !!vis }, '*'); } catch (_) {}
   }
   function tick() {
     var composer = findComposer();
-    if (!composer) return;               // composer 不在フレームは対象外（top も通常ここで抜ける）
+    if (!composer || !chatFrame()) return;   // chat 本体フレーム以外は対象外
     var banner = findBanner(composer);
     applyHide(banner);
     var active = !!banner;
+    var vis = frameVisible(composer);
+    if (!frameLogged) { frameLogged = true; emitLog('frame ' + TAG + ' vis=' + (vis ? 1 : 0)); }
     tickCount++;
-    if (active !== lastActive || tickCount % HB_TICKS === 0) { lastActive = active; report(active); }
+    if (active !== lastActive || vis !== lastVis || tickCount % HB_TICKS === 0) {
+      lastActive = active; lastVis = vis; report(active, vis);
+    }
   }
 
   // ---- composer フレーム側: トグル依頼の実行（設計 §7 ガード） ----
@@ -165,8 +195,10 @@
   }
   function handleToggle() {
     var composer = findComposer();
-    if (!composer) return;                                   // 非 composer フレームは黙って無視
-    emitLog('toggle recv');                                  // 依頼がこのフレームまで届いた証跡
+    if (!composer || !chatFrame()) return;                   // chat 本体フレーム以外は黙って無視
+    var vis = frameVisible(composer);
+    emitLog('toggle recv ' + TAG + ' vis=' + (vis ? 1 : 0)); // 依頼がこのフレームまで届いた証跡
+    if (!vis) return;                                        // 裏タブのセッションを誤トグルしない
     if (!holdOn()) return;                                   // 設定 OFF（top 側でも弾くが二重で守る）
     if (composerText(composer)) { denyReply('draft'); return; }        // 下書きを壊さない
     var busy = false;
@@ -285,17 +317,20 @@
     if (!isTop) return;
     var p = ensurePill();
     if (!p) return;
-    // フレーム別レジストリを集約: 鮮度内の報告が 1 つでも active なら有効（last-writer-wins だと
-    // 新規セッション時に新旧フレームの相反報告でピルが点滅する）。
-    var now = Date.now(), any = false, active = false;
+    // フレーム別レジストリを集約。**可視フレームの報告を優先**する: 裏タブ（別セッション）の
+    // バナー有無に引きずられず、いま画面に出ているセッションの RC 状態を表示する。
+    // 可視の報告が無いときだけ全報告にフォールバック（last-writer-wins は点滅の元なので不採用）。
+    var now = Date.now(), any = false, active = false, anyVis = false, visActive = false;
     for (var k in reg) {
       var r = reg[k];
       if (now - r.t >= STALE_MS) { delete reg[k]; continue; }
       any = true; if (r.active) active = true;
+      if (r.vis) { anyVis = true; if (r.active) visActive = true; }
     }
     if (!indOn() || !any) { p.style.display = 'none'; return; }   // 非チャット画面・報告途絶は非表示
     p.style.display = 'flex';
-    if (active) p.classList.add('cc-ri-on'); else p.classList.remove('cc-ri-on');
+    var on = anyVis ? visActive : active;
+    if (on) p.classList.add('cc-ri-on'); else p.classList.remove('cc-ri-on');
   }
   function denyBlink() {
     if (!pill) return;
@@ -320,19 +355,26 @@
     fireToggle();
   }
   function pressCancel() { pressed = false; resetFill(); }
-  // 配信は「状態報告をくれた composer フレームの e.source へ直接返す」を第一とする。
-  //   0.2.0 まではフレームツリーの再帰探索（window.length / 添字アクセス）だけだったが、
-  //   webview の多層構造で届かない可能性の切り分けができないため、確実な返信路を主にした。
+  // 配信は「状態報告をくれた可視フレームの e.source へ直接返す」を第一に、再帰探索も常に併走する
+  // （composer 側の 3 秒デバウンスで二重到達しても送信は 1 回に潰れるため安全）。
+  // 可視フレームが 1 つも登録されていない時だけ全登録フレームへ送る。
   function fireToggle() {
     var msg = { k: MSG_TOGGLE };
-    var now = Date.now(), sent = 0;
+    var now = Date.now(), sent = 0, tags = [];
     for (var k in reg) {
       var r = reg[k];
-      if (now - r.t >= STALE_MS || !r.src) continue;
-      try { r.src.postMessage(msg, '*'); sent++; } catch (_) {}
+      if (now - r.t >= STALE_MS || !r.src || !r.vis) continue;
+      try { r.src.postMessage(msg, '*'); sent++; tags.push(k); } catch (_) {}
     }
-    emitLog('fire sent=' + sent);
-    if (!sent) broadcast(window, msg);   // 報告元が取れていない時だけ再帰探索へフォールバック
+    if (!sent) {
+      for (var k2 in reg) {
+        var r2 = reg[k2];
+        if (now - r2.t >= STALE_MS || !r2.src) continue;
+        try { r2.src.postMessage(msg, '*'); sent++; tags.push(k2); } catch (_) {}
+      }
+    }
+    emitLog('fire sent=' + sent + ' tags=' + tags.join('|').slice(0, 60));
+    broadcast(window, msg);   // 直送と併走の再帰探索（どちらが生きているかは toggle recv で判る）
   }
   function broadcast(win, msg) {
     try { win.postMessage(msg, '*'); } catch (_) {}
@@ -346,7 +388,7 @@
       window.addEventListener('message', function (e) {
         var m = e && e.data;
         if (!m) return;
-        if (m.k === MSG_STATE) { reg[typeof m.tag === 'string' ? m.tag : 'f'] = { active: !!m.active, t: Date.now(), src: e.source || null }; renderPill(); }
+        if (m.k === MSG_STATE) { reg[typeof m.tag === 'string' ? m.tag : 'f'] = { active: !!m.active, vis: !!m.vis, t: Date.now(), src: e.source || null }; renderPill(); }
         else if (m.k === MSG_DENY) { denyBlink(); emitLog('deny ' + (m.reason || '')); }
         else if (m.k === MSG_HUD && typeof m.log === 'string') pushShared(m.log);
       }, false);
