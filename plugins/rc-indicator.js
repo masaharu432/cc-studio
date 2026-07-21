@@ -73,8 +73,89 @@
     try { window.top.postMessage({ k: MSG_HUD, log: line }, '*'); } catch (_) {}
   }
 
-  // ---- 後続タスクが実装する本体（Task 2: composer 側 / Task 3: top 側） ----
-  function tick() {}
+  // ---- composer フレーム側: バナー検知＝RC 状態検知 ----
+  function findComposer() {
+    for (var i = 0; i < COMPOSER_SELS.length; i++) {
+      try { var el = document.querySelector(COMPOSER_SELS[i]); if (el) return el; } catch (_) {}
+    }
+    return null;
+  }
+  function composerText(el) { try { return (el.textContent || el.value || '').trim(); } catch (_) { return ''; } }
+
+  // バナー容器の特定（設計 §5）。認定済み要素が生きていれば再走査しない。
+  //   1) TreeWalker で BANNER_TEXT を含むテキストノードを探す（transcript サブツリーは REJECT で丸ごと除外）
+  //   2) composer を含まない最上位の祖先へ登る（composer 巻き込み事故の構造的防止）
+  //   3) claude.ai リンクか button を内包することを確認（欠けば誤ヒットとして無視）
+  function findBanner(composer) {
+    var marked = null;
+    try { marked = document.querySelector('[' + MARK + ']'); } catch (_) {}
+    if (marked && document.contains(marked)) return marked;
+    if (!document.body) return null;
+    var walker;
+    try {
+      walker = document.createTreeWalker(document.body, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT, {
+        acceptNode: function (n) {
+          if (n.nodeType === 1) {
+            try { if (n.matches && n.matches(TRANSCRIPT_SEL)) return NodeFilter.FILTER_REJECT; } catch (_) {}
+            return NodeFilter.FILTER_SKIP;
+          }
+          return (n.nodeValue && n.nodeValue.indexOf(BANNER_TEXT) >= 0) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP;
+        }
+      });
+    } catch (_) { return null; }
+    var node;
+    while ((node = walker.nextNode())) {
+      var el = node.parentElement;
+      if (!el) continue;
+      var cont = el;
+      while (cont.parentElement && cont.parentElement !== document.body && !cont.parentElement.contains(composer)) cont = cont.parentElement;
+      if (cont.contains(composer)) continue;   // 安全弁: composer を巻き込む容器は絶対に採らない
+      var parts = false;
+      try { parts = !!(cont.querySelector('a[href*="claude.ai"]') || cont.querySelector('button')); } catch (_) {}
+      if (!parts) continue;
+      try { cont.setAttribute(MARK, '1'); } catch (_) {}
+      emitLog('banner found');
+      return cont;
+    }
+    return null;
+  }
+
+  function applyHide(banner) {
+    if (!banner) return;
+    try {
+      if (hideOn()) {
+        if (banner.style.display !== 'none') { banner.style.display = 'none'; emitLog('banner hidden'); }
+      } else if (banner.style.display === 'none') {
+        banner.style.removeProperty('display'); emitLog('banner restored');
+      }
+    } catch (_) {}
+  }
+
+  // ---- RC 状態を top へ報告（変化時 + ハートビート） ----
+  var tickCount = 0, lastActive = null;
+  function report(active) {
+    try { window.top.postMessage({ k: MSG_STATE, active: !!active }, '*'); } catch (_) {}
+  }
+  function tick() {
+    var composer = findComposer();
+    if (!composer) return;               // composer 不在フレームは対象外（top も通常ここで抜ける）
+    var banner = findBanner(composer);
+    applyHide(banner);
+    var active = !!banner;
+    tickCount++;
+    if (active !== lastActive || tickCount % HB_TICKS === 0) { lastActive = active; report(active); }
+  }
+
+  // ---- 設定のライブ反映（hideBanner の ON/OFF 即時切替） ----
+  try {
+    window.addEventListener('ccstudio:setting', function (e) {
+      var d = e && e.detail;
+      if (!d || d.plugin !== NAME) return;
+      if (d.key === 'hideBanner') { var c = findComposer(); if (c) applyHide(findBanner(c)); }
+    });
+  } catch (_) {}
+
+  // ---- 後続タスクが実装する本体（Task 3: top 側） ----
   function renderPill() {}
 
   // ---- 起動 ----
