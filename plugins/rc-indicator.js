@@ -146,6 +146,60 @@
     if (active !== lastActive || tickCount % HB_TICKS === 0) { lastActive = active; report(active); }
   }
 
+  // ---- composer フレーム側: トグル依頼の実行（設計 §7 ガード） ----
+  var lastSendAt = 0;
+  function denyReply(reason) {
+    emitLog('toggle deny: ' + reason);
+    try { window.top.postMessage({ k: MSG_DENY, reason: reason }, '*'); } catch (_) {}
+  }
+  function handleToggle() {
+    var composer = findComposer();
+    if (!composer) return;                                   // 非 composer フレームは黙って無視
+    if (!holdOn()) return;                                   // 設定 OFF（top 側でも弾くが二重で守る）
+    if (composerText(composer)) { denyReply('draft'); return; }        // 下書きを壊さない
+    var busy = false;
+    try { busy = !!document.querySelector(STOP_ICON_SEL); } catch (_) {}
+    if (busy) { denyReply('busy'); return; }                 // 生成中は送信ボタン＝停止ボタン。触らない
+    var now = Date.now();
+    if (now - lastSendAt < DEBOUNCE_MS) { denyReply('debounce'); return; }
+    lastSendAt = now;
+    sendCommand(composer);
+  }
+  // 送信手順は rc-autoconnect の実測確定手順を踏襲（insertText → 送信ボタンのクリックのみ。
+  // ボタンが在るのに Enter も撃つと二重送信になる。未検出時のみ Enter フォールバック）。
+  function sendCommand(composer) {
+    try { composer.focus(); } catch (_) {}
+    var inserted = false;
+    try { inserted = document.execCommand('insertText', false, CMD); } catch (_) {}
+    if (!inserted) {
+      try {
+        composer.dispatchEvent(new InputEvent('beforeinput', { inputType: 'insertText', data: CMD, bubbles: true, cancelable: true }));
+        composer.dispatchEvent(new InputEvent('input', { inputType: 'insertText', data: CMD, bubbles: true }));
+      } catch (_) {}
+    }
+    emitLog('toggle insert exec=' + (inserted ? 1 : 0));
+    setTimeout(function () {
+      var btn = null; try { btn = document.querySelector(SEND_BTN_SEL); } catch (_) {}
+      if (btn) {
+        try { btn.click(); } catch (_) {}
+        emitLog('toggle submit btn');
+      } else {
+        var tgt = composer; try { tgt = document.activeElement || composer; } catch (_) {}
+        ['keydown', 'keypress', 'keyup'].forEach(function (type) {
+          try { tgt.dispatchEvent(new KeyboardEvent(type, { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true })); } catch (_) {}
+        });
+        emitLog('toggle submit enter');
+      }
+    }, SUBMIT_DELAY_MS);
+  }
+  // 全フレームで依頼を受ける（composer 不在なら handleToggle が即 return）
+  try {
+    window.addEventListener('message', function (e) {
+      var m = e && e.data;
+      if (m && m.k === MSG_TOGGLE) handleToggle();
+    }, false);
+  } catch (_) {}
+
   // ---- 設定のライブ反映（hideBanner の ON/OFF 即時切替） ----
   try {
     window.addEventListener('ccstudio:setting', function (e) {
@@ -187,6 +241,12 @@
     fill = document.createElement('div'); fill.id = 'cc-ri-fill';
     var label = document.createElement('span'); label.id = 'cc-ri-label'; label.textContent = 'R';
     pill.appendChild(fill); pill.appendChild(label);
+    pill.addEventListener('pointerdown', holdStart);
+    pill.addEventListener('pointerup', holdCancel);
+    pill.addEventListener('pointercancel', holdCancel);
+    pill.addEventListener('pointerleave', holdCancel);
+    pill.addEventListener('contextmenu', function (ev) { try { ev.preventDefault(); } catch (_) {} });
+    pill.addEventListener('click', function (ev) { try { ev.preventDefault(); } catch (_) {} });   // 単タップは無反応
     try { document.body.appendChild(pill); } catch (_) { pill = null; }
     return pill;
   }
@@ -202,6 +262,30 @@
   function denyBlink() {
     if (!pill) return;
     try { pill.classList.remove('cc-ri-deny'); void pill.offsetWidth; pill.classList.add('cc-ri-deny'); } catch (_) {}
+  }
+
+  // ---- top: 長押し判定（設計 §7。押下中フィルが満ちる＝離せばキャンセル/満ちれば実行の可視化） ----
+  var holdTimer = null;
+  function resetFill() { if (fill) { try { fill.style.transition = 'none'; fill.style.height = '0'; } catch (_) {} } }
+  function holdStart(e) {
+    try { e.preventDefault(); } catch (_) {}
+    if (!holdOn() || holdTimer) return;
+    if (!reduced && fill) { try { fill.style.transition = 'height ' + HOLD_MS + 'ms linear'; fill.style.height = '100%'; } catch (_) {} }
+    holdTimer = setTimeout(function () {
+      holdTimer = null; resetFill();
+      emitLog('hold fire');
+      broadcast(window, { k: MSG_TOGGLE });
+    }, HOLD_MS);
+  }
+  function holdCancel() {
+    if (holdTimer) { clearTimeout(holdTimer); holdTimer = null; }
+    resetFill();
+  }
+  // クロスオリジンでも window.length と添字アクセスは仕様上許可されるため、フレームツリーを再帰配信。
+  function broadcast(win, msg) {
+    try { win.postMessage(msg, '*'); } catch (_) {}
+    var n = 0; try { n = win.length; } catch (_) {}
+    for (var i = 0; i < n; i++) { try { broadcast(win[i], msg); } catch (_) {} }
   }
 
   // ---- top: composer フレームからの報告受信 ----
