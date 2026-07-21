@@ -1,8 +1,8 @@
 // ==CCStudioPlugin==
 // @name        rc-indicator
-// @version     0.5.0
-// @description Hide the persistent "Remote Control is active" banner (RC stays on), and show a compact "R" pill at the left edge of the chat panel instead; tap the pill to toggle RC manually.
-// @description:ja 常時表示の「Remote Control is active」バナーを非表示にし（RC は維持）、代わりにチャットパネル左端の「R」ピルで状態表示。ピルのタップで手動オン/オフ。
+// @version     0.6.0
+// @description Hide the persistent "Remote Control is active" banner (RC stays on), and show a compact "R" pill at the left edge of the chat panel instead; long-press the pill (fill gauge) to toggle RC manually.
+// @description:ja 常時表示の「Remote Control is active」バナーを非表示にし（RC は維持）、代わりにチャットパネル左端の「R」ピルで状態表示。ピルの長押し（ゲージが満ちたら発火）で手動オン/オフ。
 // @run-at      document-start
 // @all-frames  true
 // @setting     hideBanner boolean true RCバナーを隠す
@@ -16,7 +16,8 @@
 // ==/CCStudioPlugin==
 // rc-indicator.js — RC バナーを CSS で非表示（DOM は残る＝RC 接続に無影響）にし、
 // 「バナーが DOM に存在するか」を RC 状態の検知器として流用して「R」ピルに表示する。
-// ピルのタップで /remote-control を送信し手動トグル。× ボタンには一切触れない（クリック＝RC 切断）。
+// ピルの長押し（600ms・フィルが満ちたら発火、途中で離すとキャンセル）で /remote-control を送信し
+// 手動トグル。× ボタンには一切触れない（クリック＝RC 切断）。
 //
 // v0.5: 検知・ピル描画・タップ・送信の全ロジックを chat フレーム内に集約した
 // （rc-autoconnect と同じ「フレーム内完結」パターン）。0.3/0.4 の top 描画＋postMessage 配達は
@@ -40,6 +41,7 @@
   var MARK = 'data-cc-ri-banner';
   var MSG_HUD = 'cc-ri-hud';
   var POLL_MS = 700;
+  var HOLD_MS = 600;           // 長押し発火時間（フィルが満ちるまで）
   var DEBOUNCE_MS = 3000;      // トグル連続送信の抑止
   var SUBMIT_DELAY_MS = 300;   // 文字挿入〜送信までの待ち
 
@@ -169,7 +171,7 @@
     var st = document.createElement('style'); st.id = 'cc-ri-style';
     st.textContent =
       '@keyframes ccRiDeny{0%,100%{opacity:1}50%{opacity:.25}}' +
-      '#cc-ri-pill{position:fixed;left:0;bottom:calc(22% + 92px);width:30px;height:68px;border:0;padding:0;' +
+      '#cc-ri-pill{position:fixed;left:0;bottom:22%;width:30px;height:68px;border:0;padding:0;' +
       'border-radius:0 10px 10px 0;z-index:2147483647;color:#9aa3b2;background:#3a4150;' +
       'display:none;align-items:center;justify-content:center;overflow:hidden;' +
       'user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;touch-action:none;cursor:pointer;}' +
@@ -227,23 +229,29 @@
     try { pill.classList.remove('cc-ri-deny'); void pill.offsetWidth; pill.classList.add('cc-ri-deny'); } catch (_) {}
   }
 
-  // ---- タップ → 同一フレーム内で直接トグル（配達なし＝rc-autoconnect と同じ確実系） ----
-  var pressed = false;
+  // ---- 長押し → 同一フレーム内で直接トグル（配達なし＝rc-autoconnect と同じ確実系）。
+  //   押下中フィルが HOLD_MS かけて満ちる＝離せばキャンセル/満ちれば実行の可視化。
+  //   タップ経路は v0.5 で実証済み。単タップ（HOLD_MS 未満）は何もしない。 ----
+  var holdTimer = null;
   function resetFill() { if (fill) { try { fill.style.transition = 'none'; fill.style.height = '0'; } catch (_) {} } }
   function pressStart(e) {
     try { e.preventDefault(); } catch (_) {}
-    if (!holdOn()) return;
-    pressed = true;
-    if (!reduced && fill) { try { fill.style.transition = 'height 120ms linear'; fill.style.height = '100%'; } catch (_) {} }
+    if (!holdOn() || holdTimer) return;
+    if (!reduced && fill) { try { fill.style.transition = 'height ' + HOLD_MS + 'ms linear'; fill.style.height = '100%'; } catch (_) {} }
+    holdTimer = setTimeout(function () {
+      holdTimer = null; resetFill();
+      emitLog('hold fire');
+      handleToggle();
+    }, HOLD_MS);
   }
   function pressEnd(e) {
     try { e.preventDefault(); } catch (_) {}
-    var fire = pressed; pressed = false; resetFill();
-    if (!fire || !holdOn()) return;
-    emitLog('tap');
-    handleToggle();
+    pressCancel();
   }
-  function pressCancel() { pressed = false; resetFill(); }
+  function pressCancel() {
+    if (holdTimer) { clearTimeout(holdTimer); holdTimer = null; }
+    resetFill();
+  }
 
   var lastSendAt = 0;
   function deny(reason) { emitLog('toggle deny: ' + reason); denyBlink(); }
