@@ -58,10 +58,12 @@ Remote Control (RC) が有効なセッションでは、claude-code webview の 
   composer フレーム（[aria-label="Message input"] 保持）:
     バナー検知（MutationObserver + ポーリング）
       ├ hideBanner=ON → display:none（目印属性を付与、OFF でその場復元）
-      └ 存在有無 = RC 状態 → postMessage で top へ報告（変化時 + ハートビート）
+      └ 存在有無 = RC 状態 → postMessage で top へ報告（変化時 + ハートビート・フレーム ID つき）
     top からのトグル依頼を受信 → ガード確認 → /remote-control 挿入・送信
   top フレーム:
-    状態報告を集約 → ⋮ ボタン直下に「R」ピルを描画・着色
+    状態報告をフレーム別レジストリに集約（鮮度内に 1 つでも active があれば有効。
+    last-writer-wins だと新規セッション時に新旧 composer フレームの相反報告でピルが点滅する
+    ＝v0.1 の実害） → ⋮ ボタン直上に「R」ピルを描画・着色
     ピルの長押し完了 → 全フレームへトグル依頼をブロードキャスト
     ハートビート途絶（例: リロード・フレーム消滅）→ ピルを未接続表示に落とす
 ```
@@ -91,9 +93,14 @@ RC 状態 = 「目印属性つき容器（または新規一致）が DOM に存
 
 ## 6. インジケーター UI（「R」ピル）
 
-- top フレームの body 直下に固定配置。⋮ ボタン（`left:0; bottom:22%; height:84px`）の**直下**:
-  `position:fixed; left:0; bottom:calc(22% - 42px); width:30px; height:34px;
-  border-radius:0 10px 10px 0; z-index:2147483647;` 表示文字は「R」。
+- top フレームの body 直下に固定配置。⋮ ボタン（`left:0; bottom:22%; height:84px`）の**直上**:
+  `position:fixed; left:0; bottom:calc(22% + 92px); width:30px; height:34px;
+  border-radius:0 10px 10px 0; z-index:2147483647;`
+  （v0.1 の「直下」は composer 入力欄に近く、誤タップでキーボードが出る実害があったため上へ移動。）
+- 「R」は**テキストノードではなく SVG ストローク**で描く（`stroke:currentColor` のパス）。
+  テキストだと Android の長押しで文字選択が発動し、`pointercancel` が飛んで長押し判定ごと
+  潰れる（v0.1 の実害: 長押しトグル不発の原因）。ピルには `touchstart` の preventDefault
+  （passive:false）・`selectstart`/`contextmenu` 抑止も併せて張る。
 
 **状態色**（既存の状態語彙との整合が最優先。⋮ ボタンは 青=通常/処理中パルス・赤=切断エラー を
 既に使っており、青と赤系はピルに使えない）:
