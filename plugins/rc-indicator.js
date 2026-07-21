@@ -1,6 +1,6 @@
 // ==CCStudioPlugin==
 // @name        rc-indicator
-// @version     0.7.2
+// @version     0.8.0
 // @description Hide the persistent "Remote Control is active" banner (RC stays on), and show a compact "R" pill above the ⋮ button instead; tap the pill to toggle RC manually (tap is provisional while verifying delivery; will return to long-press).
 // @description:ja 常時表示の「Remote Control is active」バナーを非表示にし（RC は維持）、代わりに ⋮ ボタン直上の「R」ピルで状態表示。ピルのタップで手動オン/オフ（配達検証のための暫定。確認後に長押しへ戻す）。
 // @run-at      document-start
@@ -19,12 +19,13 @@
 // ピルの長押し（600ms・フィルが満ちたら発火、途中で離すとキャンセル）で /remote-control を送信し
 // 手動トグル。× ボタンには一切触れない（クリック＝RC 切断）。
 //
-// v0.7 ハイブリッド構成: ピルは top（⋮ ボタンと同じ列）に描き、状態は chat フレーム→top の
-// postMessage（実証済み）で上げる。トグル依頼の下り配達は、v0.2〜0.4 の「top から子孫を深掘り
-// 列挙して直接投げる」方式が実機で届かなかったため、**設定ランタイムと同じホップ・バイ・ホップ
-// 中継**（各フレームが直下の子 window.frames[i] にだけ投げ、受けた子が再伝搬）に変更。
-// この方式は設定のライブ反映（ScreenFactory の __ccApplyPluginSetting）で実機実績がある。
-// 送信の実行自体は chat フレーム内で完結する v0.5 実証済みコード。
+// v0.8 配達経路: ピルは top（⋮ ボタンと同じ列）に描き、状態は chat フレーム→top の
+// postMessage（実証済み）で上げる。トグル依頼の下り配達は **ネイティブブリッジのメールボックス**
+// （CCStudio.rcToggleRequest / rcToggleTake）。この WebView 構成では top→iframe 方向の
+// postMessage が e.source 直送・深掘り列挙・ホップ中継のいずれでも届かない実測（v0.3〜0.7.2）が
+// あり、全フレームに注入されるブリッジ経由の Pull が唯一の確実な下り経路。chat フレームは毎 tick
+// （700ms）可視のときだけ take し、取れたらフレーム内完結の実証済みコードで送信する。
+// 旧ホップ中継も無害なので併走させている（届く環境ではデバウンスが二重実行を潰す）。
 // 設計: docs/specs/2026-07-21-rc-indicator-plugin-design.md
 (function () {
   'use strict';
@@ -184,6 +185,12 @@
     tickCount++;
     if (active !== lastActive || vis !== lastVis || tickCount % HB_TICKS === 0) {
       lastActive = active; lastVis = vis; report(active, vis);
+    }
+    // ネイティブメールボックスの取り出し（可視 chat フレームだけが消費する）
+    if (vis && holdOn()) {
+      var take = false;
+      try { take = !!(window.CCStudio && window.CCStudio.rcToggleTake && window.CCStudio.rcToggleTake()); } catch (_) {}
+      if (take) { emitLog('toggle take (bridge)'); handleToggle(); }
     }
   }
 
@@ -358,7 +365,11 @@
     var fire = pressed; pressed = false; resetFill();
     if (!fire || !holdOn()) return;
     emitLog('tap fire dt=' + (Date.now() - pressAt));
-    relayToChildren({ k: MSG_TOGGLE });   // 直下の子から先はホップ中継が届ける
+    // 主経路: ネイティブメールボックスへ要求を記録（可視 chat フレームが ≤700ms で取り出す）
+    var bridged = false;
+    try { if (window.CCStudio && window.CCStudio.rcToggleRequest) { window.CCStudio.rcToggleRequest(); bridged = true; } } catch (_) {}
+    emitLog('fire bridge=' + (bridged ? 1 : 0));
+    relayToChildren({ k: MSG_TOGGLE });   // 旧ホップ中継も併走（届く環境ではデバウンスが二重実行を潰す）
   }
   function pressCancel(why) {
     var w = (why && why.type) ? why.type : (typeof why === 'string' ? why : 'cancel');

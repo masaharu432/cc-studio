@@ -151,6 +151,26 @@ class CcBridge(
     @JavascriptInterface
     fun setSessionState(busy: Boolean, disconnected: Boolean) = onSessionState(busy, disconnected)
 
+    // ── RC トグル・メールボックス（rc-indicator プラグイン用） ──
+    // top フレームのピル操作を chat フレーム（クロスオリジン iframe）へ届けるための受け渡し。
+    // この WebView 構成では top→iframe 方向の postMessage（直送・ホップ中継とも）が届かない実測が
+    // あるため、全フレームに注入される本ブリッジを唯一の確実な下り経路として使う。
+    // ブリッジはスクリーンごとに別インスタンスなので、要求が他スクリーンへ漏れることはない。
+    @Volatile private var rcToggleAt = 0L
+
+    /** RC 手動トグルの要求を記録する（rc-indicator の R ピルが top フレームから呼ぶ）。 */
+    @JavascriptInterface
+    fun rcToggleRequest() { rcToggleAt = System.currentTimeMillis() }
+
+    /** 未消費の RC トグル要求があれば消費して true（5 秒で失効）。chat フレームがポーリングで呼ぶ。 */
+    @JavascriptInterface
+    fun rcToggleTake(): Boolean {
+        val t = rcToggleAt
+        if (t == 0L || System.currentTimeMillis() - t > 5_000) return false
+        rcToggleAt = 0L
+        return true
+    }
+
     /**
      * .md をテキストで開いた直後に呼ばれ、アクティブな WebView へ Ctrl+Shift+V
      * (markdown.togglePreview) をトラステッドなキーイベントとして送ってプレビュー化する。
