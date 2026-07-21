@@ -152,11 +152,70 @@
       var d = e && e.detail;
       if (!d || d.plugin !== NAME) return;
       if (d.key === 'hideBanner') { var c = findComposer(); if (c) applyHide(findBanner(c)); }
+      if (isTop && (d.key === 'indicator' || d.key === 'holdToggle')) renderPill();
     });
   } catch (_) {}
 
-  // ---- 後続タスクが実装する本体（Task 3: top 側） ----
-  function renderPill() {}
+  // ---- top フレーム側: 「R」ピル（設計 §6。⋮ ボタン #ccstudio-menu-btn の直下に固定配置） ----
+  var pill = null, fill = null;
+  var lastReport = { active: false, t: 0 };
+  var reduced = false;
+  try { reduced = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches); } catch (_) {}
+
+  function ensureStyles() {
+    if (document.getElementById('cc-ri-style')) return;
+    var st = document.createElement('style'); st.id = 'cc-ri-style';
+    st.textContent =
+      '@keyframes ccRiDeny{0%,100%{opacity:1}50%{opacity:.25}}' +
+      '#cc-ri-pill{position:fixed;left:0;bottom:calc(22% - 42px);width:30px;height:34px;border:0;padding:0;' +
+      'border-radius:0 10px 10px 0;z-index:2147483647;color:#9aa3b2;background:#3a4150;' +
+      'font:bold 15px sans-serif;display:none;align-items:center;justify-content:center;overflow:hidden;' +
+      'user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;touch-action:none;cursor:pointer;}' +
+      '#cc-ri-pill.cc-ri-on{color:#fff;background:linear-gradient(180deg,#34C77B,#1e9a58);box-shadow:2px 0 10px rgba(52,199,123,.45);}' +
+      '#cc-ri-pill.cc-ri-deny{animation:ccRiDeny .18s 3;}' +
+      '#cc-ri-fill{position:absolute;left:0;bottom:0;width:100%;height:0;background:rgba(255,255,255,.28);pointer-events:none;}' +
+      '#cc-ri-label{position:relative;}';
+    try { (document.head || document.documentElement).appendChild(st); } catch (_) {}
+  }
+  function ensurePill() {
+    if (pill && document.contains(pill)) return pill;
+    if (!document.body) return null;
+    ensureStyles();
+    pill = document.createElement('button');
+    pill.id = 'cc-ri-pill';
+    pill.type = 'button';
+    fill = document.createElement('div'); fill.id = 'cc-ri-fill';
+    var label = document.createElement('span'); label.id = 'cc-ri-label'; label.textContent = 'R';
+    pill.appendChild(fill); pill.appendChild(label);
+    try { document.body.appendChild(pill); } catch (_) { pill = null; }
+    return pill;
+  }
+  function renderPill() {
+    if (!isTop) return;
+    var p = ensurePill();
+    if (!p) return;
+    var fresh = (Date.now() - lastReport.t) < STALE_MS;
+    if (!indOn() || !fresh) { p.style.display = 'none'; return; }   // 非チャット画面・報告途絶は非表示
+    p.style.display = 'flex';
+    if (lastReport.active) p.classList.add('cc-ri-on'); else p.classList.remove('cc-ri-on');
+  }
+  function denyBlink() {
+    if (!pill) return;
+    try { pill.classList.remove('cc-ri-deny'); void pill.offsetWidth; pill.classList.add('cc-ri-deny'); } catch (_) {}
+  }
+
+  // ---- top: composer フレームからの報告受信 ----
+  if (isTop) {
+    try {
+      window.addEventListener('message', function (e) {
+        var m = e && e.data;
+        if (!m) return;
+        if (m.k === MSG_STATE) { lastReport = { active: !!m.active, t: Date.now() }; renderPill(); }
+        else if (m.k === MSG_DENY) { denyBlink(); emitLog('deny ' + (m.reason || '')); }
+        else if (m.k === MSG_HUD && typeof m.log === 'string') pushShared(m.log);
+      }, false);
+    } catch (_) {}
+  }
 
   // ---- 起動 ----
   var pending = false;
