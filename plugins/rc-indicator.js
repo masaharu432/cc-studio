@@ -1,30 +1,30 @@
 // ==CCStudioPlugin==
 // @name        rc-indicator
-// @version     0.6.0
-// @description Hide the persistent "Remote Control is active" banner (RC stays on), and show a compact "R" pill at the left edge of the chat panel instead; long-press the pill (fill gauge) to toggle RC manually.
-// @description:ja 常時表示の「Remote Control is active」バナーを非表示にし（RC は維持）、代わりにチャットパネル左端の「R」ピルで状態表示。ピルの長押し（ゲージが満ちたら発火）で手動オン/オフ。
+// @version     0.7.0
+// @description Hide the persistent "Remote Control is active" banner (RC stays on), and show a compact "R" pill above the ⋮ button instead; long-press the pill (fill gauge) to toggle RC manually.
+// @description:ja 常時表示の「Remote Control is active」バナーを非表示にし（RC は維持）、代わりに ⋮ ボタン直上の「R」ピルで状態表示。ピルの長押し（ゲージが満ちたら発火）で手動オン/オフ。
 // @run-at      document-start
 // @all-frames  true
 // @setting     hideBanner boolean true RCバナーを隠す
 // @setting:ja  hideBanner RCバナーを隠す（RC接続は維持）
 // @setting     indicator boolean true 「R」ピルでRC状態を表示
 // @setting:ja  indicator 「R」ピルでRC状態を表示
-// @setting     holdToggle boolean true ピルのタップでRCを手動オン/オフ
-// @setting:ja  holdToggle ピルのタップでRCを手動オン/オフ
+// @setting     holdToggle boolean true ピルの長押しでRCを手動オン/オフ
+// @setting:ja  holdToggle ピルの長押しでRCを手動オン/オフ
 // @setting     diag boolean false 診断ログを focus-hud に出す
 // @setting:ja  diag 診断ログを focus-hud に出す
 // ==/CCStudioPlugin==
 // rc-indicator.js — RC バナーを CSS で非表示（DOM は残る＝RC 接続に無影響）にし、
-// 「バナーが DOM に存在するか」を RC 状態の検知器として流用して「R」ピルに表示する。
+// 「バナーが DOM に存在するか」を RC 状態の検知器として流用して ⋮ ボタン直上の「R」ピルに表示する。
 // ピルの長押し（600ms・フィルが満ちたら発火、途中で離すとキャンセル）で /remote-control を送信し
 // 手動トグル。× ボタンには一切触れない（クリック＝RC 切断）。
 //
-// v0.5: 検知・ピル描画・タップ・送信の全ロジックを chat フレーム内に集約した
-// （rc-autoconnect と同じ「フレーム内完結」パターン）。0.3/0.4 の top 描画＋postMessage 配達は
-// top→フレーム方向の到達が確認できない事象（fire sent>0 なのに recv ゼロ）を解消できなかった。
-// フレーム内完結なら配達が存在しないため確実で、ピルは自フレームごと隠れるので
-// 「表示中セッションの状態だけを表示」も構造的に満たす。top の役割は HUD ログ中継のみ。
-// ピルの位置は画面左端ではなくチャットパネル左端になる（構造上のトレードオフ・許容）。
+// v0.7 ハイブリッド構成: ピルは top（⋮ ボタンと同じ列）に描き、状態は chat フレーム→top の
+// postMessage（実証済み）で上げる。トグル依頼の下り配達は、v0.2〜0.4 の「top から子孫を深掘り
+// 列挙して直接投げる」方式が実機で届かなかったため、**設定ランタイムと同じホップ・バイ・ホップ
+// 中継**（各フレームが直下の子 window.frames[i] にだけ投げ、受けた子が再伝搬）に変更。
+// この方式は設定のライブ反映（ScreenFactory の __ccApplyPluginSetting）で実機実績がある。
+// 送信の実行自体は chat フレーム内で完結する v0.5 実証済みコード。
 // 設計: docs/specs/2026-07-21-rc-indicator-plugin-design.md
 (function () {
   'use strict';
@@ -39,8 +39,13 @@
   var STOP_ICON_SEL = 'button[class*="sendButton"] [class*="stopIcon"]';   // 在=生成中（state-observer と同一判定）
   var TRANSCRIPT_SEL = '[data-testid*="message"]';   // 会話本文（誤ヒット除外の第一段）
   var MARK = 'data-cc-ri-banner';
+  var MSG_STATE = 'cc-ri-state';
+  var MSG_TOGGLE = 'cc-ri-toggle';
+  var MSG_DENY = 'cc-ri-deny';
   var MSG_HUD = 'cc-ri-hud';
   var POLL_MS = 700;
+  var HB_TICKS = 3;            // 状態ハートビートの送信間隔（tick 数 ≒ 2.1s）
+  var STALE_MS = 6000;         // top 側: 報告途絶でピルを隠すまで
   var HOLD_MS = 600;           // 長押し発火時間（フィルが満ちるまで）
   var DEBOUNCE_MS = 3000;      // トグル連続送信の抑止
   var SUBMIT_DELAY_MS = 300;   // 文字挿入〜送信までの待ち
@@ -58,8 +63,7 @@
   function holdOn() { return setting('holdToggle', true); }
   function diagOn() { return setting('diag', false); }
 
-  // ---- 診断: focus-hud 共有バッファへ 'RI ' プレフィックスで（少量のため専用バッファ無し）。
-  //   クロスオリジンフレームは window.top へ直書きできないので postMessage 中継（rc-autoconnect と同型）。
+  // ---- 診断: focus-hud 共有バッファへ 'RI ' プレフィックスで。クロスオリジンは top 中継 ----
   function pushShared(line) {
     try {
       var a = window.__ccStudioFocusLog || (window.__ccStudioFocusLog = []);
@@ -75,15 +79,6 @@
     if (isTop) { pushShared(line); return; }
     try { window.top.postMessage({ k: MSG_HUD, log: line }, '*'); } catch (_) {}
   }
-  // top: クロスオリジンフレームからの HUD ログ中継（top の役割はこれだけ）
-  if (isTop) {
-    try {
-      window.addEventListener('message', function (e) {
-        var m = e && e.data;
-        if (m && m.k === MSG_HUD && typeof m.log === 'string') pushShared(m.log);
-      }, false);
-    } catch (_) {}
-  }
 
   // ---- chat フレーム判定 ----
   function findComposer() {
@@ -98,6 +93,18 @@
   function chatFrame() {
     try { return !!document.querySelector(SEND_BTN_SEL); } catch (_) { return false; }
   }
+  // このフレームが画面に見えているか（裏タブ/退避 webview は getClientRects が空になる）
+  function frameVisible(composer) {
+    try { return composer.getClientRects().length > 0; } catch (_) { return true; }
+  }
+  function frameTag() {
+    try {
+      if (isTop) return 'top';
+      var p = (location && location.pathname) || '';
+      return (decodeURIComponent(p.split('/').filter(Boolean).pop() || (location && location.host) || 'sub')).slice(0, 12);
+    } catch (_) { return 'xo'; }
+  }
+  var TAG = frameTag() + '~' + Math.random().toString(36).slice(2, 6);   // 同一パスのフレーム衝突も避ける
 
   // ---- バナー検知＝RC 状態検知 ----
   // バナー容器の認定条件（設計 §5）:
@@ -161,8 +168,99 @@
     } catch (_) {}
   }
 
-  // ---- 「R」ピル（chat フレーム内に描画。フレームごと隠れるので表示中セッションの状態だけが見える） ----
+  // ---- chat フレーム側: RC 状態を top へ報告（変化時 + ハートビート・フレーム ID / 可視フラグつき） ----
+  var tickCount = 0, lastActive = null, lastVis = null, frameLogged = false;
+  function report(active, vis) {
+    try { window.top.postMessage({ k: MSG_STATE, tag: TAG, active: !!active, vis: !!vis }, '*'); } catch (_) {}
+  }
+  function tick() {
+    var composer = findComposer();
+    if (!composer || !chatFrame()) return;   // chat 本体フレーム以外は対象外
+    var banner = findBanner(composer);
+    applyHide(banner);
+    var active = !!banner;
+    var vis = frameVisible(composer);
+    if (!frameLogged) { frameLogged = true; emitLog('frame ' + TAG + ' vis=' + (vis ? 1 : 0)); }
+    tickCount++;
+    if (active !== lastActive || vis !== lastVis || tickCount % HB_TICKS === 0) {
+      lastActive = active; lastVis = vis; report(active, vis);
+    }
+  }
+
+  // ---- chat フレーム側: トグル実行（フレーム内完結・v0.5 実証済み） ----
+  var lastSendAt = 0;
+  function deny(reason) {
+    emitLog('toggle deny: ' + reason);
+    try { window.top.postMessage({ k: MSG_DENY, reason: reason }, '*'); } catch (_) {}
+  }
+  function handleToggle() {
+    var composer = findComposer();
+    if (!composer || !chatFrame()) return;                   // chat 本体フレーム以外は黙って無視
+    var vis = frameVisible(composer);
+    emitLog('toggle recv ' + TAG + ' vis=' + (vis ? 1 : 0));
+    if (!vis) return;                                        // 裏タブのセッションを誤トグルしない
+    if (composerText(composer)) { deny('draft'); return; }   // 下書きを壊さない
+    var busy = false;
+    try { busy = !!document.querySelector(STOP_ICON_SEL); } catch (_) {}
+    if (busy) { deny('busy'); return; }                      // 生成中は送信ボタン＝停止ボタン。触らない
+    var now = Date.now();
+    if (now - lastSendAt < DEBOUNCE_MS) { deny('debounce'); return; }
+    lastSendAt = now;
+    sendCommand(composer);
+  }
+  // 送信手順は rc-autoconnect の実測確定手順を踏襲（insertText → 送信ボタンのクリックのみ。
+  // ボタンが在るのに Enter も撃つと二重送信になる。未検出時のみ Enter フォールバック）。
+  function sendCommand(composer) {
+    try { composer.focus(); } catch (_) {}
+    var inserted = false;
+    try { inserted = document.execCommand('insertText', false, CMD); } catch (_) {}
+    if (!inserted) {
+      try {
+        composer.dispatchEvent(new InputEvent('beforeinput', { inputType: 'insertText', data: CMD, bubbles: true, cancelable: true }));
+        composer.dispatchEvent(new InputEvent('input', { inputType: 'insertText', data: CMD, bubbles: true }));
+      } catch (_) {}
+    }
+    emitLog('toggle insert exec=' + (inserted ? 1 : 0));
+    setTimeout(function () {
+      var btn = null; try { btn = document.querySelector(SEND_BTN_SEL); } catch (_) {}
+      if (btn) {
+        try { btn.click(); } catch (_) {}
+        emitLog('toggle submit btn');
+      } else {
+        var tgt = composer; try { tgt = document.activeElement || composer; } catch (_) {}
+        ['keydown', 'keypress', 'keyup'].forEach(function (type) {
+          try { tgt.dispatchEvent(new KeyboardEvent(type, { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true })); } catch (_) {}
+        });
+        emitLog('toggle submit enter');
+      }
+    }, SUBMIT_DELAY_MS);
+  }
+
+  // ---- 全フレーム: トグル依頼のホップ・バイ・ホップ中継（設定ランタイムと同方式・実機実績あり）。
+  //   直上の親からの依頼だけを受け、直下の子 window.frames[i]（同一コンテキスト参照）へ再伝搬する。
+  //   クロスオリジン WindowProxy の深掘り列挙（v0.2〜0.4）は実機で届かなかったため使わない。 ----
+  function relayToChildren(msg) {
+    try {
+      for (var i = 0; i < window.frames.length; i++) {
+        try { window.frames[i].postMessage(msg, '*'); } catch (_) {}
+      }
+    } catch (_) {}
+  }
+  try {
+    window.addEventListener('message', function (ev) {
+      var m = ev && ev.data;
+      if (!m || m.k !== MSG_TOGGLE) return;
+      var fromParent = false;
+      try { fromParent = (ev.source === window.parent && ev.source !== window); } catch (_) {}
+      if (!fromParent) return;
+      relayToChildren(m);
+      handleToggle();
+    }, false);
+  } catch (_) {}
+
+  // ---- top フレーム側: 「R」ピル（⋮ ボタン #ccstudio-menu-btn の直上・同じ列） ----
   var pill = null, fill = null;
+  var reg = {};   // フレーム別の状態レジストリ: tag → { active, vis, t }
   var reduced = false;
   try { reduced = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches); } catch (_) {}
 
@@ -171,7 +269,7 @@
     var st = document.createElement('style'); st.id = 'cc-ri-style';
     st.textContent =
       '@keyframes ccRiDeny{0%,100%{opacity:1}50%{opacity:.25}}' +
-      '#cc-ri-pill{position:fixed;left:0;bottom:22%;width:30px;height:68px;border:0;padding:0;' +
+      '#cc-ri-pill{position:fixed;left:0;bottom:calc(22% + 92px);width:30px;height:68px;border:0;padding:0;' +
       'border-radius:0 10px 10px 0;z-index:2147483647;color:#9aa3b2;background:#3a4150;' +
       'display:none;align-items:center;justify-content:center;overflow:hidden;' +
       'user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;touch-action:none;cursor:pointer;}' +
@@ -213,25 +311,34 @@
     pill.addEventListener('touchstart', function (ev) { try { ev.preventDefault(); } catch (_) {} }, { passive: false });
     pill.addEventListener('selectstart', function (ev) { try { ev.preventDefault(); } catch (_) {} });
     pill.addEventListener('contextmenu', function (ev) { try { ev.preventDefault(); } catch (_) {} });
-    pill.addEventListener('click', function (ev) { try { ev.preventDefault(); } catch (_) {} });
+    pill.addEventListener('click', function (ev) { try { ev.preventDefault(); } catch (_) {} });   // 単タップは無反応
     try { document.body.appendChild(pill); } catch (_) { pill = null; }
     return pill;
   }
-  function renderPill(active) {
+  function renderPill() {
+    if (!isTop) return;
     var p = ensurePill();
     if (!p) return;
-    if (!indOn()) { p.style.display = 'none'; return; }
+    // フレーム別レジストリを集約。可視フレームの報告を優先し、いま画面に出ているセッションの
+    // RC 状態を表示する（可視の報告が無いときだけ全報告にフォールバック）。
+    var now = Date.now(), any = false, active = false, anyVis = false, visActive = false;
+    for (var k in reg) {
+      var r = reg[k];
+      if (now - r.t >= STALE_MS) { delete reg[k]; continue; }
+      any = true; if (r.active) active = true;
+      if (r.vis) { anyVis = true; if (r.active) visActive = true; }
+    }
+    if (!indOn() || !any) { p.style.display = 'none'; return; }   // 非チャット画面・報告途絶は非表示
     p.style.display = 'flex';
-    if (active) p.classList.add('cc-ri-on'); else p.classList.remove('cc-ri-on');
+    var on = anyVis ? visActive : active;
+    if (on) p.classList.add('cc-ri-on'); else p.classList.remove('cc-ri-on');
   }
   function denyBlink() {
     if (!pill) return;
     try { pill.classList.remove('cc-ri-deny'); void pill.offsetWidth; pill.classList.add('cc-ri-deny'); } catch (_) {}
   }
 
-  // ---- 長押し → 同一フレーム内で直接トグル（配達なし＝rc-autoconnect と同じ確実系）。
-  //   押下中フィルが HOLD_MS かけて満ちる＝離せばキャンセル/満ちれば実行の可視化。
-  //   タップ経路は v0.5 で実証済み。単タップ（HOLD_MS 未満）は何もしない。 ----
+  // ---- top: 長押し判定（押下中フィルが HOLD_MS かけて満ちる＝離せばキャンセル/満ちれば実行） ----
   var holdTimer = null;
   function resetFill() { if (fill) { try { fill.style.transition = 'none'; fill.style.height = '0'; } catch (_) {} } }
   function pressStart(e) {
@@ -241,7 +348,7 @@
     holdTimer = setTimeout(function () {
       holdTimer = null; resetFill();
       emitLog('hold fire');
-      handleToggle();
+      relayToChildren({ k: MSG_TOGGLE });   // 直下の子から先はホップ中継が届ける
     }, HOLD_MS);
   }
   function pressEnd(e) {
@@ -253,57 +360,17 @@
     resetFill();
   }
 
-  var lastSendAt = 0;
-  function deny(reason) { emitLog('toggle deny: ' + reason); denyBlink(); }
-  function handleToggle() {
-    var composer = findComposer();
-    if (!composer || !chatFrame()) return;
-    if (composerText(composer)) { deny('draft'); return; }              // 下書きを壊さない
-    var busy = false;
-    try { busy = !!document.querySelector(STOP_ICON_SEL); } catch (_) {}
-    if (busy) { deny('busy'); return; }                                 // 生成中は送信ボタン＝停止ボタン。触らない
-    var now = Date.now();
-    if (now - lastSendAt < DEBOUNCE_MS) { deny('debounce'); return; }
-    lastSendAt = now;
-    sendCommand(composer);
-  }
-  // 送信手順は rc-autoconnect の実測確定手順を踏襲（insertText → 送信ボタンのクリックのみ。
-  // ボタンが在るのに Enter も撃つと二重送信になる。未検出時のみ Enter フォールバック）。
-  function sendCommand(composer) {
-    try { composer.focus(); } catch (_) {}
-    var inserted = false;
-    try { inserted = document.execCommand('insertText', false, CMD); } catch (_) {}
-    if (!inserted) {
-      try {
-        composer.dispatchEvent(new InputEvent('beforeinput', { inputType: 'insertText', data: CMD, bubbles: true, cancelable: true }));
-        composer.dispatchEvent(new InputEvent('input', { inputType: 'insertText', data: CMD, bubbles: true }));
-      } catch (_) {}
-    }
-    emitLog('toggle insert exec=' + (inserted ? 1 : 0));
-    setTimeout(function () {
-      var btn = null; try { btn = document.querySelector(SEND_BTN_SEL); } catch (_) {}
-      if (btn) {
-        try { btn.click(); } catch (_) {}
-        emitLog('toggle submit btn');
-      } else {
-        var tgt = composer; try { tgt = document.activeElement || composer; } catch (_) {}
-        ['keydown', 'keypress', 'keyup'].forEach(function (type) {
-          try { tgt.dispatchEvent(new KeyboardEvent(type, { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true })); } catch (_) {}
-        });
-        emitLog('toggle submit enter');
-      }
-    }, SUBMIT_DELAY_MS);
-  }
-
-  // ---- メインループ（chat フレームのみ実質動作） ----
-  var frameLogged = false;
-  function tick() {
-    var composer = findComposer();
-    if (!composer || !chatFrame()) return;
-    if (!frameLogged) { frameLogged = true; emitLog('chat frame armed'); }
-    var banner = findBanner(composer);
-    applyHide(banner);
-    renderPill(!!banner);
+  // ---- top: chat フレームからの報告・拒否・HUD ログの受信 ----
+  if (isTop) {
+    try {
+      window.addEventListener('message', function (e) {
+        var m = e && e.data;
+        if (!m) return;
+        if (m.k === MSG_STATE) { reg[typeof m.tag === 'string' ? m.tag : 'f'] = { active: !!m.active, vis: !!m.vis, t: Date.now() }; renderPill(); }
+        else if (m.k === MSG_DENY) { denyBlink(); emitLog('deny ' + (m.reason || '')); }
+        else if (m.k === MSG_HUD && typeof m.log === 'string') pushShared(m.log);
+      }, false);
+    } catch (_) {}
   }
 
   // ---- 設定のライブ反映 ----
@@ -311,10 +378,8 @@
     window.addEventListener('ccstudio:setting', function (e) {
       var d = e && e.detail;
       if (!d || d.plugin !== NAME) return;
-      var c = findComposer();
-      if (!c || !chatFrame()) return;
-      if (d.key === 'hideBanner') applyHide(findBanner(c));
-      if (d.key === 'indicator') renderPill(!!findBanner(c));
+      if (d.key === 'hideBanner') { var c = findComposer(); if (c && chatFrame()) applyHide(findBanner(c)); }
+      if (isTop && d.key === 'indicator') renderPill();
     });
   } catch (_) {}
 
@@ -329,6 +394,7 @@
     if (started) return; started = true;
     try { new MutationObserver(scheduleTick).observe(document.documentElement || document.body, { subtree: true, childList: true }); } catch (_) {}
     setInterval(tick, POLL_MS);
+    if (isTop) setInterval(renderPill, 2000);   // 報告途絶→非表示の劣化はポーリングで拾う
     tick();
   }
   if (document.readyState === 'loading') {
