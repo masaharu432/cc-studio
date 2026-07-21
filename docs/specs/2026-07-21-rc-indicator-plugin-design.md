@@ -20,7 +20,8 @@ Remote Control (RC) が有効なセッションでは、claude-code webview の 
 
 1. **バナーを CSS で非表示**にする（DOM は残す＝RC 接続に無影響）。
 2. バナーが担っていた「RC 有効の可視化」を、**画面端の小さな「R」ピル**で代替する。
-3. ピルのタップで **手動 RC オン/オフ**（`/remote-control` 送信）もできるようにする。
+3. ピルの**長押し**で **手動 RC オン/オフ**（`/remote-control` 送信）もできるようにする
+   （⋮ ボタン直下にあるため、単タップだと誤爆しやすい）。
 
 検知の要: **CSS で隠してもバナーは DOM に残る**ため、「バナー要素が DOM に存在するか」を
 そのまま「このセッションで RC が有効か」の検知器として使える。非表示機能と検知機能が同一機構で済む。
@@ -40,8 +41,9 @@ Remote Control (RC) が有効なセッションでは、claude-code webview の 
 
 **ゴール (v0.1)**:
 - `hideBanner`: RC バナーを display:none で非表示。設定 OFF でその場で再表示（ライブ反映）。
-- `indicator`: ⋮ ボタン直下に「R」ピルを表示し、RC 有効=着色 / 無効=グレー を常時反映。
-- `tapToggle`: ピルのタップで `/remote-control` を送信し手動オン/オフ。下書きあり・処理中は送信しない。
+- `indicator`: ⋮ ボタン直下に「R」ピルを表示し、RC 有効=グリーン / 無効=グレー を常時反映。
+- `holdToggle`: ピルの**長押し（約 600ms・充填アニメーション付き）**で `/remote-control` を送信し
+  手動オン/オフ。下書きあり・処理中は送信しない。単タップでは発火しない（誤爆防止）。
 
 **非ゴール（YAGNI）**:
 - 自動接続・再接続ロジック（rc-autoconnect の領分。両プラグインは独立に共存）。
@@ -60,7 +62,7 @@ Remote Control (RC) が有効なセッションでは、claude-code webview の 
     top からのトグル依頼を受信 → ガード確認 → /remote-control 挿入・送信
   top フレーム:
     状態報告を集約 → ⋮ ボタン直下に「R」ピルを描画・着色
-    ピルのタップ → 全フレームへトグル依頼をブロードキャスト
+    ピルの長押し完了 → 全フレームへトグル依頼をブロードキャスト
     ハートビート途絶（例: リロード・フレーム消滅）→ ピルを未接続表示に落とす
 ```
 
@@ -92,14 +94,32 @@ RC 状態 = 「目印属性つき容器（または新規一致）が DOM に存
 - top フレームの body 直下に固定配置。⋮ ボタン（`left:0; bottom:22%; height:84px`）の**直下**:
   `position:fixed; left:0; bottom:calc(22% - 42px); width:30px; height:34px;
   border-radius:0 10px 10px 0; z-index:2147483647;` 表示文字は「R」。
-- 状態色: RC 有効 = ⋮ ボタンと同系の青グラデーション / 無効 = グレー（`#555` 系）。
+
+**状態色**（既存の状態語彙との整合が最優先。⋮ ボタンは 青=通常/処理中パルス・赤=切断エラー を
+既に使っており、青と赤系はピルに使えない）:
+- **RC 有効 = グリーン** `linear-gradient(180deg,#34C77B,#1e9a58)`、文字は白・太字。
+  控えめな緑グロー `box-shadow:2px 0 10px rgba(52,199,123,.45)`（⋮ ボタンの影の様式を踏襲）。
+  緑=「外への生きたリンク」の普遍的信号で、既存の青・赤と一瞥で区別できる。
+  （検討済み: Claude ブランドのコーラル #D97757 は「Claude へのリンク」の意味付けが立つが、
+  小さいピルでは直上の赤=切断と誤読し得るため不採用。）
+- **RC 無効 = フラットな暗グレー** `#3a4150`、文字 `#9aa3b2`。グラデーションと影を有効時専用に
+  取っておくことで「フラット＝休眠」自体が情報になる。
 - composer フレームからの報告が無い画面（チャット以外のスクリーン・未ロード）ではピルを**非表示**にする
   （ハートビートが `HEARTBEAT_MS × 3` 途絶したら非表示へ落とす）。
 - state-observer も ⋮ ボタン本体の背景を塗る（busy パルス等）が、ピルは独立要素なので干渉しない。
 
-## 7. 手動トグル（tapToggle）
+## 7. 手動トグル（holdToggle）
 
-- ピルのタップで top → 全フレームへトグル依頼をブロードキャスト。composer フレームだけが反応。
+**長押しで発火**（単タップは無視）。⋮ ボタン直下という位置ゆえ、スクロール中や switcher を開こうと
+した指が触れる誤爆が現実的にあり得るため、タップではなく長押しを採る。
+
+- `pointerdown` から**約 600ms 押し続けると発火**。押下中はピル内でフィル（充填）が満ちていく
+  アニメーションを表示し、「離せばキャンセル / 満ちれば実行」を目に見える形にする。
+  途中で `pointerup` / `pointercancel` / 指が外れたらキャンセル（何も起きない）。
+  `user-select:none` / `touch-action:none` / `-webkit-touch-callout:none` で長押しの
+  テキスト選択・コンテキストメニューを抑止。`prefers-reduced-motion` ではフィル表示を省略し
+  時間だけで判定。
+- 発火すると top → 全フレームへトグル依頼をブロードキャスト。composer フレームだけが反応。
 - **送信ガード**（すべて満たす場合のみ送信、不成立なら理由を top へ返しピルを短く明滅させて拒否を伝える）:
   1. composer が空（下書きがあると `/remote-control` 挿入で壊すため）。
   2. 処理中でない: `button[class*="sendButton"] [class*="stopIcon"]` が**不在**
@@ -119,23 +139,23 @@ RC 状態 = 「目印属性つき容器（または新規一致）が DOM に存
 // ==CCStudioPlugin==
 // @name        rc-indicator
 // @version     0.1.0
-// @description Hide the persistent "Remote Control is active" banner (RC stays on), and show a compact "R" pill under the ⋮ button instead; tap the pill to toggle RC manually.
-// @description:ja 常時表示の「Remote Control is active」バナーを非表示にし（RC は維持）、代わりに ⋮ ボタン直下の「R」ピルで状態表示。ピルのタップで手動オン/オフ。
+// @description Hide the persistent "Remote Control is active" banner (RC stays on), and show a compact "R" pill under the ⋮ button instead; long-press the pill to toggle RC manually.
+// @description:ja 常時表示の「Remote Control is active」バナーを非表示にし（RC は維持）、代わりに ⋮ ボタン直下の「R」ピルで状態表示。ピルの長押しで手動オン/オフ。
 // @run-at      document-start
 // @all-frames  true
 // @setting     hideBanner boolean true RCバナーを隠す
 // @setting:ja  hideBanner RCバナーを隠す（RC接続は維持）
 // @setting     indicator boolean true 「R」ピルでRC状態を表示
 // @setting:ja  indicator 「R」ピルでRC状態を表示
-// @setting     tapToggle boolean true ピルのタップでRCを手動オン/オフ
-// @setting:ja  tapToggle ピルのタップでRCを手動オン/オフ
+// @setting     holdToggle boolean true ピルの長押しでRCを手動オン/オフ
+// @setting:ja  holdToggle ピルの長押しでRCを手動オン/オフ
 // @setting     diag boolean false 診断ログを focus-hud に出す
 // @setting:ja  diag 診断ログを focus-hud に出す
 // ==/CCStudioPlugin==
 ```
 
 - 3 機能とも `ccstudio:setting` でライブ反映（hideBanner OFF→復元、indicator OFF→ピル除去、
-  tapToggle OFF→タップ無効化）。
+  holdToggle OFF→長押し無効化）。
 - ネイティブブリッジ（`window.CCStudio.*`）は使わない（DOM 操作と postMessage のみ）。
 
 ## 9. 診断
@@ -168,10 +188,11 @@ RC 状態 = 「目印属性つき容器（または新規一致）が DOM に存
 
 - hideBanner ON: RC 接続してもバナーが一瞬も見えない。RC はモバイルアプリ側から操作可能なまま。
 - hideBanner を設定画面で OFF → その場でバナー再表示。ON → 再度消える（リロード不要）。
-- indicator: RC 有効で「R」が着色、`/remote-control` で切断するとグレーに変わる。
+- indicator: RC 有効で「R」がグリーン、`/remote-control` で切断するとグレーに変わる。
   チャット以外のスクリーンではピルが出ない。リロード直後（RC 切断状態）はグレー表示。
-- tapToggle: 未接続でタップ → RC 接続（バナーは出ず R が着色）。接続中にタップ → 切断。
-  下書きがある時・応答生成中はタップしても送信されない（明滅で拒否表示）。連打で二重送信しない。
+- holdToggle: 未接続で長押し → RC 接続（バナーは出ず R がグリーン化）。接続中に長押し → 切断。
+  単タップ・途中で離した長押しでは何も起きない。下書きがある時・応答生成中は長押し完了しても
+  送信されない（明滅で拒否表示）。連続長押しで二重送信しない（3 秒デバウンス）。
 - 誤ヒット: チャットで「Remote Control is active」を含む発言をしても本文が隠れない。
 - rc-autoconnect 併用: 新規セッションで自動接続 → バナー非表示・R 着色まで一連で機能する。
 
