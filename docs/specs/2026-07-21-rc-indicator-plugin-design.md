@@ -55,24 +55,23 @@ Remote Control (RC) が有効なセッションでは、claude-code webview の 
 
 ```
 @all-frames true × @run-at document-start で全フレーム注入
-  composer フレーム（[aria-label="Message input"] 保持）:
+  chat フレーム（composer + sendButton を併せ持つフレーム）で全ロジックが完結:
     バナー検知（MutationObserver + ポーリング）
       ├ hideBanner=ON → display:none（目印属性を付与、OFF でその場復元）
-      └ 存在有無 = RC 状態 → postMessage で top へ報告（変化時 + ハートビート・フレーム ID つき）
-    top からのトグル依頼を受信 → ガード確認 → /remote-control 挿入・送信
+      └ 存在有無 = RC 状態 → 同フレーム内に描いた「R」ピルへ直接反映
+    ピルのタップ → 同フレーム内でガード確認 → /remote-control 挿入・送信
   top フレーム:
-    状態報告をフレーム別レジストリに集約（last-writer-wins だと新規セッション時に新旧
-    composer フレームの相反報告でピルが点滅する＝v0.1 の実害）。報告には可視フラグ
-    （composer.getClientRects() が空でないか）が付き、**可視フレームの報告を優先**して
-    現在表示中のセッションの状態を表示（裏タブの RC 状態に引きずられない＝v0.3 の実害対処）
-    → ⋮ ボタン直上に「R」ピルを描画・着色。トグルも可視フレームだけが実行する
-    ピルの長押し完了 → 全フレームへトグル依頼をブロードキャスト
-    ハートビート途絶（例: リロード・フレーム消滅）→ ピルを未接続表示に落とす
+    HUD 診断ログの中継のみ（クロスオリジンフレーム → focus-hud 共有バッファ）
 ```
 
-- composer フレームはクロスオリジンのため top へは `postMessage`（rc-autoconnect の HUD 中継と同型）。
-- top → composer 方向は、`window.length` / 添字アクセスがクロスオリジンでも許可されることを利用し、
-  フレームツリーを再帰走査して全フレームへ `postMessage` する（BroadcastChannel はオリジンを跨げないため不可）。
+- **v0.1〜0.4 の教訓（v0.5 で全面改訂）**: 当初はピルを top に描き、状態を postMessage で上げ・
+  トグル依頼を下ろす双方向構成だった。frame→top は確実に届く（rc-autoconnect の HUD 中継で実証済み）
+  が、**top→frame 方向（e.source への直接返信・フレームツリー再帰走査の両方）は実機で到達が
+  確認できず**（fire sent>0 なのに受信ゼロ）、トグルが機能しなかった。rc-autoconnect が確実なのは
+  判定〜送信がフレーム内で完結しているからであり、同じ構造に改めた。
+- ピルを chat フレーム内に描くことで、フレームが隠れればピルも消えるため「表示中セッションの状態
+  だけを表示」も構造的に満たす（フレーム別レジストリ・可視フラグ・鮮度管理がすべて不要になった）。
+- トレードオフ: ピルの位置は画面左端ではなく**チャットパネルの左端**になる（許容済み）。
 
 ## 5. バナー検知（誤ヒット防止が最重要）
 
