@@ -1,8 +1,8 @@
 // ==CCStudioPlugin==
 // @name        rc-indicator
-// @version     0.2.0
-// @description Hide the persistent "Remote Control is active" banner (RC stays on), and show a compact "R" pill above the ⋮ button instead; long-press the pill to toggle RC manually.
-// @description:ja 常時表示の「Remote Control is active」バナーを非表示にし（RC は維持）、代わりに ⋮ ボタン直上の「R」ピルで状態表示。ピルの長押しで手動オン/オフ。
+// @version     0.3.0
+// @description Hide the persistent "Remote Control is active" banner (RC stays on), and show a compact "R" pill above the ⋮ button instead; tap the pill to toggle RC manually (tap is provisional while verifying delivery; will return to long-press).
+// @description:ja 常時表示の「Remote Control is active」バナーを非表示にし（RC は維持）、代わりに ⋮ ボタン直上の「R」ピルで状態表示。ピルのタップで手動オン/オフ（経路検証のための暫定。確認後に長押しへ戻す）。
 // @run-at      document-start
 // @all-frames  true
 // @setting     hideBanner boolean true RCバナーを隠す
@@ -16,8 +16,9 @@
 // ==/CCStudioPlugin==
 // rc-indicator.js — RC バナーを CSS で非表示（DOM は残る＝RC 接続に無影響）にし、
 // 「バナーが DOM に存在するか」を RC 状態の検知器として流用して ⋮ ボタン直上の「R」ピルに表示する。
-// ピルの長押し（600ms・フィル表示）で /remote-control を送信し手動トグル。× ボタンには一切触れない
-// （クリック＝RC 切断のため）。設計: docs/specs/2026-07-21-rc-indicator-plugin-design.md
+// ピルのタップで /remote-control を送信し手動トグル（v0.3 暫定: 配信経路の検証のため。確認後に
+// 長押し 600ms へ戻す）。× ボタンには一切触れない（クリック＝RC 切断のため）。
+// 設計: docs/specs/2026-07-21-rc-indicator-plugin-design.md
 (function () {
   'use strict';
   if (window.__ccRcIndicator) return;   // フレームごとに 1 度だけ武装
@@ -165,6 +166,7 @@
   function handleToggle() {
     var composer = findComposer();
     if (!composer) return;                                   // 非 composer フレームは黙って無視
+    emitLog('toggle recv');                                  // 依頼がこのフレームまで届いた証跡
     if (!holdOn()) return;                                   // 設定 OFF（top 側でも弾くが二重で守る）
     if (composerText(composer)) { denyReply('draft'); return; }        // 下書きを壊さない
     var busy = false;
@@ -232,7 +234,7 @@
     var st = document.createElement('style'); st.id = 'cc-ri-style';
     st.textContent =
       '@keyframes ccRiDeny{0%,100%{opacity:1}50%{opacity:.25}}' +
-      '#cc-ri-pill{position:fixed;left:0;bottom:calc(22% + 92px);width:30px;height:34px;border:0;padding:0;' +
+      '#cc-ri-pill{position:fixed;left:0;bottom:calc(22% + 92px);width:30px;height:68px;border:0;padding:0;' +
       'border-radius:0 10px 10px 0;z-index:2147483647;color:#9aa3b2;background:#3a4150;' +
       'display:none;align-items:center;justify-content:center;overflow:hidden;' +
       'user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;touch-action:none;cursor:pointer;}' +
@@ -240,7 +242,7 @@
       '#cc-ri-pill.cc-ri-on{color:#fff;background:linear-gradient(180deg,#34C77B,#1e9a58);box-shadow:2px 0 10px rgba(52,199,123,.45);}' +
       '#cc-ri-pill.cc-ri-deny{animation:ccRiDeny .18s 3;}' +
       '#cc-ri-fill{position:absolute;left:0;bottom:0;width:100%;height:0;background:rgba(255,255,255,.28);pointer-events:none;}' +
-      '#cc-ri-glyph{position:relative;width:13px;height:18px;pointer-events:none;}';
+      '#cc-ri-glyph{position:relative;width:15px;height:22px;pointer-events:none;}';
     try { (document.head || document.documentElement).appendChild(st); } catch (_) {}
   }
   function ensurePill() {
@@ -267,10 +269,10 @@
     path.setAttribute('stroke-linejoin', 'round');
     glyph.appendChild(path);
     pill.appendChild(fill); pill.appendChild(glyph);
-    pill.addEventListener('pointerdown', holdStart);
-    pill.addEventListener('pointerup', holdCancel);
-    pill.addEventListener('pointercancel', holdCancel);
-    pill.addEventListener('pointerleave', holdCancel);
+    pill.addEventListener('pointerdown', pressStart);
+    pill.addEventListener('pointerup', pressEnd);
+    pill.addEventListener('pointercancel', pressCancel);
+    pill.addEventListener('pointerleave', pressCancel);
     // ネイティブの長押しジェスチャ（選択・コンテキストメニュー・スクロール）を根元から抑止
     pill.addEventListener('touchstart', function (ev) { try { ev.preventDefault(); } catch (_) {} }, { passive: false });
     pill.addEventListener('selectstart', function (ev) { try { ev.preventDefault(); } catch (_) {} });
@@ -300,24 +302,38 @@
     try { pill.classList.remove('cc-ri-deny'); void pill.offsetWidth; pill.classList.add('cc-ri-deny'); } catch (_) {}
   }
 
-  // ---- top: 長押し判定（設計 §7。押下中フィルが満ちる＝離せばキャンセル/満ちれば実行の可視化） ----
-  var holdTimer = null;
+  // ---- top: タップ判定（v0.3 暫定。長押し経路の不発を切り分けるため、まずタップで配信を検証。
+  //   確認が取れたら HOLD_MS の長押しへ戻す予定。押下中はフィルで押下状態を可視化） ----
+  var pressed = false;
   function resetFill() { if (fill) { try { fill.style.transition = 'none'; fill.style.height = '0'; } catch (_) {} } }
-  function holdStart(e) {
+  function pressStart(e) {
     try { e.preventDefault(); } catch (_) {}
-    if (!holdOn() || holdTimer) return;
-    if (!reduced && fill) { try { fill.style.transition = 'height ' + HOLD_MS + 'ms linear'; fill.style.height = '100%'; } catch (_) {} }
-    holdTimer = setTimeout(function () {
-      holdTimer = null; resetFill();
-      emitLog('hold fire');
-      broadcast(window, { k: MSG_TOGGLE });
-    }, HOLD_MS);
+    if (!holdOn()) return;
+    pressed = true;
+    if (!reduced && fill) { try { fill.style.transition = 'height 120ms linear'; fill.style.height = '100%'; } catch (_) {} }
   }
-  function holdCancel() {
-    if (holdTimer) { clearTimeout(holdTimer); holdTimer = null; }
-    resetFill();
+  function pressEnd(e) {
+    try { e.preventDefault(); } catch (_) {}
+    var fire = pressed; pressed = false; resetFill();
+    if (!fire || !holdOn()) return;
+    emitLog('tap fire');
+    fireToggle();
   }
-  // クロスオリジンでも window.length と添字アクセスは仕様上許可されるため、フレームツリーを再帰配信。
+  function pressCancel() { pressed = false; resetFill(); }
+  // 配信は「状態報告をくれた composer フレームの e.source へ直接返す」を第一とする。
+  //   0.2.0 まではフレームツリーの再帰探索（window.length / 添字アクセス）だけだったが、
+  //   webview の多層構造で届かない可能性の切り分けができないため、確実な返信路を主にした。
+  function fireToggle() {
+    var msg = { k: MSG_TOGGLE };
+    var now = Date.now(), sent = 0;
+    for (var k in reg) {
+      var r = reg[k];
+      if (now - r.t >= STALE_MS || !r.src) continue;
+      try { r.src.postMessage(msg, '*'); sent++; } catch (_) {}
+    }
+    emitLog('fire sent=' + sent);
+    if (!sent) broadcast(window, msg);   // 報告元が取れていない時だけ再帰探索へフォールバック
+  }
   function broadcast(win, msg) {
     try { win.postMessage(msg, '*'); } catch (_) {}
     var n = 0; try { n = win.length; } catch (_) {}
@@ -330,7 +346,7 @@
       window.addEventListener('message', function (e) {
         var m = e && e.data;
         if (!m) return;
-        if (m.k === MSG_STATE) { reg[typeof m.tag === 'string' ? m.tag : 'f'] = { active: !!m.active, t: Date.now() }; renderPill(); }
+        if (m.k === MSG_STATE) { reg[typeof m.tag === 'string' ? m.tag : 'f'] = { active: !!m.active, t: Date.now(), src: e.source || null }; renderPill(); }
         else if (m.k === MSG_DENY) { denyBlink(); emitLog('deny ' + (m.reason || '')); }
         else if (m.k === MSG_HUD && typeof m.log === 'string') pushShared(m.log);
       }, false);
