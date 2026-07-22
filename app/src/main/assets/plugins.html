@@ -54,7 +54,9 @@
   .tgl .knob{position:absolute;top:2.5px;left:2.5px;width:21px;height:21px;border-radius:50%;background:#aeb7c4;transition:transform .18s,background .18s}
   .tgl[aria-pressed="true"]{background:var(--live-dim)}
   .tgl[aria-pressed="true"] .knob{transform:translateX(20px);background:var(--live)}
-  .add{width:100%;margin:6px 0 4px;border:1px solid #1c6fc0;background:var(--brand);color:#fff;border-radius:11px;
+  /* Add plugin はスクロール領域の外（固定ヘッダー）に置き、一覧をスクロールしても常に見せる。 */
+  .add-wrap{flex:0 0 auto;padding:0 16px 4px}
+  .add{width:100%;margin:0;border:1px solid #1c6fc0;background:var(--brand);color:#fff;border-radius:11px;
     padding:14px 12px;font:600 13px/1 var(--sans);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:8px}
   .empty{padding:24px 8px 16px;text-align:center;color:var(--dim)}
   .empty .plug{width:46px;height:46px;margin:0 auto 14px;border-radius:13px;display:grid;place-items:center;border:1.5px dashed #33405a;color:var(--brand-soft);font-size:20px;background:#0e1620}
@@ -77,8 +79,8 @@
       <span class="title">Plugins</span><span class="build" id="build"></span>
     </div>
     <div class="summary" id="summary"></div>
+    <div class="add-wrap"><button class="add" id="add">＋ Add plugin</button></div>
     <div class="pl-body">
-      <button class="add" id="add">＋ Add plugin</button>
       <div class="bus" id="bus"></div>
       <div class="sect"><p class="sect-h">About</p>
         <div class="row"><div class="ic">▍</div><div class="row-main">
