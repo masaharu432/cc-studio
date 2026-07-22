@@ -1,6 +1,6 @@
 // ==CCStudioPlugin==
 // @name        rc-indicator
-// @version     0.11.1
+// @version     0.11.2
 // @description Hide the persistent "Remote Control is active" banner (RC stays on), and show a compact "R" pill above the ⋮ button instead; long-press the pill (fill gauge completes) to toggle RC manually.
 // @description:ja 常時表示の「Remote Control is active」バナーを非表示にし（RC は維持）、代わりに ⋮ ボタン直上の「R」ピルで状態表示。ピルの長押し（ゲージが満ちたら発火）で手動オン/オフ。
 // @run-at      document-start
@@ -244,19 +244,22 @@
     var vis = frameVisible(composer);
     emitLog('toggle recv ' + TAG + ' vis=' + (vis ? 1 : 0));
     if (!vis) return;                                        // 裏タブのセッションを誤トグルしない
-    if (composerText(composer)) { deny('draft'); return; }   // 下書きを壊さない
     var busy = false;
     try { busy = !!document.querySelector(STOP_ICON_SEL); } catch (_) {}
     if (busy) { deny('busy'); return; }                      // 生成中は送信ボタン＝停止ボタン。触らない
     var now = Date.now();
     if (now - lastSendAt < DEBOUNCE_MS) { deny('debounce'); return; }
     lastSendAt = now;
-    sendCommand(composer);
+    // 下書きは拒否せず退避 → コマンド送信後に復元する（0.11.1 までは deny('draft') で拒否していたが、
+    // 長いセッションは下書きが残りがちでトグル不能の温床になるため方針変更）。
+    sendCommand(composer, composerText(composer));
   }
   // 送信手順は rc-autoconnect の実測確定手順を踏襲（insertText → 送信ボタンのクリックのみ。
   // ボタンが在るのに Enter も撃つと二重送信になる。未検出時のみ Enter フォールバック）。
-  function sendCommand(composer) {
+  // draft が渡された場合は全選択→コマンドで置換して送信し、送信後に復元する。
+  function sendCommand(composer, draft) {
     try { composer.focus(); } catch (_) {}
+    if (draft) { try { document.execCommand('selectAll'); } catch (_) {} }
     var inserted = false;
     try { inserted = document.execCommand('insertText', false, CMD); } catch (_) {}
     if (!inserted) {
@@ -278,7 +281,25 @@
         });
         emitLog('toggle submit enter');
       }
+      if (draft) setTimeout(function () { restoreDraft(draft); }, 600);
     }, SUBMIT_DELAY_MS);
+  }
+  // 退避した下書きを composer が空になったのを確認してから書き戻す。空でない（送信失敗で
+  // コマンドが残っている等）場合は継ぎ足しで壊さないよう復元を見送り、ログに残す。
+  function restoreDraft(draft) {
+    var c = findComposer();
+    if (!c) { emitLog('draft restore skipped: composer gone'); return; }
+    if (composerText(c)) { emitLog('draft restore skipped: not empty'); return; }
+    try { c.focus(); } catch (_) {}
+    var ok = false;
+    try { ok = document.execCommand('insertText', false, draft); } catch (_) {}
+    if (!ok) {
+      try {
+        c.dispatchEvent(new InputEvent('beforeinput', { inputType: 'insertText', data: draft, bubbles: true, cancelable: true }));
+        c.dispatchEvent(new InputEvent('input', { inputType: 'insertText', data: draft, bubbles: true }));
+      } catch (_) {}
+    }
+    emitLog('draft restored len=' + draft.length);
   }
 
   // ---- 全フレーム: トグル依頼のホップ・バイ・ホップ中継（設定ランタイムと同方式・実機実績あり）。
