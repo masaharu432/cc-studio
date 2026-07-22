@@ -1,6 +1,6 @@
 // ==CCStudioPlugin==
 // @name        rc-indicator
-// @version     0.11.2
+// @version     0.12.0
 // @description Hide the persistent "Remote Control is active" banner (RC stays on), and show a compact "R" pill above the ⋮ button instead; long-press the pill (fill gauge completes) to toggle RC manually.
 // @description:ja 常時表示の「Remote Control is active」バナーを非表示にし（RC は維持）、代わりに ⋮ ボタン直上の「R」ピルで状態表示。ピルの長押し（ゲージが満ちたら発火）で手動オン/オフ。
 // @run-at      document-start
@@ -19,15 +19,17 @@
 // ピルの長押し（600ms・フィルが満ちたら発火、途中で離すとキャンセル）で /remote-control を送信し
 // 手動トグル。× ボタンには一切触れない（クリック＝RC 切断）。
 //
-// v0.10 通信構成: フレーム間のやり取りは上下とも **汎用プラグイン・メッセージバス**
-// （CCStudio.pluginPublish / pluginSubscribe）に統一。
-//   上り: chat フレームが topic "rc-indicator/state"（状態）/"rc-indicator/deny"（拒否）へ発行、
-//         top が 700ms ポーリングで購読（バス不在環境のみ postMessage フォールバック）。
-//   下り: top のピル操作を topic "rc-indicator/toggle" へ発行、可視 chat フレームが購読して
-//         フレーム内完結の実証済みコードで /remote-control を送信。
-// 下りに postMessage を使わない理由: この WebView 構成では top→iframe 方向が e.source 直送・
-// 深掘り列挙・ホップ中継のいずれでも届かない実測（v0.3〜0.7.2）。全フレームに注入される
-// ブリッジ経由の Pull が唯一の確実な経路。旧ホップ中継も無害なので併走させている。
+// v0.12 通信構成: 経路ごとに得意な機構を使い分ける。
+//   上り（状態報告）: postMessage。送信元の素性 e.source が取れるのが本質で、top は e.source から
+//     送信元の最上位 iframe を特定し、**その iframe の実表示状態（サイズ・visibility・画面内）を
+//     top 側で判定**してレジストリに記録する。フレームの自己申告 vis は退避 webview
+//     （visibility 隠し・画面外移動）で「見えている」と誤答するため、フォールバックに格下げ
+//     （v0.11 で裏セッションの有効状態がピルへ漏れた実害の対策）。
+//   下り（トグル依頼）: 汎用バス（CCStudio.pluginPublish / pluginSubscribe）。この WebView 構成では
+//     top→iframe の postMessage が全方式で届かない実測（v0.3〜0.7.2）があるため。宛先は
+//     フレーム別トピック "rc-indicator/toggle/<TAG>" とし、top が表示中と判定したフレームだけに
+//     発行する（consume-once のバスでも裏フレームが横取りできない）。
+//   拒否通知: バス topic "rc-indicator/deny"（top がポーリング購読）。
 // 設計: docs/specs/2026-07-21-rc-indicator-plugin-design.md
 (function () {
   'use strict';
@@ -46,10 +48,10 @@
   var MSG_TOGGLE = 'cc-ri-toggle';
   var MSG_DENY = 'cc-ri-deny';
   var MSG_HUD = 'cc-ri-hud';
-  // 汎用バス（CCStudio.pluginPublish/pluginSubscribe）のトピック。上り（状態・拒否）も下り（トグル）も
-  // 同じバスに統一し、フレーム間のプラグイン通信の標準機構とする（postMessage は上りフォールバックのみ）。
+  // 汎用バス（CCStudio.pluginPublish/pluginSubscribe）のトピック。下り（トグル依頼）は
+  // フレーム別トピック TOPIC_TOGGLE + '/' + TAG、拒否通知は TOPIC_DENY。
+  // 上り（状態報告）はバスではなく postMessage（e.source による送信元特定が必要なため）。
   var TOPIC_TOGGLE = 'rc-indicator/toggle';
-  var TOPIC_STATE = 'rc-indicator/state';
   var TOPIC_DENY = 'rc-indicator/deny';
   function busPublish(topic, payload) {
     try {
@@ -207,9 +209,9 @@
   // ---- chat フレーム側: RC 状態を top へ報告（変化時 + ハートビート・フレーム ID / 可視フラグつき） ----
   var tickCount = 0, lastActive = null, lastVis = null, frameLogged = false;
   function report(active, vis) {
-    // 主経路: 汎用バス（top が 700ms でポーリング購読）。バス不在時のみ postMessage へフォールバック
-    var sent = busPublish(TOPIC_STATE, JSON.stringify({ tag: TAG, active: !!active, vis: !!vis }));
-    if (!sent) { try { window.top.postMessage({ k: MSG_STATE, tag: TAG, active: !!active, vis: !!vis }, '*'); } catch (_) {} }
+    // 上りは postMessage 固定: top が e.source から送信元 iframe を特定し実表示状態を判定するため
+    // （バスでは送信元の素性が失われる）。自己申告 vis は top 側判定が使えない時のフォールバック。
+    try { window.top.postMessage({ k: MSG_STATE, tag: TAG, active: !!active, vis: !!vis }, '*'); } catch (_) {}
   }
   function tick() {
     var composer = findComposer();
@@ -223,9 +225,10 @@
     if (active !== lastActive || vis !== lastVis || tickCount % HB_TICKS === 0) {
       lastActive = active; lastVis = vis; report(active, vis);
     }
-    // トグル依頼の購読（ポーリング型。可視 chat フレームだけが消費する）
-    if (vis && holdOn()) {
-      var m = busSubscribe(TOPIC_TOGGLE);
+    // トグル依頼の購読（ポーリング型・フレーム別トピック）。宛先選定は top の責務なので、
+    // ここでは自己 vis で弾かない（自己申告 vis は退避 webview で誤答するため信用しない）。
+    if (holdOn()) {
+      var m = busSubscribe(TOPIC_TOGGLE + '/' + TAG);
       if (m) { emitLog('toggle sub (bus)'); handleToggle(); }
     }
   }
@@ -241,9 +244,7 @@
   function handleToggle() {
     var composer = findComposer();
     if (!composer || !chatFrame()) return;                   // chat 本体フレーム以外は黙って無視
-    var vis = frameVisible(composer);
-    emitLog('toggle recv ' + TAG + ' vis=' + (vis ? 1 : 0));
-    if (!vis) return;                                        // 裏タブのセッションを誤トグルしない
+    emitLog('toggle recv ' + TAG);                           // 宛先選定は top 側で済んでいる
     var busy = false;
     try { busy = !!document.querySelector(STOP_ICON_SEL); } catch (_) {}
     if (busy) { deny('busy'); return; }                      // 生成中は送信ボタン＝停止ボタン。触らない
@@ -301,28 +302,6 @@
     }
     emitLog('draft restored len=' + draft.length);
   }
-
-  // ---- 全フレーム: トグル依頼のホップ・バイ・ホップ中継（設定ランタイムと同方式・実機実績あり）。
-  //   直上の親からの依頼だけを受け、直下の子 window.frames[i]（同一コンテキスト参照）へ再伝搬する。
-  //   クロスオリジン WindowProxy の深掘り列挙（v0.2〜0.4）は実機で届かなかったため使わない。 ----
-  function relayToChildren(msg) {
-    try {
-      for (var i = 0; i < window.frames.length; i++) {
-        try { window.frames[i].postMessage(msg, '*'); } catch (_) {}
-      }
-    } catch (_) {}
-  }
-  try {
-    window.addEventListener('message', function (ev) {
-      var m = ev && ev.data;
-      if (!m || m.k !== MSG_TOGGLE) return;
-      var fromParent = false;
-      try { fromParent = (ev.source === window.parent && ev.source !== window); } catch (_) {}
-      if (!fromParent) return;
-      relayToChildren(m);
-      handleToggle();
-    }, false);
-  } catch (_) {}
 
   // ---- top フレーム側: 「R」ピル（⋮ ボタン #ccstudio-menu-btn の直上・同じ列） ----
   var pill = null, fill = null;
@@ -406,6 +385,44 @@
     try { pill.classList.remove('cc-ri-deny'); void pill.offsetWidth; pill.classList.add('cc-ri-deny'); } catch (_) {}
   }
 
+  // ---- top: 送信元フレームの実表示判定 ----
+  // e.source から親をたどって top 直下の枠を特定し、top の DOM 上でその iframe 要素の
+  // 実表示状態（サイズ・visibility・display・画面内）を判定する。フレーム自身の getClientRects
+  // 自己申告は、退避 webview（visibility 隠し・画面外移動）で「見えている」と誤答するため
+  // top 側判定を正とする。特定できなければ null（呼び元は自己申告へフォールバック）。
+  function senderVisible(src) {
+    try {
+      var w = src, hops = 0;
+      while (w && w.parent && w.parent !== window && hops++ < 10) w = w.parent;
+      if (!w) return null;
+      var frames = document.querySelectorAll('iframe');
+      for (var i = 0; i < frames.length; i++) {
+        var f = frames[i];
+        if (f.contentWindow !== w) continue;
+        var r = f.getBoundingClientRect();
+        var cs = getComputedStyle(f);
+        if (r.width < 3 || r.height < 3) return false;
+        if (cs.display === 'none' || cs.visibility === 'hidden' || parseFloat(cs.opacity || '1') === 0) return false;
+        if (r.right <= 0 || r.bottom <= 0 || r.left >= window.innerWidth || r.top >= window.innerHeight) return false;
+        return true;
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  // ---- top: トグル発火。表示中と判定したフレームだけを宛先にフレーム別トピックへ発行 ----
+  function fireToggle() {
+    var now = Date.now(), target = null, bestT = 0;
+    for (var k in reg) {
+      var r = reg[k];
+      if (now - r.t >= STALE_MS || !r.vis) continue;
+      if (r.t > bestT) { bestT = r.t; target = k; }
+    }
+    if (!target) { emitLog('fire: no visible target'); denyBlink(); return; }
+    var ok = busPublish(TOPIC_TOGGLE + '/' + target, '1');
+    emitLog('fire bus=' + (ok ? 1 : 0) + ' target=' + target);
+  }
+
   // ---- top: 長押し判定（押下中フィルが HOLD_MS かけて満ちる＝離せばキャンセル/満ちれば発火）。
   //   タップ配達は v0.10 で実証済み。誤爆防止のポインターキャプチャは維持し、
   //   pointerleave ではキャンセルしない（幅 30px では指の揺れで leave が出る＝0.7.0 の実害）。 ----
@@ -422,10 +439,7 @@
     holdTimer = setTimeout(function () {
       holdTimer = null; resetFill();
       emitLog('hold fire');
-      // 主経路: 汎用バスへ発行（可視 chat フレームがポーリング購読で ≤400ms 以内に受け取る）
-      var bridged = busPublish(TOPIC_TOGGLE, '1');
-      emitLog('fire bus=' + (bridged ? 1 : 0));
-      relayToChildren({ k: MSG_TOGGLE });   // 旧ホップ中継も併走（届く環境ではデバウンスが二重実行を潰す）
+      fireToggle();
     }, HOLD_MS);
   }
   function pressEnd(e) {
@@ -441,32 +455,29 @@
     resetFill();
   }
 
-  // ---- top: 状態・拒否のバス購読（700ms ポーリングで空になるまでドレイン） ----
+  // ---- top: 拒否通知のバス購読（ポーリングでドレイン）＋鮮度劣化の描画更新 ----
   function pollBus() {
-    var i, m;
-    for (i = 0; i < 16; i++) {   // 1 回のポーリングで最大 16 件（暴走時の保険）
-      m = busSubscribe(TOPIC_STATE);
-      if (!m) break;
-      try {
-        var s = JSON.parse(m);
-        reg[typeof s.tag === 'string' ? s.tag : 'f'] = { active: !!s.active, vis: !!s.vis, t: Date.now() };
-      } catch (_) {}
-    }
-    for (i = 0; i < 16; i++) {
-      m = busSubscribe(TOPIC_DENY);
+    for (var i = 0; i < 16; i++) {   // 1 回のポーリングで最大 16 件（暴走時の保険）
+      var m = busSubscribe(TOPIC_DENY);
       if (!m) break;
       denyBlink(); emitLog('deny ' + m);
     }
     renderPill();
   }
 
-  // ---- top: postMessage フォールバックの受信（バス不在環境用）と HUD ログ中継 ----
+  // ---- top: 状態報告（postMessage 上り）の受信と HUD ログ中継 ----
   if (isTop) {
     try {
       window.addEventListener('message', function (e) {
         var m = e && e.data;
         if (!m) return;
-        if (m.k === MSG_STATE) { reg[typeof m.tag === 'string' ? m.tag : 'f'] = { active: !!m.active, vis: !!m.vis, t: Date.now() }; renderPill(); }
+        if (m.k === MSG_STATE) {
+          // 可視判定は top 側の実表示判定を正とし、特定不能時のみ自己申告 vis を使う
+          var sv = senderVisible(e.source);
+          reg[typeof m.tag === 'string' ? m.tag : 'f'] =
+            { active: !!m.active, vis: (sv === null ? !!m.vis : sv), t: Date.now() };
+          renderPill();
+        }
         else if (m.k === MSG_DENY) { denyBlink(); emitLog('deny ' + (m.reason || '')); }
         else if (m.k === MSG_HUD && typeof m.log === 'string') pushShared(m.log);
       }, false);

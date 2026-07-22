@@ -90,11 +90,16 @@ Remote Control (RC) が有効なセッションでは、claude-code webview の 
       1 件返して消費（無ければ空文字、30 秒失効、トピック別 FIFO・上限 32 件）
     - rc-indicator は topic `rc-indicator/toggle` の一利用者。chat フレームが毎 tick（700ms）、
       **可視のときだけ**購読し、取れたらフレーム内完結の実証済みコードで送信。
-  - v0.10 で**上り（状態報告・拒否通知）もバスに統一**し、フレーム間通信のフレームワークとした:
-    - chat フレーム → `rc-indicator/state`（`{tag,active,vis}` JSON）/ `rc-indicator/deny`（理由）へ発行
-    - top は 700ms ポーリングで空になるまでドレイン（1 回最大 16 件）→ レジストリ更新 → ピル描画
-    - バス不在環境（ブリッジの無いブラウザ等）のみ従来の postMessage 上りへフォールバック。
-      diag の HUD ログ中継だけは focus-hud 系の既存作法（postMessage → 共有バッファ）を維持。
+  - v0.10 で上り（状態報告・拒否通知）もバスに統一したが、**v0.12 で状態報告は postMessage に戻した**。
+    理由: バスでは送信元の素性（`e.source`）が失われる。フレームの自己申告 vis
+    （`getClientRects`）は退避 webview（visibility 隠し・画面外移動）で「見えている」と誤答し、
+    **裏セッションの RC 有効がピルへ漏れる実害**が出た（v0.11 実測）。top は `e.source` から
+    送信元の最上位 iframe を特定し、top の DOM 上でその iframe の実表示状態（サイズ・
+    display/visibility/opacity・画面内）を判定して記録する（特定不能時のみ自己申告へフォールバック）。
+  - v0.12 の下りは**フレーム別トピック** `rc-indicator/toggle/<TAG>`。top が「表示中」と判定した
+    フレームだけに発行するため、consume-once のバスでも裏フレームが依頼を横取りできない。
+    拒否通知は `rc-indicator/deny`（top がポーリング購読）。diag の HUD ログ中継は
+    focus-hud 系の既存作法（postMessage → 共有バッファ）を維持。
     - ブリッジはスクリーンごとに別インスタンスのため他スクリーンへ漏れない。
       旧ホップ中継も無害なので併走（届く環境ではデバウンスが二重実行を潰す）。
 - chat フレーム側の実行コード（ガード・送信）は v0.5 実証済みのものを不変で使用。
