@@ -1,8 +1,8 @@
 // ==CCStudioPlugin==
 // @name        rc-indicator
-// @version     0.12.0
-// @description Hide the persistent "Remote Control is active" banner (RC stays on), and show a compact "R" pill above the ⋮ button instead; long-press the pill (fill gauge completes) to toggle RC manually.
-// @description:ja 常時表示の「Remote Control is active」バナーを非表示にし（RC は維持）、代わりに ⋮ ボタン直上の「R」ピルで状態表示。ピルの長押し（ゲージが満ちたら発火）で手動オン/オフ。
+// @version     0.12.1
+// @description Hide the persistent "Remote Control is active" banner (RC stays on), and show a compact "R" pill above the ⋮ button instead; tap the pill to toggle RC manually (tap is provisional while stabilizing; will return to long-press).
+// @description:ja 常時表示の「Remote Control is active」バナーを非表示にし（RC は維持）、代わりに ⋮ ボタン直上の「R」ピルで状態表示。ピルのタップで手動オン/オフ（安定確認までの暫定。確認後に長押しへ戻す）。
 // @run-at      document-start
 // @all-frames  true
 // @setting     hideBanner boolean true RCバナーを隠す
@@ -70,7 +70,10 @@
   var HB_TICKS = 3;            // 状態ハートビートの送信間隔（tick 数 ≒ 1.2s）
   var STALE_MS = 4000;         // top 側: 報告途絶でピルを隠すまで
   var HOLD_MS = 600;           // 長押し発火時間（フィルが満ちるまで）
-  var DEBOUNCE_MS = 3000;      // トグル連続送信の抑止
+  // 誤ダブルタップ対策のみ。3000ms 時代は多重配達対策も兼ねていたが、フレーム別トピックの
+  // consume-once 配達（v0.12.0）で二重配達は構造的に消えたため、「すぐ切り替え直す」操作を
+  // 弾かない長さへ短縮（3 秒デバウンスが できたりできなかったり の原因だった・実測）。
+  var DEBOUNCE_MS = 1000;
   var SUBMIT_DELAY_MS = 300;   // 文字挿入〜送信までの待ち
 
   var isTop; try { isTop = (window === window.top); } catch (_) { isTop = false; }
@@ -423,35 +426,30 @@
     emitLog('fire bus=' + (ok ? 1 : 0) + ' target=' + target);
   }
 
-  // ---- top: 長押し判定（押下中フィルが HOLD_MS かけて満ちる＝離せばキャンセル/満ちれば発火）。
-  //   タップ配達は v0.10 で実証済み。誤爆防止のポインターキャプチャは維持し、
-  //   pointerleave ではキャンセルしない（幅 30px では指の揺れで leave が出る＝0.7.0 の実害）。 ----
-  var holdTimer = null, pressAt = 0;
+  // ---- top: タップ発火（安定確認までの暫定。確認後に HOLD_MS の長押し＝フィルゲージ完走へ戻す）。
+  //   誤爆防止のポインターキャプチャは維持し、pointerleave ではキャンセルしない
+  //   （幅 30px では指の揺れで leave が出る＝0.7.0 の実害）。 ----
+  var pressed = false, pressAt = 0;
   function resetFill() { if (fill) { try { fill.style.transition = 'none'; fill.style.height = '0'; } catch (_) {} } }
   function pressStart(e) {
     try { e.preventDefault(); } catch (_) {}
-    if (!holdOn() || holdTimer) return;
+    if (!holdOn()) return;
     // 指の揺れで接触点がピル外へ出ても pointerup までイベントをピルに束縛する（誤キャンセル防止）
     try { if (pill && e.pointerId !== undefined) pill.setPointerCapture(e.pointerId); } catch (_) {}
-    pressAt = Date.now();
+    pressed = true; pressAt = Date.now();
     emitLog('press down');
-    if (!reduced && fill) { try { fill.style.transition = 'height ' + HOLD_MS + 'ms linear'; fill.style.height = '100%'; } catch (_) {} }
-    holdTimer = setTimeout(function () {
-      holdTimer = null; resetFill();
-      emitLog('hold fire');
-      fireToggle();
-    }, HOLD_MS);
+    if (!reduced && fill) { try { fill.style.transition = 'height 120ms linear'; fill.style.height = '100%'; } catch (_) {} }
   }
   function pressEnd(e) {
     try { e.preventDefault(); } catch (_) {}
-    pressCancel('up');
+    var fire = pressed; pressed = false; resetFill();
+    if (!fire || !holdOn()) return;
+    emitLog('tap fire dt=' + (Date.now() - pressAt));
+    fireToggle();
   }
   function pressCancel(why) {
     var w = (why && why.type) ? why.type : (typeof why === 'string' ? why : 'cancel');
-    if (holdTimer) {
-      clearTimeout(holdTimer); holdTimer = null;
-      emitLog('press cancel ' + w + ' dt=' + (Date.now() - pressAt));
-    }
+    if (pressed) { pressed = false; emitLog('press cancel ' + w + ' dt=' + (Date.now() - pressAt)); }
     resetFill();
   }
 
