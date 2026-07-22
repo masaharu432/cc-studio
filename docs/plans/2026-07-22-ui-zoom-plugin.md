@@ -2,6 +2,10 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **⚠ v0.2 で方式変更済み**: 本プランの埋め込みコード（v0.1.0）の「currentCSSZoom 実測」方式は
+> 実機で不成立と判明（currentCSSZoom はドキュメント境界を越えない）。現行方式は spec v0.2
+> （top→葉の postMessage 倍率配布）を正とし、本プランのコードは再実行しないこと。
+
 **Goal:** workbench の外枠 UI（アクティビティバー等）を CSS zoom で縮小し、チャット等のコンテンツフレームは等倍に保つプラグイン `ui-zoom` を追加する。
 
 **Architecture:** `@all-frames true × document-start` の単一 JS。トップフレームは `documentElement.style.zoom = 0.75` を適用、非トップの葉フレーム（自文書に iframe を持たない）は `currentCSSZoom` で継承倍率を実測して逆倍率で等倍へ戻す。中間ラッパーフレームは何もしない。詳細は spec 参照。
