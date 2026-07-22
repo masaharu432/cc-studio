@@ -1,6 +1,6 @@
 // ==CCStudioPlugin==
 // @name        rc-indicator
-// @version     0.12.1
+// @version     0.12.2
 // @description Hide the persistent "Remote Control is active" banner (RC stays on), and show a compact "R" pill above the ⋮ button instead; tap the pill to toggle RC manually (tap is provisional while stabilizing; will return to long-press).
 // @description:ja 常時表示の「Remote Control is active」バナーを非表示にし（RC は維持）、代わりに ⋮ ボタン直上の「R」ピルで状態表示。ピルのタップで手動オン/オフ（安定確認までの暫定。確認後に長押しへ戻す）。
 // @run-at      document-start
@@ -138,12 +138,28 @@
   //   - テキスト長 ≤300: 実バナーは 1 行(~80字)。会話履歴に残る RC システム転記（data-testid を
   //     持たず transcript 除外をすり抜ける）を巻き込んだ巨大容器は数千字になるので排除。
   //   - button 内包必須: 実バナーは × ボタンを持つ。転記はリンクだけでボタンが無い。
+  // 「composer を含まないスクロール領域」の中に居る要素はトランスクリプト（会話の転記）である。
+  // 転記メッセージは必ずメッセージ一覧のスクロール容器内に描画され、本物のバナーは composer と
+  // 同じ入力エリア側（この容器の外）に居る、という DOM 構造上の不変条件で判別する。
+  // テキスト長・li 除外などの内容ヒューリスティック（v0.11 系）は、短い転記＋行内ボタンの
+  // 組み合わせをすり抜けられた実測があるため、構造判定を主防壁とする。
+  function inForeignScroller(el, composer) {
+    var n = el;
+    while (n && n !== document.body) {
+      try {
+        var cs = getComputedStyle(n);
+        if (/(auto|scroll|overlay)/.test(cs.overflowY || '') && !n.contains(composer)) return true;
+      } catch (_) {}
+      n = n.parentElement;
+    }
+    return false;
+  }
   function validBanner(cont, composer) {
     try {
       if (!cont || cont.contains(composer)) return false;
-      // リスト項目（会話のシステム転記の描画形）は本物のバナーではない。マーク済み要素の
-      // 再検証でもここで弾かれ、過去の誤認定は自動的に剥がれる。
+      // 転記の描画形（li）と、composer を含まないスクロール領域内（トランスクリプト）を拒否
       if (cont.closest && cont.closest('li,[role="listitem"]')) return false;
+      if (inForeignScroller(cont, composer)) return false;
       var txt = cont.textContent || '';
       if (txt.indexOf(BANNER_TEXT) < 0) return false;
       if (txt.length > 300) return false;
@@ -365,23 +381,26 @@
     try { document.body.appendChild(pill); } catch (_) { pill = null; }
     return pill;
   }
+  var lastRegDump = '';
   function renderPill() {
     if (!isTop) return;
     var p = ensurePill();
     if (!p) return;
-    // フレーム別レジストリを集約。可視フレームの報告を優先し、いま画面に出ているセッションの
-    // RC 状態を表示する（可視の報告が無いときだけ全報告にフォールバック）。
-    var now = Date.now(), any = false, active = false, anyVis = false, visActive = false;
+    // ピルの色は「top が実表示ありと判定したフレーム」の報告**だけ**から決める。
+    // 隠れたフレームへのフォールバックはしない（隠れた古いフレームの active が漏れて
+    // 表示中セッションの状態と食い違う＝v0.12.1 までの実害）。可視の報告が無ければ非表示。
+    var now = Date.now(), anyVis = false, visActive = false, dump = [];
     for (var k in reg) {
       var r = reg[k];
       if (now - r.t >= STALE_MS) { delete reg[k]; continue; }
-      any = true; if (r.active) active = true;
+      dump.push(k.slice(-8) + ':a' + (r.active ? 1 : 0) + 'v' + (r.vis ? 1 : 0));
       if (r.vis) { anyVis = true; if (r.active) visActive = true; }
     }
-    if (!indOn() || !any) { p.style.display = 'none'; return; }   // 非チャット画面・報告途絶は非表示
+    var d = 'reg ' + (dump.join('|') || 'empty');
+    if (d !== lastRegDump) { lastRegDump = d; emitLog(d); }
+    if (!indOn() || !anyVis) { p.style.display = 'none'; return; }   // 可視 chat フレーム無し＝非表示
     p.style.display = 'flex';
-    var on = anyVis ? visActive : active;
-    if (on) p.classList.add('cc-ri-on'); else p.classList.remove('cc-ri-on');
+    if (visActive) p.classList.add('cc-ri-on'); else p.classList.remove('cc-ri-on');
   }
   function denyBlink() {
     if (!pill) return;
