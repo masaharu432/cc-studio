@@ -1,8 +1,8 @@
 // ==CCStudioPlugin==
 // @name        rc-indicator
-// @version     0.10.0
-// @description Hide the persistent "Remote Control is active" banner (RC stays on), and show a compact "R" pill above the ⋮ button instead; tap the pill to toggle RC manually (tap is provisional while verifying delivery; will return to long-press).
-// @description:ja 常時表示の「Remote Control is active」バナーを非表示にし（RC は維持）、代わりに ⋮ ボタン直上の「R」ピルで状態表示。ピルのタップで手動オン/オフ（配達検証のための暫定。確認後に長押しへ戻す）。
+// @version     0.11.0
+// @description Hide the persistent "Remote Control is active" banner (RC stays on), and show a compact "R" pill above the ⋮ button instead; long-press the pill (fill gauge completes) to toggle RC manually.
+// @description:ja 常時表示の「Remote Control is active」バナーを非表示にし（RC は維持）、代わりに ⋮ ボタン直上の「R」ピルで状態表示。ピルの長押し（ゲージが満ちたら発火）で手動オン/オフ。
 // @run-at      document-start
 // @all-frames  true
 // @setting     hideBanner boolean true RCバナーを隠す
@@ -370,32 +370,38 @@
     try { pill.classList.remove('cc-ri-deny'); void pill.offsetWidth; pill.classList.add('cc-ri-deny'); } catch (_) {}
   }
 
-  // ---- top: タップ発火（v0.7.2 暫定。配達経路＝ホップ中継の検証を優先し、押下→離すで即発火。
-  //   検証が取れたら HOLD_MS の長押し（フィルゲージ完走で発火）へ戻す） ----
-  var pressed = false, pressAt = 0;
+  // ---- top: 長押し判定（押下中フィルが HOLD_MS かけて満ちる＝離せばキャンセル/満ちれば発火）。
+  //   タップ配達は v0.10 で実証済み。誤爆防止のポインターキャプチャは維持し、
+  //   pointerleave ではキャンセルしない（幅 30px では指の揺れで leave が出る＝0.7.0 の実害）。 ----
+  var holdTimer = null, pressAt = 0;
   function resetFill() { if (fill) { try { fill.style.transition = 'none'; fill.style.height = '0'; } catch (_) {} } }
   function pressStart(e) {
     try { e.preventDefault(); } catch (_) {}
-    if (!holdOn()) return;
+    if (!holdOn() || holdTimer) return;
     // 指の揺れで接触点がピル外へ出ても pointerup までイベントをピルに束縛する（誤キャンセル防止）
     try { if (pill && e.pointerId !== undefined) pill.setPointerCapture(e.pointerId); } catch (_) {}
-    pressed = true; pressAt = Date.now();
+    pressAt = Date.now();
     emitLog('press down');
-    if (!reduced && fill) { try { fill.style.transition = 'height 120ms linear'; fill.style.height = '100%'; } catch (_) {} }
+    if (!reduced && fill) { try { fill.style.transition = 'height ' + HOLD_MS + 'ms linear'; fill.style.height = '100%'; } catch (_) {} }
+    holdTimer = setTimeout(function () {
+      holdTimer = null; resetFill();
+      emitLog('hold fire');
+      // 主経路: 汎用バスへ発行（可視 chat フレームがポーリング購読で ≤400ms 以内に受け取る）
+      var bridged = busPublish(TOPIC_TOGGLE, '1');
+      emitLog('fire bus=' + (bridged ? 1 : 0));
+      relayToChildren({ k: MSG_TOGGLE });   // 旧ホップ中継も併走（届く環境ではデバウンスが二重実行を潰す）
+    }, HOLD_MS);
   }
   function pressEnd(e) {
     try { e.preventDefault(); } catch (_) {}
-    var fire = pressed; pressed = false; resetFill();
-    if (!fire || !holdOn()) return;
-    emitLog('tap fire dt=' + (Date.now() - pressAt));
-    // 主経路: 汎用バスへ発行（可視 chat フレームがポーリング購読で ≤700ms 以内に受け取る）
-    var bridged = busPublish(TOPIC_TOGGLE, '1');
-    emitLog('fire bus=' + (bridged ? 1 : 0));
-    relayToChildren({ k: MSG_TOGGLE });   // 旧ホップ中継も併走（届く環境ではデバウンスが二重実行を潰す）
+    pressCancel('up');
   }
   function pressCancel(why) {
     var w = (why && why.type) ? why.type : (typeof why === 'string' ? why : 'cancel');
-    if (pressed) { pressed = false; emitLog('press cancel ' + w + ' dt=' + (Date.now() - pressAt)); }
+    if (holdTimer) {
+      clearTimeout(holdTimer); holdTimer = null;
+      emitLog('press cancel ' + w + ' dt=' + (Date.now() - pressAt));
+    }
     resetFill();
   }
 
