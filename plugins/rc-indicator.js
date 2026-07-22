@@ -1,6 +1,6 @@
 // ==CCStudioPlugin==
 // @name        rc-indicator
-// @version     0.13.0
+// @version     0.13.1
 // @description Hide the persistent "Remote Control is active" banner (RC stays on), and show a round "R" button at the bottom-left of the chat panel instead; tap it to toggle RC manually.
 // @description:ja 常時表示の「Remote Control is active」バナーを非表示にし（RC は維持）、代わりにチャットパネル左下の丸い「R」ボタンで状態表示。タップで手動オン/オフ。
 // @run-at      document-start
@@ -186,20 +186,21 @@
   function ensureStyles() {
     if (document.getElementById('cc-ri-style')) return;
     var st = document.createElement('style'); st.id = 'cc-ri-style';
-    // 位置: チャットパネル左下・composer の少し上（左下×丸をユーザー選定）。
+    // 位置: チャットパネル左下・composer の少し上。形状は ⋮ ボタンと同じ左端貼り付きタブ型を
+    // さらに薄くしたもの（22×64・右側のみ角丸。ユーザー指定「三点ボタン形状でもっと薄く」）。
     // キーボード出現時はフレームごと縮むので bottom 基準で composer の上に追従する。
     st.textContent =
       '@keyframes ccRiDeny{0%,100%{opacity:1}50%{opacity:.25}}' +
-      '#cc-ri-pill{position:fixed;left:8px;bottom:120px;width:44px;height:44px;border:0;padding:0;' +
-      'border-radius:50%;z-index:2147483647;color:#9aa3b2;background:#3a4150;' +
+      '#cc-ri-pill{position:fixed;left:0;bottom:120px;width:22px;height:64px;border:0;padding:0;' +
+      'border-radius:0 11px 11px 0;z-index:2147483647;color:#9aa3b2;background:#3a4150;' +
       'display:none;align-items:center;justify-content:center;overflow:hidden;' +
-      'box-shadow:0 2px 8px rgba(0,0,0,.45);' +
+      'box-shadow:2px 0 10px rgba(0,0,0,.45);' +
       'user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;touch-action:none;cursor:pointer;}' +
       '#cc-ri-pill *{user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;}' +
-      '#cc-ri-pill.cc-ri-on{color:#fff;background:linear-gradient(180deg,#34C77B,#1e9a58);box-shadow:0 2px 10px rgba(52,199,123,.5);}' +
+      '#cc-ri-pill.cc-ri-on{color:#fff;background:linear-gradient(180deg,#34C77B,#1e9a58);box-shadow:2px 0 10px rgba(52,199,123,.5);}' +
       '#cc-ri-pill.cc-ri-deny{animation:ccRiDeny .18s 3;}' +
       '#cc-ri-fill{position:absolute;left:0;bottom:0;width:100%;height:0;background:rgba(255,255,255,.28);pointer-events:none;}' +
-      '#cc-ri-glyph{position:relative;width:16px;height:22px;pointer-events:none;}';
+      '#cc-ri-glyph{position:relative;width:13px;height:19px;pointer-events:none;}';
     try { (document.head || document.documentElement).appendChild(st); } catch (_) {}
   }
   function ensurePill() {
