@@ -1,35 +1,29 @@
 // ==CCStudioPlugin==
 // @name        rc-indicator
-// @version     0.12.2
-// @description Hide the persistent "Remote Control is active" banner (RC stays on), and show a compact "R" pill above the ⋮ button instead; tap the pill to toggle RC manually (tap is provisional while stabilizing; will return to long-press).
-// @description:ja 常時表示の「Remote Control is active」バナーを非表示にし（RC は維持）、代わりに ⋮ ボタン直上の「R」ピルで状態表示。ピルのタップで手動オン/オフ（安定確認までの暫定。確認後に長押しへ戻す）。
+// @version     0.13.0
+// @description Hide the persistent "Remote Control is active" banner (RC stays on), and show a round "R" button at the bottom-left of the chat panel instead; tap it to toggle RC manually.
+// @description:ja 常時表示の「Remote Control is active」バナーを非表示にし（RC は維持）、代わりにチャットパネル左下の丸い「R」ボタンで状態表示。タップで手動オン/オフ。
 // @run-at      document-start
 // @all-frames  true
 // @setting     hideBanner boolean true RCバナーを隠す
 // @setting:ja  hideBanner RCバナーを隠す（RC接続は維持）
-// @setting     indicator boolean true 「R」ピルでRC状態を表示
-// @setting:ja  indicator 「R」ピルでRC状態を表示
-// @setting     holdToggle boolean true ピルの長押しでRCを手動オン/オフ
-// @setting:ja  holdToggle ピルの長押しでRCを手動オン/オフ
+// @setting     indicator boolean true 「R」ボタンでRC状態を表示
+// @setting:ja  indicator 「R」ボタンでRC状態を表示
+// @setting     holdToggle boolean true 「R」ボタンでRCを手動オン/オフ
+// @setting:ja  holdToggle 「R」ボタンでRCを手動オン/オフ
 // @setting     diag boolean false 診断ログを focus-hud に出す
 // @setting:ja  diag 診断ログを focus-hud に出す
 // ==/CCStudioPlugin==
 // rc-indicator.js — RC バナーを CSS で非表示（DOM は残る＝RC 接続に無影響）にし、
-// 「バナーが DOM に存在するか」を RC 状態の検知器として流用して ⋮ ボタン直上の「R」ピルに表示する。
-// ピルの長押し（600ms・フィルが満ちたら発火、途中で離すとキャンセル）で /remote-control を送信し
-// 手動トグル。× ボタンには一切触れない（クリック＝RC 切断）。
+// 「バナーが DOM に存在するか」を RC 状態の検知器として流用して「R」ボタンに表示する。
+// タップで /remote-control を送信し手動トグル。× ボタンには一切触れない（クリック＝RC 切断）。
 //
-// v0.12 通信構成: 経路ごとに得意な機構を使い分ける。
-//   上り（状態報告）: postMessage。送信元の素性 e.source が取れるのが本質で、top は e.source から
-//     送信元の最上位 iframe を特定し、**その iframe の実表示状態（サイズ・visibility・画面内）を
-//     top 側で判定**してレジストリに記録する。フレームの自己申告 vis は退避 webview
-//     （visibility 隠し・画面外移動）で「見えている」と誤答するため、フォールバックに格下げ
-//     （v0.11 で裏セッションの有効状態がピルへ漏れた実害の対策）。
-//   下り（トグル依頼）: 汎用バス（CCStudio.pluginPublish / pluginSubscribe）。この WebView 構成では
-//     top→iframe の postMessage が全方式で届かない実測（v0.3〜0.7.2）があるため。宛先は
-//     フレーム別トピック "rc-indicator/toggle/<TAG>" とし、top が表示中と判定したフレームだけに
-//     発行する（consume-once のバスでも裏フレームが横取りできない）。
-//   拒否通知: バス topic "rc-indicator/deny"（top がポーリング購読）。
+// v0.13: フレーム内完結へ回帰（確定）。検知・ボタン描画・タップ・送信のすべてが chat フレーム内で
+// 完結する。v0.7〜0.12 で試した「ピルを top に描き、状態やトグル依頼をフレーム間で運ぶ」構成は、
+// 経路自体は動いても可視判定・状態同期の信頼性が確保できず断念（詳細は設計文書 §4 の変遷）。
+// フレーム内完結ならフレームが隠れればボタンも消えるため、「表示中セッションの状態だけが見える」を
+// 構造的に満たし、通信も同期も不要になる。ボタンはチャットパネル左下（composer 直上）の
+// 44×44 丸ボタン（モック 3 案からユーザー選定: 左下×丸）。
 // 設計: docs/specs/2026-07-21-rc-indicator-plugin-design.md
 (function () {
   'use strict';
@@ -44,36 +38,9 @@
   var STOP_ICON_SEL = 'button[class*="sendButton"] [class*="stopIcon"]';   // 在=生成中（state-observer と同一判定）
   var TRANSCRIPT_SEL = '[data-testid*="message"]';   // 会話本文（誤ヒット除外の第一段）
   var MARK = 'data-cc-ri-banner';
-  var MSG_STATE = 'cc-ri-state';
-  var MSG_TOGGLE = 'cc-ri-toggle';
-  var MSG_DENY = 'cc-ri-deny';
   var MSG_HUD = 'cc-ri-hud';
-  // 汎用バス（CCStudio.pluginPublish/pluginSubscribe）のトピック。下り（トグル依頼）は
-  // フレーム別トピック TOPIC_TOGGLE + '/' + TAG、拒否通知は TOPIC_DENY。
-  // 上り（状態報告）はバスではなく postMessage（e.source による送信元特定が必要なため）。
-  var TOPIC_TOGGLE = 'rc-indicator/toggle';
-  var TOPIC_DENY = 'rc-indicator/deny';
-  function busPublish(topic, payload) {
-    try {
-      if (window.CCStudio && window.CCStudio.pluginPublish) { window.CCStudio.pluginPublish(topic, payload); return true; }
-    } catch (_) {}
-    return false;
-  }
-  function busSubscribe(topic) {
-    try {
-      if (window.CCStudio && window.CCStudio.pluginSubscribe) return window.CCStudio.pluginSubscribe(topic) || '';
-    } catch (_) {}
-    return '';
-  }
-  var POLL_MS = 400;           // フレーム側 tick（検知・報告・トグル購読）。反映のチラつき抑制で短め
-  var TOP_POLL_MS = 250;       // top 側: バス購読＋ピル描画の周期
-  var HB_TICKS = 3;            // 状態ハートビートの送信間隔（tick 数 ≒ 1.2s）
-  var STALE_MS = 4000;         // top 側: 報告途絶でピルを隠すまで
-  var HOLD_MS = 600;           // 長押し発火時間（フィルが満ちるまで）
-  // 誤ダブルタップ対策のみ。3000ms 時代は多重配達対策も兼ねていたが、フレーム別トピックの
-  // consume-once 配達（v0.12.0）で二重配達は構造的に消えたため、「すぐ切り替え直す」操作を
-  // 弾かない長さへ短縮（3 秒デバウンスが できたりできなかったり の原因だった・実測）。
-  var DEBOUNCE_MS = 1000;
+  var POLL_MS = 400;           // tick（検知・描画）。反映のチラつき抑制で短め
+  var DEBOUNCE_MS = 1000;      // 誤ダブルタップ対策（フレーム内完結なので多重配達は存在しない）
   var SUBMIT_DELAY_MS = 300;   // 文字挿入〜送信までの待ち
 
   var isTop; try { isTop = (window === window.top); } catch (_) { isTop = false; }
@@ -105,6 +72,15 @@
     if (isTop) { pushShared(line); return; }
     try { window.top.postMessage({ k: MSG_HUD, log: line }, '*'); } catch (_) {}
   }
+  // top の役割は HUD ログ中継のみ
+  if (isTop) {
+    try {
+      window.addEventListener('message', function (e) {
+        var m = e && e.data;
+        if (m && m.k === MSG_HUD && typeof m.log === 'string') pushShared(m.log);
+      }, false);
+    } catch (_) {}
+  }
 
   // ---- chat フレーム判定 ----
   function findComposer() {
@@ -119,30 +95,13 @@
   function chatFrame() {
     try { return !!document.querySelector(SEND_BTN_SEL); } catch (_) { return false; }
   }
-  // このフレームが画面に見えているか（裏タブ/退避 webview は getClientRects が空になる）
-  function frameVisible(composer) {
-    try { return composer.getClientRects().length > 0; } catch (_) { return true; }
-  }
-  function frameTag() {
-    try {
-      if (isTop) return 'top';
-      var p = (location && location.pathname) || '';
-      return (decodeURIComponent(p.split('/').filter(Boolean).pop() || (location && location.host) || 'sub')).slice(0, 12);
-    } catch (_) { return 'xo'; }
-  }
-  var TAG = frameTag() + '~' + Math.random().toString(36).slice(2, 6);   // 同一パスのフレーム衝突も避ける
 
   // ---- バナー検知＝RC 状態検知 ----
-  // バナー容器の認定条件（設計 §5）:
-  //   - composer を巻き込まない / BANNER_TEXT を含む
-  //   - テキスト長 ≤300: 実バナーは 1 行(~80字)。会話履歴に残る RC システム転記（data-testid を
-  //     持たず transcript 除外をすり抜ける）を巻き込んだ巨大容器は数千字になるので排除。
-  //   - button 内包必須: 実バナーは × ボタンを持つ。転記はリンクだけでボタンが無い。
   // 「composer を含まないスクロール領域」の中に居る要素はトランスクリプト（会話の転記）である。
   // 転記メッセージは必ずメッセージ一覧のスクロール容器内に描画され、本物のバナーは composer と
   // 同じ入力エリア側（この容器の外）に居る、という DOM 構造上の不変条件で判別する。
-  // テキスト長・li 除外などの内容ヒューリスティック（v0.11 系）は、短い転記＋行内ボタンの
-  // 組み合わせをすり抜けられた実測があるため、構造判定を主防壁とする。
+  // テキスト長・li 除外などの内容ヒューリスティックは、短い転記＋行内ボタンの組み合わせを
+  // すり抜けられた実測があるため、構造判定を主防壁とする。
   function inForeignScroller(el, composer) {
     var n = el;
     while (n && n !== document.body) {
@@ -157,7 +116,6 @@
   function validBanner(cont, composer) {
     try {
       if (!cont || cont.contains(composer)) return false;
-      // 転記の描画形（li）と、composer を含まないスクロール領域内（トランスクリプト）を拒否
       if (cont.closest && cont.closest('li,[role="listitem"]')) return false;
       if (inForeignScroller(cont, composer)) return false;
       var txt = cont.textContent || '';
@@ -192,13 +150,8 @@
     while ((node = walker.nextNode())) {
       var el = node.parentElement;
       if (!el) continue;
-      // 会話のシステム転記は ●付き箇条書き（li / listitem）で描画される。本物のバナーはリスト項目
-      // ではないため、リスト内の一致は誤ヒットとして走査段階で捨てる（会話が空に近いセッションでは
-      // 全文が 300 字未満になり、後段の長さ防壁だけでは突破される＝0.11.0 の実害）。
       try { if (el.closest && el.closest('li,[role="listitem"]')) continue; } catch (_) {}
-      // 祖先へは「テキスト量がバナー1行相当（≤300字）に収まる範囲」までしかタイトに登らない。
-      // かつて「composer を含まない最上位」まで登っており、空セッションではトランスクリプト全域を
-      // 容器として掴んでしまった。
+      // 祖先へは「テキスト量がバナー1行相当（≤300字）に収まる範囲」までしかタイトに登らない
       var cont = el;
       while (cont.parentElement && cont.parentElement !== document.body && !cont.parentElement.contains(composer)) {
         var pt = '';
@@ -225,53 +178,113 @@
     } catch (_) {}
   }
 
-  // ---- chat フレーム側: RC 状態を top へ報告（変化時 + ハートビート・フレーム ID / 可視フラグつき） ----
-  var tickCount = 0, lastActive = null, lastVis = null, frameLogged = false;
-  function report(active, vis) {
-    // 上りは postMessage 固定: top が e.source から送信元 iframe を特定し実表示状態を判定するため
-    // （バスでは送信元の素性が失われる）。自己申告 vis は top 側判定が使えない時のフォールバック。
-    try { window.top.postMessage({ k: MSG_STATE, tag: TAG, active: !!active, vis: !!vis }, '*'); } catch (_) {}
+  // ---- 「R」ボタン（chat フレーム内に描画。フレームごと隠れるので表示中セッションの状態だけが見える） ----
+  var pill = null, fill = null;
+  var reduced = false;
+  try { reduced = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches); } catch (_) {}
+
+  function ensureStyles() {
+    if (document.getElementById('cc-ri-style')) return;
+    var st = document.createElement('style'); st.id = 'cc-ri-style';
+    // 位置: チャットパネル左下・composer の少し上（左下×丸をユーザー選定）。
+    // キーボード出現時はフレームごと縮むので bottom 基準で composer の上に追従する。
+    st.textContent =
+      '@keyframes ccRiDeny{0%,100%{opacity:1}50%{opacity:.25}}' +
+      '#cc-ri-pill{position:fixed;left:8px;bottom:120px;width:44px;height:44px;border:0;padding:0;' +
+      'border-radius:50%;z-index:2147483647;color:#9aa3b2;background:#3a4150;' +
+      'display:none;align-items:center;justify-content:center;overflow:hidden;' +
+      'box-shadow:0 2px 8px rgba(0,0,0,.45);' +
+      'user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;touch-action:none;cursor:pointer;}' +
+      '#cc-ri-pill *{user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;}' +
+      '#cc-ri-pill.cc-ri-on{color:#fff;background:linear-gradient(180deg,#34C77B,#1e9a58);box-shadow:0 2px 10px rgba(52,199,123,.5);}' +
+      '#cc-ri-pill.cc-ri-deny{animation:ccRiDeny .18s 3;}' +
+      '#cc-ri-fill{position:absolute;left:0;bottom:0;width:100%;height:0;background:rgba(255,255,255,.28);pointer-events:none;}' +
+      '#cc-ri-glyph{position:relative;width:16px;height:22px;pointer-events:none;}';
+    try { (document.head || document.documentElement).appendChild(st); } catch (_) {}
   }
-  function tick() {
-    var composer = findComposer();
-    if (!composer || !chatFrame()) return;   // chat 本体フレーム以外は対象外
-    var banner = findBanner(composer);
-    applyHide(banner);
-    var active = !!banner;
-    var vis = frameVisible(composer);
-    if (!frameLogged) { frameLogged = true; emitLog('frame ' + TAG + ' vis=' + (vis ? 1 : 0)); }
-    tickCount++;
-    if (active !== lastActive || vis !== lastVis || tickCount % HB_TICKS === 0) {
-      lastActive = active; lastVis = vis; report(active, vis);
-    }
-    // トグル依頼の購読（ポーリング型・フレーム別トピック）。宛先選定は top の責務なので、
-    // ここでは自己 vis で弾かない（自己申告 vis は退避 webview で誤答するため信用しない）。
-    if (holdOn()) {
-      var m = busSubscribe(TOPIC_TOGGLE + '/' + TAG);
-      if (m) { emitLog('toggle sub (bus)'); handleToggle(); }
-    }
+  function ensurePill() {
+    if (pill && document.contains(pill)) return pill;
+    if (!document.body) return null;
+    ensureStyles();
+    pill = document.createElement('button');
+    pill.id = 'cc-ri-pill';
+    pill.type = 'button';
+    fill = document.createElement('div'); fill.id = 'cc-ri-fill';
+    // 「R」はテキストノードにすると Android の長押しで文字選択が発動するため SVG ストロークで描く
+    var SVGNS = 'http://www.w3.org/2000/svg';
+    var glyph = document.createElementNS(SVGNS, 'svg');
+    glyph.setAttribute('id', 'cc-ri-glyph');
+    glyph.setAttribute('viewBox', '5 4 14 20');
+    glyph.setAttribute('aria-hidden', 'true');
+    var path = document.createElementNS(SVGNS, 'path');
+    path.setAttribute('d', 'M8 22 V6 H13 a4 4 0 0 1 0 8 H8 M13 14 L17 22');
+    path.setAttribute('fill', 'none');
+    path.setAttribute('stroke', 'currentColor');
+    path.setAttribute('stroke-width', '2.4');
+    path.setAttribute('stroke-linecap', 'round');
+    path.setAttribute('stroke-linejoin', 'round');
+    glyph.appendChild(path);
+    pill.appendChild(fill); pill.appendChild(glyph);
+    pill.addEventListener('pointerdown', pressStart);
+    pill.addEventListener('pointerup', pressEnd);
+    pill.addEventListener('pointercancel', pressCancel);
+    // pointerleave では killしない: 幅 30px では長押し中の指の揺れで leave が出る（0.7.0 の実害）
+    // ネイティブの長押しジェスチャ（選択・コンテキストメニュー・スクロール）を根元から抑止
+    pill.addEventListener('touchstart', function (ev) { try { ev.preventDefault(); } catch (_) {} }, { passive: false });
+    pill.addEventListener('selectstart', function (ev) { try { ev.preventDefault(); } catch (_) {} });
+    pill.addEventListener('contextmenu', function (ev) { try { ev.preventDefault(); } catch (_) {} });
+    pill.addEventListener('click', function (ev) { try { ev.preventDefault(); } catch (_) {} });
+    try { document.body.appendChild(pill); } catch (_) { pill = null; }
+    return pill;
+  }
+  function renderPill(active) {
+    var p = ensurePill();
+    if (!p) return;
+    if (!indOn()) { p.style.display = 'none'; return; }
+    p.style.display = 'flex';
+    if (active) p.classList.add('cc-ri-on'); else p.classList.remove('cc-ri-on');
+  }
+  function denyBlink() {
+    if (!pill) return;
+    try { pill.classList.remove('cc-ri-deny'); void pill.offsetWidth; pill.classList.add('cc-ri-deny'); } catch (_) {}
   }
 
-  // ---- chat フレーム側: トグル実行（フレーム内完結・v0.5 実証済み） ----
-  var lastSendAt = 0;
-  function deny(reason) {
-    emitLog('toggle deny: ' + reason);
-    if (!busPublish(TOPIC_DENY, reason)) {
-      try { window.top.postMessage({ k: MSG_DENY, reason: reason }, '*'); } catch (_) {}
-    }
+  // ---- タップ → 同一フレーム内で直接トグル（配達なし・同期なし＝実測で唯一信頼できた構成） ----
+  var pressed = false, pressAt = 0;
+  function resetFill() { if (fill) { try { fill.style.transition = 'none'; fill.style.height = '0'; } catch (_) {} } }
+  function pressStart(e) {
+    try { e.preventDefault(); } catch (_) {}
+    if (!holdOn()) return;
+    try { if (pill && e.pointerId !== undefined) pill.setPointerCapture(e.pointerId); } catch (_) {}
+    pressed = true; pressAt = Date.now();
+    emitLog('press down');
+    if (!reduced && fill) { try { fill.style.transition = 'height 120ms linear'; fill.style.height = '100%'; } catch (_) {} }
   }
+  function pressEnd(e) {
+    try { e.preventDefault(); } catch (_) {}
+    var fire = pressed; pressed = false; resetFill();
+    if (!fire || !holdOn()) return;
+    emitLog('tap fire dt=' + (Date.now() - pressAt));
+    handleToggle();
+  }
+  function pressCancel(why) {
+    var w = (why && why.type) ? why.type : (typeof why === 'string' ? why : 'cancel');
+    if (pressed) { pressed = false; emitLog('press cancel ' + w + ' dt=' + (Date.now() - pressAt)); }
+    resetFill();
+  }
+
+  var lastSendAt = 0;
+  function deny(reason) { emitLog('toggle deny: ' + reason); denyBlink(); }
   function handleToggle() {
     var composer = findComposer();
-    if (!composer || !chatFrame()) return;                   // chat 本体フレーム以外は黙って無視
-    emitLog('toggle recv ' + TAG);                           // 宛先選定は top 側で済んでいる
+    if (!composer || !chatFrame()) return;
     var busy = false;
     try { busy = !!document.querySelector(STOP_ICON_SEL); } catch (_) {}
     if (busy) { deny('busy'); return; }                      // 生成中は送信ボタン＝停止ボタン。触らない
     var now = Date.now();
     if (now - lastSendAt < DEBOUNCE_MS) { deny('debounce'); return; }
     lastSendAt = now;
-    // 下書きは拒否せず退避 → コマンド送信後に復元する（0.11.1 までは deny('draft') で拒否していたが、
-    // 長いセッションは下書きが残りがちでトグル不能の温床になるため方針変更）。
+    // 下書きは拒否せず退避 → コマンド送信後に復元する
     sendCommand(composer, composerText(composer));
   }
   // 送信手順は rc-autoconnect の実測確定手順を踏襲（insertText → 送信ボタンのクリックのみ。
@@ -322,183 +335,15 @@
     emitLog('draft restored len=' + draft.length);
   }
 
-  // ---- top フレーム側: 「R」ピル（⋮ ボタン #ccstudio-menu-btn の直上・同じ列） ----
-  var pill = null, fill = null;
-  var reg = {};   // フレーム別の状態レジストリ: tag → { active, vis, t }
-  var reduced = false;
-  try { reduced = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches); } catch (_) {}
-
-  function ensureStyles() {
-    if (document.getElementById('cc-ri-style')) return;
-    var st = document.createElement('style'); st.id = 'cc-ri-style';
-    st.textContent =
-      '@keyframes ccRiDeny{0%,100%{opacity:1}50%{opacity:.25}}' +
-      '#cc-ri-pill{position:fixed;left:0;bottom:calc(22% + 92px);width:30px;height:68px;border:0;padding:0;' +
-      'border-radius:0 10px 10px 0;z-index:2147483647;color:#9aa3b2;background:#3a4150;' +
-      'display:none;align-items:center;justify-content:center;overflow:hidden;' +
-      'user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;touch-action:none;cursor:pointer;}' +
-      '#cc-ri-pill *{user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;}' +
-      '#cc-ri-pill.cc-ri-on{color:#fff;background:linear-gradient(180deg,#34C77B,#1e9a58);box-shadow:2px 0 10px rgba(52,199,123,.45);}' +
-      '#cc-ri-pill.cc-ri-deny{animation:ccRiDeny .18s 3;}' +
-      '#cc-ri-fill{position:absolute;left:0;bottom:0;width:100%;height:0;background:rgba(255,255,255,.28);pointer-events:none;}' +
-      '#cc-ri-glyph{position:relative;width:15px;height:22px;pointer-events:none;}';
-    try { (document.head || document.documentElement).appendChild(st); } catch (_) {}
-  }
-  function ensurePill() {
-    if (pill && document.contains(pill)) return pill;
-    if (!document.body) return null;
-    ensureStyles();
-    pill = document.createElement('button');
-    pill.id = 'cc-ri-pill';
-    pill.type = 'button';
-    fill = document.createElement('div'); fill.id = 'cc-ri-fill';
-    // 「R」はテキストノードにすると Android の長押しで文字選択が発動するため SVG ストロークで描く
-    var SVGNS = 'http://www.w3.org/2000/svg';
-    var glyph = document.createElementNS(SVGNS, 'svg');
-    glyph.setAttribute('id', 'cc-ri-glyph');
-    glyph.setAttribute('viewBox', '5 4 14 20');
-    glyph.setAttribute('aria-hidden', 'true');
-    var path = document.createElementNS(SVGNS, 'path');
-    path.setAttribute('d', 'M8 22 V6 H13 a4 4 0 0 1 0 8 H8 M13 14 L17 22');
-    path.setAttribute('fill', 'none');
-    path.setAttribute('stroke', 'currentColor');
-    path.setAttribute('stroke-width', '2.4');
-    path.setAttribute('stroke-linecap', 'round');
-    path.setAttribute('stroke-linejoin', 'round');
-    glyph.appendChild(path);
-    pill.appendChild(fill); pill.appendChild(glyph);
-    pill.addEventListener('pointerdown', pressStart);
-    pill.addEventListener('pointerup', pressEnd);
-    pill.addEventListener('pointercancel', pressCancel);
-    // pointerleave でのキャンセルはしない: 幅 30px のピルでは長押し中の指の揺れで接触点が
-    // 外に出て leave が発火し、600ms 完走できず hold fire に到達しない（0.7.0 の実害）。
-    // pressStart の setPointerCapture で指がずれてもイベントをピルに束縛する。
-    // ネイティブの長押しジェスチャ（選択・コンテキストメニュー・スクロール）を根元から抑止
-    pill.addEventListener('touchstart', function (ev) { try { ev.preventDefault(); } catch (_) {} }, { passive: false });
-    pill.addEventListener('selectstart', function (ev) { try { ev.preventDefault(); } catch (_) {} });
-    pill.addEventListener('contextmenu', function (ev) { try { ev.preventDefault(); } catch (_) {} });
-    pill.addEventListener('click', function (ev) { try { ev.preventDefault(); } catch (_) {} });   // 単タップは無反応
-    try { document.body.appendChild(pill); } catch (_) { pill = null; }
-    return pill;
-  }
-  var lastRegDump = '';
-  function renderPill() {
-    if (!isTop) return;
-    var p = ensurePill();
-    if (!p) return;
-    // ピルの色は「top が実表示ありと判定したフレーム」の報告**だけ**から決める。
-    // 隠れたフレームへのフォールバックはしない（隠れた古いフレームの active が漏れて
-    // 表示中セッションの状態と食い違う＝v0.12.1 までの実害）。可視の報告が無ければ非表示。
-    var now = Date.now(), anyVis = false, visActive = false, dump = [];
-    for (var k in reg) {
-      var r = reg[k];
-      if (now - r.t >= STALE_MS) { delete reg[k]; continue; }
-      dump.push(k.slice(-8) + ':a' + (r.active ? 1 : 0) + 'v' + (r.vis ? 1 : 0));
-      if (r.vis) { anyVis = true; if (r.active) visActive = true; }
-    }
-    var d = 'reg ' + (dump.join('|') || 'empty');
-    if (d !== lastRegDump) { lastRegDump = d; emitLog(d); }
-    if (!indOn() || !anyVis) { p.style.display = 'none'; return; }   // 可視 chat フレーム無し＝非表示
-    p.style.display = 'flex';
-    if (visActive) p.classList.add('cc-ri-on'); else p.classList.remove('cc-ri-on');
-  }
-  function denyBlink() {
-    if (!pill) return;
-    try { pill.classList.remove('cc-ri-deny'); void pill.offsetWidth; pill.classList.add('cc-ri-deny'); } catch (_) {}
-  }
-
-  // ---- top: 送信元フレームの実表示判定 ----
-  // e.source から親をたどって top 直下の枠を特定し、top の DOM 上でその iframe 要素の
-  // 実表示状態（サイズ・visibility・display・画面内）を判定する。フレーム自身の getClientRects
-  // 自己申告は、退避 webview（visibility 隠し・画面外移動）で「見えている」と誤答するため
-  // top 側判定を正とする。特定できなければ null（呼び元は自己申告へフォールバック）。
-  function senderVisible(src) {
-    try {
-      var w = src, hops = 0;
-      while (w && w.parent && w.parent !== window && hops++ < 10) w = w.parent;
-      if (!w) return null;
-      var frames = document.querySelectorAll('iframe');
-      for (var i = 0; i < frames.length; i++) {
-        var f = frames[i];
-        if (f.contentWindow !== w) continue;
-        var r = f.getBoundingClientRect();
-        var cs = getComputedStyle(f);
-        if (r.width < 3 || r.height < 3) return false;
-        if (cs.display === 'none' || cs.visibility === 'hidden' || parseFloat(cs.opacity || '1') === 0) return false;
-        if (r.right <= 0 || r.bottom <= 0 || r.left >= window.innerWidth || r.top >= window.innerHeight) return false;
-        return true;
-      }
-    } catch (_) {}
-    return null;
-  }
-
-  // ---- top: トグル発火。表示中と判定したフレームだけを宛先にフレーム別トピックへ発行 ----
-  function fireToggle() {
-    var now = Date.now(), target = null, bestT = 0;
-    for (var k in reg) {
-      var r = reg[k];
-      if (now - r.t >= STALE_MS || !r.vis) continue;
-      if (r.t > bestT) { bestT = r.t; target = k; }
-    }
-    if (!target) { emitLog('fire: no visible target'); denyBlink(); return; }
-    var ok = busPublish(TOPIC_TOGGLE + '/' + target, '1');
-    emitLog('fire bus=' + (ok ? 1 : 0) + ' target=' + target);
-  }
-
-  // ---- top: タップ発火（安定確認までの暫定。確認後に HOLD_MS の長押し＝フィルゲージ完走へ戻す）。
-  //   誤爆防止のポインターキャプチャは維持し、pointerleave ではキャンセルしない
-  //   （幅 30px では指の揺れで leave が出る＝0.7.0 の実害）。 ----
-  var pressed = false, pressAt = 0;
-  function resetFill() { if (fill) { try { fill.style.transition = 'none'; fill.style.height = '0'; } catch (_) {} } }
-  function pressStart(e) {
-    try { e.preventDefault(); } catch (_) {}
-    if (!holdOn()) return;
-    // 指の揺れで接触点がピル外へ出ても pointerup までイベントをピルに束縛する（誤キャンセル防止）
-    try { if (pill && e.pointerId !== undefined) pill.setPointerCapture(e.pointerId); } catch (_) {}
-    pressed = true; pressAt = Date.now();
-    emitLog('press down');
-    if (!reduced && fill) { try { fill.style.transition = 'height 120ms linear'; fill.style.height = '100%'; } catch (_) {} }
-  }
-  function pressEnd(e) {
-    try { e.preventDefault(); } catch (_) {}
-    var fire = pressed; pressed = false; resetFill();
-    if (!fire || !holdOn()) return;
-    emitLog('tap fire dt=' + (Date.now() - pressAt));
-    fireToggle();
-  }
-  function pressCancel(why) {
-    var w = (why && why.type) ? why.type : (typeof why === 'string' ? why : 'cancel');
-    if (pressed) { pressed = false; emitLog('press cancel ' + w + ' dt=' + (Date.now() - pressAt)); }
-    resetFill();
-  }
-
-  // ---- top: 拒否通知のバス購読（ポーリングでドレイン）＋鮮度劣化の描画更新 ----
-  function pollBus() {
-    for (var i = 0; i < 16; i++) {   // 1 回のポーリングで最大 16 件（暴走時の保険）
-      var m = busSubscribe(TOPIC_DENY);
-      if (!m) break;
-      denyBlink(); emitLog('deny ' + m);
-    }
-    renderPill();
-  }
-
-  // ---- top: 状態報告（postMessage 上り）の受信と HUD ログ中継 ----
-  if (isTop) {
-    try {
-      window.addEventListener('message', function (e) {
-        var m = e && e.data;
-        if (!m) return;
-        if (m.k === MSG_STATE) {
-          // 可視判定は top 側の実表示判定を正とし、特定不能時のみ自己申告 vis を使う
-          var sv = senderVisible(e.source);
-          reg[typeof m.tag === 'string' ? m.tag : 'f'] =
-            { active: !!m.active, vis: (sv === null ? !!m.vis : sv), t: Date.now() };
-          renderPill();
-        }
-        else if (m.k === MSG_DENY) { denyBlink(); emitLog('deny ' + (m.reason || '')); }
-        else if (m.k === MSG_HUD && typeof m.log === 'string') pushShared(m.log);
-      }, false);
-    } catch (_) {}
+  // ---- メインループ（chat フレームのみ実質動作） ----
+  var frameLogged = false;
+  function tick() {
+    var composer = findComposer();
+    if (!composer || !chatFrame()) return;
+    if (!frameLogged) { frameLogged = true; emitLog('chat frame armed'); }
+    var banner = findBanner(composer);
+    applyHide(banner);
+    renderPill(!!banner);
   }
 
   // ---- 設定のライブ反映 ----
@@ -506,8 +351,10 @@
     window.addEventListener('ccstudio:setting', function (e) {
       var d = e && e.detail;
       if (!d || d.plugin !== NAME) return;
-      if (d.key === 'hideBanner') { var c = findComposer(); if (c && chatFrame()) applyHide(findBanner(c)); }
-      if (isTop && d.key === 'indicator') renderPill();
+      var c = findComposer();
+      if (!c || !chatFrame()) return;
+      if (d.key === 'hideBanner') applyHide(findBanner(c));
+      if (d.key === 'indicator') renderPill(!!findBanner(c));
     });
   } catch (_) {}
 
@@ -522,7 +369,6 @@
     if (started) return; started = true;
     try { new MutationObserver(scheduleTick).observe(document.documentElement || document.body, { subtree: true, childList: true }); } catch (_) {}
     setInterval(tick, POLL_MS);
-    if (isTop) setInterval(pollBus, TOP_POLL_MS);   // 状態/拒否の購読＋報告途絶→非表示の劣化を同じ周期で
     tick();
   }
   if (document.readyState === 'loading') {
