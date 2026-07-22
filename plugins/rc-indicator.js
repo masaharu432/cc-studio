@@ -1,6 +1,6 @@
 // ==CCStudioPlugin==
 // @name        rc-indicator
-// @version     0.11.0
+// @version     0.11.1
 // @description Hide the persistent "Remote Control is active" banner (RC stays on), and show a compact "R" pill above the ⋮ button instead; long-press the pill (fill gauge completes) to toggle RC manually.
 // @description:ja 常時表示の「Remote Control is active」バナーを非表示にし（RC は維持）、代わりに ⋮ ボタン直上の「R」ピルで状態表示。ピルの長押し（ゲージが満ちたら発火）で手動オン/オフ。
 // @run-at      document-start
@@ -136,6 +136,9 @@
   function validBanner(cont, composer) {
     try {
       if (!cont || cont.contains(composer)) return false;
+      // リスト項目（会話のシステム転記の描画形）は本物のバナーではない。マーク済み要素の
+      // 再検証でもここで弾かれ、過去の誤認定は自動的に剥がれる。
+      if (cont.closest && cont.closest('li,[role="listitem"]')) return false;
       var txt = cont.textContent || '';
       if (txt.indexOf(BANNER_TEXT) < 0) return false;
       if (txt.length > 300) return false;
@@ -168,8 +171,20 @@
     while ((node = walker.nextNode())) {
       var el = node.parentElement;
       if (!el) continue;
+      // 会話のシステム転記は ●付き箇条書き（li / listitem）で描画される。本物のバナーはリスト項目
+      // ではないため、リスト内の一致は誤ヒットとして走査段階で捨てる（会話が空に近いセッションでは
+      // 全文が 300 字未満になり、後段の長さ防壁だけでは突破される＝0.11.0 の実害）。
+      try { if (el.closest && el.closest('li,[role="listitem"]')) continue; } catch (_) {}
+      // 祖先へは「テキスト量がバナー1行相当（≤300字）に収まる範囲」までしかタイトに登らない。
+      // かつて「composer を含まない最上位」まで登っており、空セッションではトランスクリプト全域を
+      // 容器として掴んでしまった。
       var cont = el;
-      while (cont.parentElement && cont.parentElement !== document.body && !cont.parentElement.contains(composer)) cont = cont.parentElement;
+      while (cont.parentElement && cont.parentElement !== document.body && !cont.parentElement.contains(composer)) {
+        var pt = '';
+        try { pt = cont.parentElement.textContent || ''; } catch (_) {}
+        if (pt.length > 300) break;
+        cont = cont.parentElement;
+      }
       if (!validBanner(cont, composer)) continue;
       try { cont.setAttribute(MARK, '1'); } catch (_) {}
       emitLog('banner found');
