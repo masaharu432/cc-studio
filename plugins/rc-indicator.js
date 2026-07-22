@@ -1,6 +1,6 @@
 // ==CCStudioPlugin==
 // @name        rc-indicator
-// @version     0.9.0
+// @version     0.10.0
 // @description Hide the persistent "Remote Control is active" banner (RC stays on), and show a compact "R" pill above the ⋮ button instead; tap the pill to toggle RC manually (tap is provisional while verifying delivery; will return to long-press).
 // @description:ja 常時表示の「Remote Control is active」バナーを非表示にし（RC は維持）、代わりに ⋮ ボタン直上の「R」ピルで状態表示。ピルのタップで手動オン/オフ（配達検証のための暫定。確認後に長押しへ戻す）。
 // @run-at      document-start
@@ -19,13 +19,15 @@
 // ピルの長押し（600ms・フィルが満ちたら発火、途中で離すとキャンセル）で /remote-control を送信し
 // 手動トグル。× ボタンには一切触れない（クリック＝RC 切断）。
 //
-// v0.9 配達経路: ピルは top（⋮ ボタンと同じ列）に描き、状態は chat フレーム→top の
-// postMessage（実証済み）で上げる。トグル依頼の下り配達は **汎用プラグイン・メッセージバス**
-// （CCStudio.pluginPublish / pluginSubscribe、topic="rc-indicator/toggle"）。この WebView 構成では
-// top→iframe 方向の postMessage が e.source 直送・深掘り列挙・ホップ中継のいずれでも届かない
-// 実測（v0.3〜0.7.2）があり、全フレームに注入されるブリッジ経由の Pull が唯一の確実な下り経路。
-// chat フレームは毎 tick（700ms）可視のときだけ take し、取れたらフレーム内完結の実証済み
-// コードで送信する。旧ホップ中継も無害なので併走させている（届く環境ではデバウンスが潰す）。
+// v0.10 通信構成: フレーム間のやり取りは上下とも **汎用プラグイン・メッセージバス**
+// （CCStudio.pluginPublish / pluginSubscribe）に統一。
+//   上り: chat フレームが topic "rc-indicator/state"（状態）/"rc-indicator/deny"（拒否）へ発行、
+//         top が 700ms ポーリングで購読（バス不在環境のみ postMessage フォールバック）。
+//   下り: top のピル操作を topic "rc-indicator/toggle" へ発行、可視 chat フレームが購読して
+//         フレーム内完結の実証済みコードで /remote-control を送信。
+// 下りに postMessage を使わない理由: この WebView 構成では top→iframe 方向が e.source 直送・
+// 深掘り列挙・ホップ中継のいずれでも届かない実測（v0.3〜0.7.2）。全フレームに注入される
+// ブリッジ経由の Pull が唯一の確実な経路。旧ホップ中継も無害なので併走させている。
 // 設計: docs/specs/2026-07-21-rc-indicator-plugin-design.md
 (function () {
   'use strict';
@@ -44,10 +46,27 @@
   var MSG_TOGGLE = 'cc-ri-toggle';
   var MSG_DENY = 'cc-ri-deny';
   var MSG_HUD = 'cc-ri-hud';
-  var TOPIC_TOGGLE = 'rc-indicator/toggle';   // 汎用バス（CCStudio.pluginPublish/pluginSubscribe）のトピック
-  var POLL_MS = 700;
-  var HB_TICKS = 3;            // 状態ハートビートの送信間隔（tick 数 ≒ 2.1s）
-  var STALE_MS = 6000;         // top 側: 報告途絶でピルを隠すまで
+  // 汎用バス（CCStudio.pluginPublish/pluginSubscribe）のトピック。上り（状態・拒否）も下り（トグル）も
+  // 同じバスに統一し、フレーム間のプラグイン通信の標準機構とする（postMessage は上りフォールバックのみ）。
+  var TOPIC_TOGGLE = 'rc-indicator/toggle';
+  var TOPIC_STATE = 'rc-indicator/state';
+  var TOPIC_DENY = 'rc-indicator/deny';
+  function busPublish(topic, payload) {
+    try {
+      if (window.CCStudio && window.CCStudio.pluginPublish) { window.CCStudio.pluginPublish(topic, payload); return true; }
+    } catch (_) {}
+    return false;
+  }
+  function busSubscribe(topic) {
+    try {
+      if (window.CCStudio && window.CCStudio.pluginSubscribe) return window.CCStudio.pluginSubscribe(topic) || '';
+    } catch (_) {}
+    return '';
+  }
+  var POLL_MS = 400;           // フレーム側 tick（検知・報告・トグル購読）。反映のチラつき抑制で短め
+  var TOP_POLL_MS = 250;       // top 側: バス購読＋ピル描画の周期
+  var HB_TICKS = 3;            // 状態ハートビートの送信間隔（tick 数 ≒ 1.2s）
+  var STALE_MS = 4000;         // top 側: 報告途絶でピルを隠すまで
   var HOLD_MS = 600;           // 長押し発火時間（フィルが満ちるまで）
   var DEBOUNCE_MS = 3000;      // トグル連続送信の抑止
   var SUBMIT_DELAY_MS = 300;   // 文字挿入〜送信までの待ち
@@ -173,7 +192,9 @@
   // ---- chat フレーム側: RC 状態を top へ報告（変化時 + ハートビート・フレーム ID / 可視フラグつき） ----
   var tickCount = 0, lastActive = null, lastVis = null, frameLogged = false;
   function report(active, vis) {
-    try { window.top.postMessage({ k: MSG_STATE, tag: TAG, active: !!active, vis: !!vis }, '*'); } catch (_) {}
+    // 主経路: 汎用バス（top が 700ms でポーリング購読）。バス不在時のみ postMessage へフォールバック
+    var sent = busPublish(TOPIC_STATE, JSON.stringify({ tag: TAG, active: !!active, vis: !!vis }));
+    if (!sent) { try { window.top.postMessage({ k: MSG_STATE, tag: TAG, active: !!active, vis: !!vis }, '*'); } catch (_) {} }
   }
   function tick() {
     var composer = findComposer();
@@ -187,10 +208,9 @@
     if (active !== lastActive || vis !== lastVis || tickCount % HB_TICKS === 0) {
       lastActive = active; lastVis = vis; report(active, vis);
     }
-    // 汎用バスの購読（ポーリング型。可視 chat フレームだけが消費する）
+    // トグル依頼の購読（ポーリング型。可視 chat フレームだけが消費する）
     if (vis && holdOn()) {
-      var m = '';
-      try { m = (window.CCStudio && window.CCStudio.pluginSubscribe) ? window.CCStudio.pluginSubscribe(TOPIC_TOGGLE) : ''; } catch (_) {}
+      var m = busSubscribe(TOPIC_TOGGLE);
       if (m) { emitLog('toggle sub (bus)'); handleToggle(); }
     }
   }
@@ -199,7 +219,9 @@
   var lastSendAt = 0;
   function deny(reason) {
     emitLog('toggle deny: ' + reason);
-    try { window.top.postMessage({ k: MSG_DENY, reason: reason }, '*'); } catch (_) {}
+    if (!busPublish(TOPIC_DENY, reason)) {
+      try { window.top.postMessage({ k: MSG_DENY, reason: reason }, '*'); } catch (_) {}
+    }
   }
   function handleToggle() {
     var composer = findComposer();
@@ -367,8 +389,7 @@
     if (!fire || !holdOn()) return;
     emitLog('tap fire dt=' + (Date.now() - pressAt));
     // 主経路: 汎用バスへ発行（可視 chat フレームがポーリング購読で ≤700ms 以内に受け取る）
-    var bridged = false;
-    try { if (window.CCStudio && window.CCStudio.pluginPublish) { window.CCStudio.pluginPublish(TOPIC_TOGGLE, '1'); bridged = true; } } catch (_) {}
+    var bridged = busPublish(TOPIC_TOGGLE, '1');
     emitLog('fire bus=' + (bridged ? 1 : 0));
     relayToChildren({ k: MSG_TOGGLE });   // 旧ホップ中継も併走（届く環境ではデバウンスが二重実行を潰す）
   }
@@ -378,7 +399,26 @@
     resetFill();
   }
 
-  // ---- top: chat フレームからの報告・拒否・HUD ログの受信 ----
+  // ---- top: 状態・拒否のバス購読（700ms ポーリングで空になるまでドレイン） ----
+  function pollBus() {
+    var i, m;
+    for (i = 0; i < 16; i++) {   // 1 回のポーリングで最大 16 件（暴走時の保険）
+      m = busSubscribe(TOPIC_STATE);
+      if (!m) break;
+      try {
+        var s = JSON.parse(m);
+        reg[typeof s.tag === 'string' ? s.tag : 'f'] = { active: !!s.active, vis: !!s.vis, t: Date.now() };
+      } catch (_) {}
+    }
+    for (i = 0; i < 16; i++) {
+      m = busSubscribe(TOPIC_DENY);
+      if (!m) break;
+      denyBlink(); emitLog('deny ' + m);
+    }
+    renderPill();
+  }
+
+  // ---- top: postMessage フォールバックの受信（バス不在環境用）と HUD ログ中継 ----
   if (isTop) {
     try {
       window.addEventListener('message', function (e) {
@@ -412,7 +452,7 @@
     if (started) return; started = true;
     try { new MutationObserver(scheduleTick).observe(document.documentElement || document.body, { subtree: true, childList: true }); } catch (_) {}
     setInterval(tick, POLL_MS);
-    if (isTop) setInterval(renderPill, 2000);   // 報告途絶→非表示の劣化はポーリングで拾う
+    if (isTop) setInterval(pollBus, TOP_POLL_MS);   // 状態/拒否の購読＋報告途絶→非表示の劣化を同じ周期で
     tick();
   }
   if (document.readyState === 'loading') {
