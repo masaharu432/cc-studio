@@ -1,6 +1,6 @@
 // ==CCStudioPlugin==
 // @name        rc-indicator
-// @version     0.8.0
+// @version     0.9.0
 // @description Hide the persistent "Remote Control is active" banner (RC stays on), and show a compact "R" pill above the ⋮ button instead; tap the pill to toggle RC manually (tap is provisional while verifying delivery; will return to long-press).
 // @description:ja 常時表示の「Remote Control is active」バナーを非表示にし（RC は維持）、代わりに ⋮ ボタン直上の「R」ピルで状態表示。ピルのタップで手動オン/オフ（配達検証のための暫定。確認後に長押しへ戻す）。
 // @run-at      document-start
@@ -19,13 +19,13 @@
 // ピルの長押し（600ms・フィルが満ちたら発火、途中で離すとキャンセル）で /remote-control を送信し
 // 手動トグル。× ボタンには一切触れない（クリック＝RC 切断）。
 //
-// v0.8 配達経路: ピルは top（⋮ ボタンと同じ列）に描き、状態は chat フレーム→top の
-// postMessage（実証済み）で上げる。トグル依頼の下り配達は **ネイティブブリッジのメールボックス**
-// （CCStudio.rcToggleRequest / rcToggleTake）。この WebView 構成では top→iframe 方向の
-// postMessage が e.source 直送・深掘り列挙・ホップ中継のいずれでも届かない実測（v0.3〜0.7.2）が
-// あり、全フレームに注入されるブリッジ経由の Pull が唯一の確実な下り経路。chat フレームは毎 tick
-// （700ms）可視のときだけ take し、取れたらフレーム内完結の実証済みコードで送信する。
-// 旧ホップ中継も無害なので併走させている（届く環境ではデバウンスが二重実行を潰す）。
+// v0.9 配達経路: ピルは top（⋮ ボタンと同じ列）に描き、状態は chat フレーム→top の
+// postMessage（実証済み）で上げる。トグル依頼の下り配達は **汎用プラグイン・メッセージバス**
+// （CCStudio.pluginPublish / pluginSubscribe、topic="rc-indicator/toggle"）。この WebView 構成では
+// top→iframe 方向の postMessage が e.source 直送・深掘り列挙・ホップ中継のいずれでも届かない
+// 実測（v0.3〜0.7.2）があり、全フレームに注入されるブリッジ経由の Pull が唯一の確実な下り経路。
+// chat フレームは毎 tick（700ms）可視のときだけ take し、取れたらフレーム内完結の実証済み
+// コードで送信する。旧ホップ中継も無害なので併走させている（届く環境ではデバウンスが潰す）。
 // 設計: docs/specs/2026-07-21-rc-indicator-plugin-design.md
 (function () {
   'use strict';
@@ -44,6 +44,7 @@
   var MSG_TOGGLE = 'cc-ri-toggle';
   var MSG_DENY = 'cc-ri-deny';
   var MSG_HUD = 'cc-ri-hud';
+  var TOPIC_TOGGLE = 'rc-indicator/toggle';   // 汎用バス（CCStudio.pluginPublish/pluginSubscribe）のトピック
   var POLL_MS = 700;
   var HB_TICKS = 3;            // 状態ハートビートの送信間隔（tick 数 ≒ 2.1s）
   var STALE_MS = 6000;         // top 側: 報告途絶でピルを隠すまで
@@ -186,11 +187,11 @@
     if (active !== lastActive || vis !== lastVis || tickCount % HB_TICKS === 0) {
       lastActive = active; lastVis = vis; report(active, vis);
     }
-    // ネイティブメールボックスの取り出し（可視 chat フレームだけが消費する）
+    // 汎用バスの購読（ポーリング型。可視 chat フレームだけが消費する）
     if (vis && holdOn()) {
-      var take = false;
-      try { take = !!(window.CCStudio && window.CCStudio.rcToggleTake && window.CCStudio.rcToggleTake()); } catch (_) {}
-      if (take) { emitLog('toggle take (bridge)'); handleToggle(); }
+      var m = '';
+      try { m = (window.CCStudio && window.CCStudio.pluginSubscribe) ? window.CCStudio.pluginSubscribe(TOPIC_TOGGLE) : ''; } catch (_) {}
+      if (m) { emitLog('toggle sub (bus)'); handleToggle(); }
     }
   }
 
@@ -365,10 +366,10 @@
     var fire = pressed; pressed = false; resetFill();
     if (!fire || !holdOn()) return;
     emitLog('tap fire dt=' + (Date.now() - pressAt));
-    // 主経路: ネイティブメールボックスへ要求を記録（可視 chat フレームが ≤700ms で取り出す）
+    // 主経路: 汎用バスへ発行（可視 chat フレームがポーリング購読で ≤700ms 以内に受け取る）
     var bridged = false;
-    try { if (window.CCStudio && window.CCStudio.rcToggleRequest) { window.CCStudio.rcToggleRequest(); bridged = true; } } catch (_) {}
-    emitLog('fire bridge=' + (bridged ? 1 : 0));
+    try { if (window.CCStudio && window.CCStudio.pluginPublish) { window.CCStudio.pluginPublish(TOPIC_TOGGLE, '1'); bridged = true; } } catch (_) {}
+    emitLog('fire bus=' + (bridged ? 1 : 0));
     relayToChildren({ k: MSG_TOGGLE });   // 旧ホップ中継も併走（届く環境ではデバウンスが二重実行を潰す）
   }
   function pressCancel(why) {

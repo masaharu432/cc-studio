@@ -151,24 +151,33 @@ class CcBridge(
     @JavascriptInterface
     fun setSessionState(busy: Boolean, disconnected: Boolean) = onSessionState(busy, disconnected)
 
-    // ── RC トグル・メールボックス（rc-indicator プラグイン用） ──
-    // top フレームのピル操作を chat フレーム（クロスオリジン iframe）へ届けるための受け渡し。
-    // この WebView 構成では top→iframe 方向の postMessage（直送・ホップ中継とも）が届かない実測が
-    // あるため、全フレームに注入される本ブリッジを唯一の確実な下り経路として使う。
-    // ブリッジはスクリーンごとに別インスタンスなので、要求が他スクリーンへ漏れることはない。
-    @Volatile private var rcToggleAt = 0L
+    // ── プラグイン・メッセージバス（汎用 publish/subscribe） ──
+    // この WebView 構成では top→iframe（クロスオリジン）方向の postMessage が直送・ホップ中継とも
+    // 届かない実測があるため、全フレームに注入される本ブリッジを汎用メッセージバスとして開放する。
+    // 用途例: top に描いた操作 UI（rc-indicator の R ピル等）のイベントを chat フレームへ届ける。
+    // subscribe はポーリング型（呼ぶたびに次の未消費メッセージを 1 件返す・消費する）。
+    // トピック別 FIFO・30 秒で失効。ブリッジはスクリーンごとに別インスタンスなので、
+    // メッセージが他スクリーンへ漏れることはない。
+    private val pluginQueues =
+        java.util.concurrent.ConcurrentHashMap<String, java.util.concurrent.ConcurrentLinkedQueue<Pair<Long, String>>>()
 
-    /** RC 手動トグルの要求を記録する（rc-indicator の R ピルが top フレームから呼ぶ）。 */
+    /** topic 宛てにメッセージを発行する。payload は空文字以外（空は subscribe の「無し」と区別不能）。 */
     @JavascriptInterface
-    fun rcToggleRequest() { rcToggleAt = System.currentTimeMillis() }
+    fun pluginPublish(topic: String, payload: String) {
+        if (topic.isEmpty() || payload.isEmpty()) return
+        val q = pluginQueues.getOrPut(topic) { java.util.concurrent.ConcurrentLinkedQueue() }
+        q.add(System.currentTimeMillis() to payload)
+        while (q.size > 32) q.poll()   // 暴走プラグインでも溜め込まない
+    }
 
-    /** 未消費の RC トグル要求があれば消費して true（5 秒で失効）。chat フレームがポーリングで呼ぶ。 */
+    /** topic の次の未消費メッセージを受け取る（ポーリング購読・消費）。無ければ空文字。30 秒超の残留は捨てる。 */
     @JavascriptInterface
-    fun rcToggleTake(): Boolean {
-        val t = rcToggleAt
-        if (t == 0L || System.currentTimeMillis() - t > 5_000) return false
-        rcToggleAt = 0L
-        return true
+    fun pluginSubscribe(topic: String): String {
+        val q = pluginQueues[topic] ?: return ""
+        while (true) {
+            val head = q.poll() ?: return ""
+            if (System.currentTimeMillis() - head.first <= 30_000) return head.second
+        }
     }
 
     /**
