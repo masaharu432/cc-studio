@@ -1,6 +1,6 @@
 // ==CCStudioPlugin==
 // @name        ui-zoom
-// @version     0.4.4
+// @version     0.4.5
 // @description Shrink the workbench chrome via viewport scale; keep webview content and native UI text at 1x.
 // @description:ja workbench の外枠 UI を viewport スケールで縮小し、チャットとネイティブ UI の文字は等倍に保つ。
 // @run-at      document-start
@@ -172,6 +172,9 @@
       var css = '.monaco-workbench{font-size:' + (baseRootPx * fk).toFixed(2) + 'px !important}';
       css += '\n.monaco-workbench .part > .content{font-size:' + ((baseContentPx || baseRootPx) * fk).toFixed(2) + 'px !important}';
       if (baseStatusPx) css += '\n.monaco-workbench .part.statusbar{font-size:' + (baseStatusPx * fk).toFixed(2) + 'px !important}';
+      // アプリ自前のオーバーレイ（⋮ スクリーン切替ボタン）は縮小せず元の見かけサイズに戻す。
+      // fixed 配置の独立要素への zoom は VS Code のレイアウトと衝突しない。第一者 UI なので id 参照可。
+      css += '\n#ccstudio-menu-btn{zoom:' + (1 / Z).toFixed(4) + '}';
       if (!el) {
         el = document.createElement('style'); el.id = FONT_STYLE_ID;
         (document.head || document.documentElement).appendChild(el);

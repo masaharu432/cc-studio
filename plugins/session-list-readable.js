@@ -1,8 +1,8 @@
 // ==CCStudioPlugin==
 // @name        session-list-readable
-// @version     1.1.0
-// @description Stock code-server truncates session titles on phone-width screens. This plugin shrinks the font and wraps titles to two lines so they stay readable.
-// @description:ja 素の code-server ではセッション一覧のタイトルがスマホ幅で途切れて読めない。このプラグインはフォント縮小と最大 2 行の折返しで読めるようにする。
+// @version     1.1.1
+// @description Stock code-server truncates session titles on phone-width screens. This plugin shrinks the font and wraps titles to two lines so they stay readable. Tip: with ui-zoom enabled, drag the sidebar splitter wider once (persists) for best readability.
+// @description:ja 素の code-server ではセッション一覧のタイトルがスマホ幅で途切れて読めない。このプラグインはフォント縮小と最大 2 行の折返しで読めるようにする。ヒント: ui-zoom 併用時はサイドバーの仕切りを一度右へドラッグして広げると見やすい（幅は保存される）。
 // @run-at      document-start
 // @all-frames  true
 // ==/CCStudioPlugin==
