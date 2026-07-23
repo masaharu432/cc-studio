@@ -1,6 +1,7 @@
-# CC Studio: ui-zoom プラグイン 設計 (v0.4)
+# CC Studio: ui-zoom プラグイン 設計 (v0.5)
 
 最終更新: 2026-07-23
+（v0.5 の設定ランタイム連携は [2026-07-23-plugin-settings-number-design.md](2026-07-23-plugin-settings-number-design.md)）
 関連: [plugins/README.md](../../plugins/README.md)（プラグイン規約）, keyboard-suppress.js / state-observer.js（全フレーム常駐の先例）
 
 ## 1. 背景と動機
@@ -240,3 +241,15 @@ plugins/README.md                # 本数を 9→10 に更新
 app/src/main/java/app/ccstudio/ScreenFactory.kt   # useWideViewPort = true（§6.1）
 docs/specs/2026-07-22-ui-zoom-plugin-design.md    # 本書
 ```
+
+## 12. 実機検証結果 (2026-07-23, v0.5.1)
+
+- viewport スケール: レイアウト幅 384→512 CSS px・表示 0.75 倍・空白なし（uz-diag 実測）。
+- フォント等倍戻し: textZoom(×1.15) 除去後、書き込み 17.33px → computed 19.93px → 見かけ基準一致。
+  最終的にユーザー調整で FONT 系既定 0.90 に決定。
+- webview 等倍戻し: Claude チャット・セッション一覧・入力欄とも追従。v0.5.1 の
+  document.open 対策（§5.2 の再武装）で ⚙ ライブ変更にもリアルタイム追従することを実機確認。
+- ⚙ ステッパー（設定ランタイム v2）: shrink/sidebarFont/uiFont/claudeFont の 4 値とも
+  リロード無しで反映・リロード後も保持・「デフォルトに戻す」動作を確認。
+- 操作系: メニュー・サッシ・他プラグイン（rc-indicator の R タブ・⋮ ボタンの等倍復元）正常。
+- 既知の運用ノウハウ: サイドバーは仕切りを一度広げる（§9）。
