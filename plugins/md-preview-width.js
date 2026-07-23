@@ -1,6 +1,6 @@
 // ==CCStudioPlugin==
 // @name        md-preview-width
-// @version     0.1.0
+// @version     0.2.0
 // @description Markdown プレビュー本文の左右余白を詰めて全幅表示する（余白量は ⚙ で調整）。
 // @run-at      document-start
 // @all-frames  true
