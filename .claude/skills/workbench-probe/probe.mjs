@@ -47,18 +47,32 @@ for (let i = 0; i < args.length; i++) {
 }
 
 // ---- code-server ログイン → session cookie ----
+//   /login はレート制限（毎分 2 回）があるため、取得済み cookie をキャッシュして再利用する。
 async function loginCookie(url) {
+  const origin = new URL(url).origin;
+  const cacheFile = join(tmpdir(), 'cc-probe-cookie-' + origin.replace(/\W+/g, '_'));
+  const valid = async (c) => {
+    try {
+      const r = await fetch(origin + '/', { redirect: 'manual', headers: { cookie: 'code-server-session=' + c } });
+      return r.status === 200;
+    } catch { return false; }
+  };
+  try {
+    const cached = readFileSync(cacheFile, 'utf8').trim();
+    if (cached && await valid(cached)) return cached;
+  } catch {}
   const cfg = readFileSync(join(homedir(), '.config/code-server/config.yaml'), 'utf8');
   const pw = (cfg.match(/^password:\s*(.+)$/m) || [])[1]?.trim();
   if (!pw) throw new Error('password not found in code-server config.yaml');
-  const res = await fetch(url.replace(/\/$/, '') + '/login', {
+  const res = await fetch(origin + '/login', {
     method: 'POST', redirect: 'manual',
     headers: { 'content-type': 'application/x-www-form-urlencoded' },
     body: 'password=' + encodeURIComponent(pw),
   });
   const set = res.headers.get('set-cookie') || '';
   const m = set.match(/code-server-session=([^;]+)/);
-  if (!m) throw new Error('login failed (no session cookie; auth 方式が変わった?)');
+  if (!m) throw new Error('login failed (rate limit 毎分2回の可能性。少し待って再試行 / auth 方式変更?)');
+  try { writeFileSync(cacheFile, m[1]); } catch {}
   return m[1];
 }
 
@@ -121,7 +135,8 @@ try {
   await send('Page.enable');
   await send('Page.navigate', { url: flags.url });
 
-  const evalJs = async (expr) => (await send('Runtime.evaluate', { expression: expr, returnByValue: true })).result;
+  // awaitPromise: Promise を返す式（async IIFE での多段 UI 操作）も待って値を取れる。
+  const evalJs = async (expr) => (await send('Runtime.evaluate', { expression: expr, returnByValue: true, awaitPromise: true })).result;
   // wait セレクタ
   let ok = false;
   for (let i = 0; i < 60; i++) {
