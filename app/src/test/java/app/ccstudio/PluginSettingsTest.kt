@@ -32,7 +32,30 @@ class PluginSettingsTest {
     }
 
     @Test fun coerceBooleanIsCaseInsensitive() {
-        assertEquals(true, PluginSettings.coerce("boolean", "TRUE"))
-        assertEquals(false, PluginSettings.coerce("boolean", "nope"))
+        val d = SettingDef("visible", "boolean", "true", "表示")
+        assertEquals(true, PluginSettings.coerce(d, "TRUE"))
+        assertEquals(false, PluginSettings.coerce(d, "nope"))
+    }
+
+    // ---- v2: number ----
+
+    private val numDef = SettingDef("shrink", "number", "0.75", "縮小率", min = 0.5, max = 1.0, step = 0.05)
+
+    @Test fun numberCoercesToDouble() {
+        assertEquals(0.8, PluginSettings.coerce(numDef, "0.8"))
+    }
+
+    @Test fun numberClampsToRange() {
+        assertEquals(0.5, PluginSettings.coerce(numDef, "0.2"))
+        assertEquals(1.0, PluginSettings.coerce(numDef, "9"))
+    }
+
+    @Test fun numberFallsBackToDefaultOnGarbage() {
+        assertEquals(0.75, PluginSettings.coerce(numDef, "abc"))
+    }
+
+    @Test fun mergeEmitsNumberValues() {
+        val out = PluginSettings.merge(listOf(numDef), mapOf("shrink" to "0.65"))
+        assertEquals(0.65, out["shrink"])
     }
 }

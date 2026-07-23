@@ -16,7 +16,7 @@ data class PluginMeta(
     val settings: List<SettingDef>,
 )
 
-/** プラグイン1つ分の設定項目スキーマ（v1 は type="boolean" のみ）。 */
+/** プラグイン1つ分の設定項目スキーマ（v2: type="boolean" | "number"）。 */
 data class SettingDef(
     val key: String,
     val type: String,
@@ -24,6 +24,10 @@ data class SettingDef(
     /** ラベル（英語・既定）。日本語は `@setting:ja <key> <label...>` → labelJa。 */
     val label: String,
     val labelJa: String? = null,
+    /** number 型のみ（boolean は null）。宣言: `<key> number <default> <min> <max> <step> <label>`。 */
+    val min: Double? = null,
+    val max: Double? = null,
+    val step: Double? = null,
 )
 
 /**
@@ -89,16 +93,30 @@ object PluginMetaParser {
         return parts[0] to parts[1]
     }
 
-    /** "<key> <type> <default> <label...>" を解析。v1 は boolean のみ採用。不正/未知 type は null。 */
+    /**
+     * `@setting` 行を解析。不正/未知 type は null（v1 からの姿勢を維持: 行ごと無効）。
+     *   boolean: "<key> boolean <default> <label...>"
+     *   number:  "<key> number <default> <min> <max> <step> <label...>"（v2。範囲・刻みは必須）
+     */
     private fun parseSettingDef(spec: String): SettingDef? {
         val parts = spec.trim().split(Regex("\\s+"), limit = 4)
         if (parts.size < 4) return null
         val key = parts[0]
         val type = parts[1].lowercase()
-        val default = parts[2]
-        val label = parts[3]
-        if (type != "boolean") return null
         if (!key.matches(Regex("[\\w-]+"))) return null
-        return SettingDef(key, type, default, label)
+        return when (type) {
+            "boolean" -> SettingDef(key, type, parts[2], parts[3])
+            "number" -> {
+                val p = spec.trim().split(Regex("\\s+"), limit = 7)
+                if (p.size < 7) return null
+                val dflt = p[2].toDoubleOrNull() ?: return null
+                val min = p[3].toDoubleOrNull() ?: return null
+                val max = p[4].toDoubleOrNull() ?: return null
+                val step = p[5].toDoubleOrNull() ?: return null
+                if (min > max || step <= 0.0 || dflt < min || dflt > max) return null
+                SettingDef(key, type, p[2], p[6], min = min, max = max, step = step)
+            }
+            else -> null
+        }
     }
 }

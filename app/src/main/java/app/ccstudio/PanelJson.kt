@@ -80,15 +80,18 @@ object PanelJson {
         val ns = info.displayName
         val arr = JSONArray()
         info.settings.forEach { d ->
-            val value = PluginSettings.coerce(d.type, valueOf(ns, d.key) ?: d.default)
-            arr.put(
-                JSONObject()
-                    .put("key", d.key)
-                    .put("type", d.type)
-                    .put("default", PluginSettings.coerce(d.type, d.default))
-                    .put("label", if (ja) d.labelJa ?: d.label else d.label)
-                    .put("value", value)
-            )
+            val value = PluginSettings.coerce(d, valueOf(ns, d.key) ?: d.default)
+            val o = JSONObject()
+                .put("key", d.key)
+                .put("type", d.type)
+                .put("default", PluginSettings.coerce(d, d.default))
+                .put("label", if (ja) d.labelJa ?: d.label else d.label)
+                .put("value", value)
+            // number のみ範囲・刻みを渡す（ステッパー UI 用）。
+            d.min?.let { o.put("min", it) }
+            d.max?.let { o.put("max", it) }
+            d.step?.let { o.put("step", it) }
+            arr.put(o)
         }
         return JSONObject()
             .put("name", ns) // setSetting / ライブ push の namespace に使う（=@name）

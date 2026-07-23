@@ -51,6 +51,10 @@ class ScreenFactory(
         settings.domStorageEnabled = true
         settings.databaseEnabled = true
         settings.mediaPlaybackRequiresUserGesture = false
+        // viewport meta を尊重させる（既定 false は meta の width/scale を無視）。内蔵アセットと
+        // code-server の全ページは width=device-width, initial-scale=1 宣言済みなので挙動不変。
+        // ui-zoom プラグインが initial-scale を書き換えて外枠 UI を縮小するための土台。
+        settings.useWideViewPort = true
         // window.open(_blank)（チャット内リンク等）を onCreateWindow で受けるために必須。
         // 無効（既定）だと WebView は _blank をメインフレーム遷移に格下げし、workbench の
         // ページ自体が外部 URL へ遷移し始める。それを shouldOverrideUrlLoading で中断すると
