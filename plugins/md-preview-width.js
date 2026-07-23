@@ -21,6 +21,9 @@
 //   問題ないため強制しない（ノイズになるだけで効果がない上書きは書かない）。
 (function () {
   'use strict';
+  // フレームごとに 1 度だけ武装（二重注入で setInterval/リスナが二重化するのを防ぐ。ui-zoom と同じ作法）。
+  if (window.__ccMdPreviewWidth) return;
+  window.__ccMdPreviewWidth = true;
   var NS = 'md-preview-width';
   var STYLE_ID = 'md-preview-width';
   var DEFAULT_GUTTER = 12;           // メタの @setting default と一致させる
@@ -83,5 +86,5 @@
   }
   applyGutter(readGutter());                        // 初回
   bind();                                            // 初回
-  var iv = setInterval(tick, 1000);                  // 差し替え検知の保険（軽量・存在チェックのみ）
+  try { setInterval(tick, 1000); } catch (_) {}      // 差し替え検知の保険（軽量・存在チェックのみ）
 })();
