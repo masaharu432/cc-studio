@@ -2,9 +2,11 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-> **⚠ v0.2 で方式変更済み**: 本プランの埋め込みコード（v0.1.0）の「currentCSSZoom 実測」方式は
-> 実機で不成立と判明（currentCSSZoom はドキュメント境界を越えない）。現行方式は spec v0.2
-> （top→葉の postMessage 倍率配布）を正とし、本プランのコードは再実行しないこと。
+> **⚠ 方式変更済み**: 本プランの埋め込みコード（v0.1.0）の「CSS zoom＋currentCSSZoom 実測」方式は
+> 実機・実証で不成立と判明（currentCSSZoom はドキュメント境界を越えない／CSS zoom は VS Code の
+> innerWidth ベースのレイアウトと座標系に噛み合わない）。現行方式は spec 最新版（v0.3:
+> viewport meta の initial-scale 書き換え＋top→葉の postMessage 倍率配布）を正とし、
+> 本プランのコードは再実行しないこと。
 
 **Goal:** workbench の外枠 UI（アクティビティバー等）を CSS zoom で縮小し、チャット等のコンテンツフレームは等倍に保つプラグイン `ui-zoom` を追加する。
 

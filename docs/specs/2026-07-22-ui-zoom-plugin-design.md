@@ -1,6 +1,6 @@
-# CC Studio: ui-zoom プラグイン 設計 (v0.2)
+# CC Studio: ui-zoom プラグイン 設計 (v0.3)
 
-最終更新: 2026-07-22
+最終更新: 2026-07-23
 関連: [plugins/README.md](../../plugins/README.md)（プラグイン規約）, keyboard-suppress.js / state-observer.js（全フレーム常駐の先例）
 
 ## 1. 背景と動機
@@ -8,23 +8,31 @@
 スマホ縦画面では VS Code (code-server) の左アクティビティバー（CSS 48px の縦列）が横幅を大きく食い、
 チャット・エディタの実効幅が狭い。「バーを ⋮ ピル程度まで細くしたい」が出発点。
 
-縮小の経路は 3 つあり、前 2 つは使えない:
+縮小の経路は 4 つ検討し、最初の 3 つは不成立:
 
-1. **`window.zoomLevel` 設定** — デスクトップ版（Electron）専用。code-server の Web 版では効かない
-   （code-server 公式もブラウザズームを案内）。
-2. **ブラウザ/ピンチズーム** — cc-studio の WebView は viewport 固定でピンチ縮小不可。
-3. **CSS `zoom` の注入** — Chromium では `transform: scale()` と違い**レイアウトごと縮む**
-   （空いた幅に他パーツが詰まる）。プラグインで注入可能。**採用。**
+1. **`window.zoomLevel` 設定** — デスクトップ版（Electron）専用。zoom 系は `vs/workbench/electron-browser/`
+   層にのみ存在し、code-server の Web 版 workbench には経路自体が無い（実ソースで確認済み）。
+2. **ブラウザ/ピンチズーム** — code-server の viewport meta が user-scalable=no で封じている。
+3. **トップフレームへの CSS zoom 注入**（v0.1-v0.2）— 実機で 2 つの致命傷が判明し**廃止**:
+   - VS Code は workbench 寸法を `getClientArea(body)` → **`window.innerWidth`（zoom 非補正）**で
+     取るため、zoom で縮んだぶんのレイアウトが敷き直されず**右下に L 字の空白が残る**
+     （素の HTML なら ICB が補正されて詰まることを headless で確認したが、workbench は詰まらない）。
+   - 標準化 CSS zoom は `getBoundingClientRect`/イベント座標が**視覚座標**、`style.left` 等が
+     **zoom 内ローカル座標**と分裂する（headless 実測: zoom 0.75 下で 100% 幅 div の gBCR=800 に
+     対し body.clientWidth=1067）。VS Code は変換せずに使うため、メニュー・ホバー・ドラッグの
+     位置決めが (1-Z) ぶんズレる。外側からは直せない。
+4. **viewport meta の initial-scale 書き換え**（本設計・v0.3）— ピンチズーム相当の縮小。
+   レイアウト幅が 1/Z 倍に広がり、`innerWidth`・イベント座標・style 座標が**全 API 一貫**で
+   スケールするため、workbench は「少し大きい画面」として自然に敷き直す。空白もズレも原理的に
+   起きない。**採用。**
 
-ただし zoom は全体に等しく掛かるため、バーを目標幅（約 2/3 = Z≒0.75）まで縮めるとチャット文字も
-25% 縮む。そこで **CSS zoom が iframe 内へ視覚的に継承される**（css-viewport 標準、Chromium 128+）こと
-を利用し、チャット等のコンテンツフレーム側で逆倍率を掛け戻して「外枠だけ縮小・チャット等倍」を実現する。
+ただし縮小は全体に等しく掛かるため、チャット文字も Z 倍に縮む。チャット等のコンテンツフレーム側で
+逆倍率の CSS zoom を掛け戻して「外枠だけ縮小・チャット等倍」を実現する（§5.2）。
 
 > **v0.1 の教訓（2026-07-22 headless Chromium で実証）**: 継承倍率を子フレームの
-> `currentCSSZoom` で実測する方式は成立しない。zoom の視覚的継承は起きる（iframe 内 400 CSS px が
-> 親座標 302px に描画された）が、`currentCSSZoom` は**同一ドキュメント内の実効値のみ**を返し、
-> 親ドキュメント由来の zoom を含まず 1 を返す。つまり継承は**子フレーム内から観測不能**。
-> v0.2 は実測をやめ、トップフレームが倍率を postMessage で配布する方式に改めた。
+> `currentCSSZoom` で実測する方式は成立しない。縮小の視覚的継承は起きるが、`currentCSSZoom` は
+> **同一ドキュメント内の実効値のみ**を返し、親由来のスケールを含まず 1 を返す。つまり縮小は
+> **子フレーム内から観測不能**。v0.2 以降は実測をやめ、トップが倍率を postMessage で配布する。
 
 ## 2. 方式判断（検討した代替案）
 
@@ -32,18 +40,20 @@
   コード不要だが、縦のアイコン列を維持したまま細くしたいという要望に合わず不採用（ユーザー判断）。
   プラグインが不調な場合の逃げ道としては常に有効。
 - **アクティビティバー単体の CSS width 上書き / transform 縮小** — workbench のレイアウトは JS が
-  インラインピクセルで敷くため、バーだけ縮めても隣が詰まらず隙間が残る。レイアウト JS と戦うことに
-  なり脆い。不採用。
-- **全体 CSS zoom＋コンテンツフレーム逆倍率**（本設計）— レイアウト整合は Chromium の zoom 実装に
-  任せ、プラグインは倍率を宣言するだけ。**採用。**
+  インラインピクセルで敷くため、バーだけ縮めても隣が詰まらず隙間が残る。不採用。
+- **VS Code 拡張機能** — Web 版に zoom 経路が無く（§1-1）、拡張 API に workbench DOM/CSS を触る
+  手段も無い。ファイルパッチ型（vscode-custom-css 系）はサブモジュール不可侵の方針に反し、
+  かつチャット webview には届かない。不採用（2026-07-23 調査）。
+- **トップフレームへの CSS zoom**（v0.1-v0.2）— §1-3 の 2 つの実証により廃止。
+- **viewport meta 書き換え**（本設計）— 全 API 一貫のスケール。アプリ側 1 行（§6.1）が前提。**採用。**
 
 ## 3. ゴール / 非ゴール
 
-**ゴール (v0.1)**:
-- トップフレームに `zoom: Z`（初期値 0.75）を適用し、workbench の外枠 UI（アクティビティバー・タブ・
-  サイドバー・ステータスバー）を縮小して横幅を稼ぐ。
-- チャット等のコンテンツフレームは逆倍率で等倍へ戻し、文字サイズを保つ。
-- ⚙ 設定でライブ ON/OFF（`ccstudio:setting`）。OFF で即座に等倍へ復帰。
+**ゴール (v0.3)**:
+- トップフレームの viewport meta を initial-scale=Z（初期値 0.75）へ書き換え、workbench 全体を
+  縮小して横幅を稼ぐ（レイアウト幅は 1/Z 倍に拡大）。
+- チャット等のコンテンツフレームは逆倍率の CSS zoom で等倍へ戻し、文字サイズを保つ。
+- ⚙ 設定でライブ ON/OFF（`ccstudio:setting`）。OFF で viewport 原文へ復元・補正も解除。
 
 **非ゴール（当面・YAGNI）**:
 - 倍率の GUI スライダー（設定ランタイム v1 は boolean のみ。倍率はファイル先頭定数＋版数 bump で調整）。
@@ -53,13 +63,14 @@
 ## 4. アーキテクチャ
 
 ```
-@all-frames true × @run-at document-start で全フレーム注入
+アプリ (ScreenFactory): settings.useWideViewPort = true   ← viewport meta を尊重させる土台
+プラグイン: @all-frames true × @run-at document-start で全フレーム注入
   各インスタンスが自分の役割を判定:
     トップフレーム (window.top === window)
-      → documentElement.style.zoom = Z
+      → viewport meta の content を initial-scale=Z へ書き換え（OFF で原文復元）
       → 葉フレームからの倍率照会 (postMessage) に現在倍率を返信
     非トップ かつ 葉フレーム（自文書内に iframe を持たない）＝コンテンツフレーム
-      → window.top へ倍率を照会し、返ってきた topZ の逆倍率 1/topZ で等倍へ戻す
+      → window.top へ倍率を照会し、返ってきた topZ の逆倍率 1/topZ の CSS zoom で等倍へ戻す
     非トップ かつ iframe を抱える中間ラッパーフレーム
       → 何もしない（継承のまま）
 ```
@@ -72,38 +83,48 @@
 
 ## 5. 動作の詳細
 
-### 5.1 倍率の適用（トップ）
-- `document.documentElement.style.zoom = String(Z)`。document-start 時点で documentElement は存在する
-  ため即適用（フラッシュ防止）。
+### 5.1 縮小の適用（トップ）
+- `meta[name="viewport"]` の content を
+  `width=device-width, initial-scale=Z, maximum-scale=Z, minimum-scale=Z, user-scalable=no`
+  へ書き換える（ピンチ無効は維持）。初回書き換え前の原文を保持し、OFF で復元する。
+- meta は document-start 時点では未パースのことがある → MutationObserver＋1s インターバルの tick で
+  出現し次第書き換える（body パース前に書ければフラッシュは目立たない）。
+- 書き換え後は `window.dispatchEvent(new Event('resize'))` を保険で一発（viewport 変更でブラウザ
+  自身の resize も飛ぶが、workbench の再レイアウトを確実にする）。
 - `Z` はファイル先頭の定数（初期値 0.75）。チューニングは版数 bump で行う。
 
 ### 5.2 逆倍率の適用（コンテンツフレーム）
-- 継承倍率は**子フレーム内から観測できない**（§1 の教訓: `currentCSSZoom` はドキュメント境界を
-  越えない）ため、実測ではなく**トップフレームからの配布**で知る:
+- 縮小は**子フレーム内から観測できない**（§1 の教訓）ため、実測ではなく**トップからの配布**で知る:
   - 葉フレームは `window.top` へ照会 `{k:'cc-uz-q'}` を postMessage する（クロスオリジン可）。
   - トップは `e.source` へ現在倍率 `{k:'cc-uz-z', z: enabled ? Z : 1}` を返信する。
-  - 葉は受信した topZ から `1 / topZ` を自フレーム root の zoom に設定 → 正味 topZ × (1/topZ) = 1.0。
+  - 葉は受信した topZ から `1 / topZ` を自フレーム root の CSS zoom に設定 → 正味等倍。
     topZ=1（無効時）なら補正を除去する。
-- 照会は tick ごと（初回 document-start＋1s インターバル）に送る。返信駆動で適用するため、
-  トップのトグル変更にも ~1s で追従する。返信が来ない間は補正しない（誤って拡大しない）。
+- 照会は force（1s インターバル・設定イベント）と未受信時のみ送る。DOM 変異のたびに送ると
+  チャットのストリーミング中に postMessage が乱発するため、変異では送らない。
 - トップが先・子が後にロードされる順序（iframe は親文書が作る）なので、document-start 注入なら
-  照会時点でトップの受信リスナは常に武装済み。
-- **前提**: zoom の iframe 内への視覚継承（Chromium 128+ の標準動作）。継承されない古い WebView では
-  補正が「チャットだけ拡大」に化けるため、対象環境を Chromium 128+ とする（§9 参照）。
+  照会時点でトップの受信リスナは常に武装済み。返信が来ない間は補正しない（誤って拡大しない）。
 
 ### 5.3 ライブ ON/OFF
 - `window.__ccPluginSettings['ui-zoom'].enabled`（既定 true）を読む。
-- `ccstudio:setting` で enabled=false を受けたら、トップは zoom を除去。コンテンツフレームは
-  次回の照会への返信が z=1 になるので自然に補正解除（葉側は enabled を読まない: 真実はトップ一元）。
+- `ccstudio:setting` で enabled=false を受けたら、トップは viewport を原文へ復元。コンテンツ
+  フレームは次回の照会への返信が z=1 になるので自然に補正解除（葉側は enabled を読まない:
+  真実はトップ一元）。
 
-## 6. プラグイン規約への適合
+## 6. プラグイン規約への適合とアプリ側前提
+
+### 6.1 アプリ側の前提（1 行）
+`ScreenFactory.newConfiguredWebView` に `settings.useWideViewPort = true` が必要（Android WebView の
+既定 false は viewport meta の width/scale を無視する）。内蔵アセットと code-server の全ページは
+`width=device-width, initial-scale=1` を宣言済みのため、この変更単体では挙動不変。
+
+### 6.2 メタヘッダ
 
 ```
 // ==CCStudioPlugin==
 // @name        ui-zoom
-// @version     0.1.0
-// @description Shrink workbench chrome via CSS zoom while keeping webview content at 1x.
-// @description:ja workbench の外枠 UI を CSS zoom で縮小し、チャット等の文字サイズは等倍に保つ。
+// @version     0.3.0
+// @description Shrink workbench chrome via viewport scale while keeping webview content at 1x.
+// @description:ja workbench の外枠 UI を viewport スケールで縮小し、チャット等の文字サイズは等倍に保つ。
 // @run-at      document-start
 // @all-frames  true
 // @setting     enabled boolean true 外枠 UI を縮小表示する
@@ -117,48 +138,57 @@
 ## 7. 診断の作法
 
 - focus-hud 共有バッファ `window.top.__ccStudioFocusLog` に `UZ` プレフィックスで積む:
-  フレーム役割（top / leaf / wrapper）・配布された topZ・適用した補正倍率。
-- 実機確認の最重要項目は「**zoom の iframe 継承（視覚）が起きているか**」。これは API では観測
-  できないので、`UZ leaf topZ=0.750 comp=1.333` が出た状態で**チャット文字が等倍に見えるか**を
-  目視で判定する（拡大に見えたら継承なし環境 → enabled OFF で退避）。
+  フレーム役割（top / leaf / wrapper）・適用スケール・配布された topZ・適用した補正倍率。
+- 実機確認の最重要項目は「**viewport 書き換えで workbench が広いレイアウトに敷き直されるか**」
+  （useWideViewPort が効いているかの確認を兼ねる）。`UZ top scale=0.75` の後に画面全体が
+  縮小しつつ空白なく詰まっているかを目視で判定する。
 
 ## 8. エラー処理
 
-- トップからの返信未達（プラグイン未注入・ロード順の谷間）: 補正スキップ（全体縮小として成立。
-  誤って拡大する方向には倒れない）。
-- zoom 適用の例外: try/catch でログのみ。UI は止めない。
-- enabled=false: トップは除去、葉は返信 z=1 を受けて除去。
+- viewport meta が見つからない: 何もしない（次 tick で再試行。meta の無いページでは無効のまま）。
+- トップからの返信未達（プラグイン未注入・ロード順の谷間）: 補正スキップ（誤って拡大しない）。
+- 適用の例外: try/catch でログのみ。UI は止めない。
+- enabled=false: トップは原文復元、葉は返信 z=1 を受けて除去。
 
 ## 9. リスクと留意
 
-- **WebView の Chromium 版数**: 標準化 zoom（レイアウト反映・iframe への視覚継承）は
-  Chromium 128 (2024-08) 以降で、本設計はこれを**前提**にする（継承の有無は子から観測不能のため、
-  実測フォールバックは組めない）。継承なし環境ではチャットだけ拡大に化けるので、目視で気づいたら
-  enabled OFF で退避する。実機 WebView は 2026 年時点で十分新しい想定。
-- **座標系**: 標準化 zoom ではイベント座標・getBoundingClientRect はフレーム内で一貫するため、
-  サッシ操作・他プラグイン（rc-indicator の左端タブ、keyboard-suppress 等）への影響は原則無い見込み。
-  パネル境界ドラッグと rc-indicator ボタンのタップ判定を実機で一度確認する。
-- **トップフレーム常駐の HUD 類が縮む**: focus-hud の表示も Z 倍になる（診断用途なので許容）。
-- **1px 罫線のにじみ**: 非整数倍率でボーダーが薄く/濃く見えることがある。倍率チューニングで実害が
-  出れば 0.8 等のキリの良い値へ寄せる。
+- **useWideViewPort の副作用**: viewport meta の無いページは wide viewport（980px 相当）で
+  レイアウトされる。内蔵アセット・code-server 各ページは全て meta 宣言済みで影響なし。
+  外部 http ページは外部ブラウザで開く方針なので対象外。
+- **チャット webview 内のポップアップ座標**: 葉フレームの CSS zoom 補正により、チャット文書内では
+  gBCR（視覚座標）と style ピクセル（ローカル座標）の分裂が起きる。スラッシュコマンドの
+  オートコンプリート等ポップアップ位置が (1-1/topZ) ぶんズレる可能性がある。実機で確認し、
+  実害があれば倍率を 1 に近づけるか補正対象を絞る。
+- **1px 罫線のにじみ**: 非整数倍率でボーダーが薄く/濃く見えることがある。実害が出れば 0.8 等へ。
 - **エディタ本文も縮む**: チャット主体の運用では許容。気になる場合は `editor.fontSize` で補正。
-- **rc-indicator ブランチとの合流**: 本ブランチは origin/main 起点。`plugins/README.md` の本数更新が
-  rc-indicator ブランチ（10 本化）と衝突し得るが、1 行の軽微な競合として合流時に解消する。
+- **rc-indicator 等トップ常駐 UI が縮む**: viewport スケールは全体に掛かるため、固定 px の
+  オーバーレイも Z 倍になる。診断・小物 UI なので許容（実害があれば各プラグイン側で対応）。
+- **rc-indicator ブランチとの合流**: `plugins/README.md` の本数更新が rc-indicator ブランチ
+  （10 本化）と衝突し得るが、1 行の軽微な競合として合流時に解消する。
 
-## 10. テスト（実機スクリーン）
+## 10. テスト
 
-- ON: アクティビティバー・タブ・ステータスバーが縮小され、チャット文字は等倍のまま
-  （`UZ leaf topZ=0.750 comp=1.333` をログで確認）。
-- サイドバー/パネルの開閉・境界ドラッグが正常。rc-indicator 等の既存プラグイン操作が正常。
-- OFF（⚙ ライブトグル）: 即座に全体が等倍へ復帰。チャットが拡大表示にならない（過剰補正なし）。
-- リロード後も設定どおりの状態で立ち上がる（document-start 適用でフラッシュが目立たない）。
-- ローカル Chromium ハーネス（`scripts/` 外・使い捨て）: top+leaf の 2 フレーム構成で
-  正味倍率 ≒ 1.0（enabled 時）/ 補正なし（disabled 時）を headless で確認済みであること。
+**ローカル（headless Chromium ハーネス・実施済み）**: 実プラグインを top→wrapper→leaf の 3 層
+file:// ページへ読み込み、以下を確認（デスクトップ Chrome は viewport meta を無視するため
+DOM 状態のみの検証。レンダリングは実機で確認する）:
+- ON: viewport content が initial-scale=0.75 系へ書き換わる・top は CSS zoom を使わない・
+  wrapper 非介入・leaf zoom=1.333（正味 1.0）。
+- OFF: viewport 原文のまま・補正なし。
+- ライブトグル OFF: viewport 原文へ復元・leaf 補正も ~1s で解除。
+
+**実機スクリーン**:
+- ON: 画面全体が縮小しつつ**空白なく**敷き直され、アクティビティバーが細く、チャット文字は等倍
+  （`UZ top scale=0.75` / `UZ leaf topZ=0.750 comp=1.333` をログで確認）。
+- コンテキストメニュー・ホバーがタップ位置どおりに出る（CSS zoom 時代のズレが無いこと）。
+- サイドバー/パネルの開閉・境界ドラッグが正常。チャットのスラッシュコマンド補完の位置（§9）。
+- OFF（⚙ ライブトグル）: 即座に等倍へ復帰。チャットが拡大表示にならない（過剰補正なし）。
+- リロード後も設定どおりの状態で立ち上がる。
 
 ## 11. ファイル構成（cc-studio リポ）
 
 ```
-plugins/ui-zoom.js               # 新規（本プラグイン本体）
+plugins/ui-zoom.js               # 本体（v0.3.0）
 plugins/README.md                # 本数を 9→10 に更新
-docs/specs/2026-07-22-ui-zoom-plugin-design.md   # 本書
+app/src/main/java/app/ccstudio/ScreenFactory.kt   # useWideViewPort = true（§6.1）
+docs/specs/2026-07-22-ui-zoom-plugin-design.md    # 本書
 ```
