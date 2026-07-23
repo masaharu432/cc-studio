@@ -1,100 +1,122 @@
 // ==CCStudioPlugin==
-// @name        md-preview-width
-// @version     0.2.0
-// @description Markdown プレビュー本文の左右余白を詰めて全幅表示する（余白量は ⚙ で調整）。
+// @name        webview-width
+// @version     0.3.0
+// @description Reclaim wasted side space in webviews (Markdown preview / Claude Code chat); gutters adjustable live.
+// @description:ja webview の無駄な左右余白を詰めて全幅化（Markdown プレビュー / Claude Code 拡張）。⚙で調整。
 // @run-at      document-start
 // @all-frames  true
-// @setting     gutter number 12 0 80 4 プレビュー本文の左右ガター(px)
+// @setting     previewGutter number 12 0 80 4 Markdown preview left/right gutter (px)
+// @setting:ja  previewGutter Markdown プレビュー本文の左右ガター(px)
+// @setting     chatGutter number 0 0 200 8 Claude chat left/right gutter (px; 0 = full width)
+// @setting:ja  chatGutter Claude 拡張チャットの左右ガター(px。0=全幅)
 // ==/CCStudioPlugin==
-// md-preview-width.js — CC Studio プラグイン。
+// webview-width.js — CC Studio プラグイン。狭い画面で横幅を食い潰されている webview の
+// 無駄な左右余白を詰める汎用プラグイン。ターゲットごとに ⚙ で独立にガター(px)を調整できる。
 //
-//   VS Code の Markdown プレビューは html と body の両方に `padding:0 26px` を持ち、914px 以上では
-//   `@media(min-width:914px){body{padding:0 calc((100%-862px)/2)}}` も乗る（いずれも !important
-//   ではない）。本文が左右の余白で細い帯に閉じ込められる。実機 CDP 実測（code-server 4.126.0）:
-//     - プレビュー判定: 葉フレームは `<meta id="vscode-markdown-preview-data" …>` を必ず持つ
-//       （エディタ・チャット等の他 webview フレームは持たない）。meta が構造的に一意なので判定に採る。
-//     - 余白源は html と body の二段の左右 padding。body だけ 0 にしても html の 26px が残る
-//       （gutter=0 実測: html padL/R=26px）。html=0 / body=gutter に固定して総インセット=gutter に揃える
-//       （子の .markdown-body は padding/margin 0 で寄与しない）。
+//   実機 CDP 実測（code-server 4.126.0 / Claude 拡張 2.1.218）で確定したターゲット:
+//   ● Markdown プレビュー（判定: `#vscode-markdown-preview-data` の meta を持つ葉フレーム）
+//       余白源は html と body の二段の左右 padding（各 0 26px。914px 以上では body に更に大余白の
+//       media query）。html=0 / body=previewGutter に固定し総インセット = previewGutter に揃える。
+//   ● Claude Code 拡張チャット（判定: <html> に CSS 変数 --app-claude-orange を持つ葉フレーム）
+//       会話コンテンツ列 `[class*=inputWrapper]` が max-width:680px＋auto マージンで中央寄せされ、
+//       広い幅で左右が大きく余る（実測: 1052px 幅で列 680px・両側 169px）。max-width を緩めて
+//       全幅化する。chatGutter=0 で max-width:none（全幅）、>0 なら calc(100% - 2*gutter)。
+//       ※ クラス名はハッシュ付き（ビルドで変動）のため `[class*=inputWrapper]` の前方一致で拾う。
 //
-//   ライブ反映は ui-zoom と同じ **postMessage 照会方式**（プル型）。設定ランタイムの ccstudio:setting は
-//   postMessage 連鎖で下方伝搬されるが、深くネストしたプレビュー葉フレームまで届かない（実機で確認）。
-//   真実はトップ一元（ネイティブが main フレームの window.__ccPluginSettings を直接更新し常に最新）。
-//   葉は window.top へ MSG_Q を投げ、トップが現在 gutter を MSG_V で返信 → 葉が適用する。postMessage は
-//   クロスオリジン webview 葉でも通る（window.top 直読みは同一オリジン限定なので採らない）。
-//   webview は起動時に document.open()/write() で葉文書を書き換えリスナが消えるため、毎 tick で再武装する。
+//   ライブ反映は ui-zoom と同じ postMessage 照会方式（プル型）。設定ランタイムの ccstudio:setting は
+//   深くネストした webview 葉フレームまで届かないため、真実はトップ一元（ネイティブが main フレームの
+//   window.__ccPluginSettings を直接更新し常に最新）。葉は window.top へ MSG_Q を投げ、トップが現在の
+//   全ガター値を MSG_V で返信 → 葉が自分の該当ターゲットへ適用する。document.open 対策で毎 tick 再武装。
 //
-//   設計: docs/specs/2026-07-23-md-preview-width-design.md
+//   設計: docs/specs/2026-07-23-md-preview-width-design.md（webview-width へ発展）
 (function () {
   'use strict';
-  if (window.__ccMdPreviewWidth) return;              // フレームごとに 1 度だけ武装
-  window.__ccMdPreviewWidth = true;
+  if (window.__ccWebviewWidth) return;                // フレームごとに 1 度だけ武装
+  window.__ccWebviewWidth = true;
 
-  var NS = 'md-preview-width';
-  var STYLE_ID = 'md-preview-width';
-  var DEFAULT_GUTTER = 12;                             // メタの @setting default と一致
-  var MIN = 0, MAX = 80;                               // クランプ（メタと一致）
-  var POLL_MS = 1000;                                  // 照会＋自己校正（トップのライブ変更追従）
-  var MSG_Q = 'cc-mpw-q';                              // 葉 → top: 現在 gutter の照会
-  var MSG_V = 'cc-mpw-v';                              // top → 葉: 現在 gutter の返信 { g }
+  var NS = 'webview-width';
+  var POLL_MS = 1000;
+  var MSG_Q = 'cc-ww-q';                              // 葉 → top: 現在ガター値の照会
+  var MSG_V = 'cc-ww-v';                              // top → 葉: 現在ガター値の返信 { g:{previewGutter,chatGutter} }
 
   var isTop; try { isTop = (window === window.top); } catch (_) { isTop = false; }
 
-  function clampGutter(v) {
-    v = (v == null || isNaN(+v)) ? DEFAULT_GUTTER : +v;
-    return Math.max(MIN, Math.min(MAX, v));
-  }
-  // トップ一元の現在値。ローカル __ccPluginSettings はネイティブが main フレーム直接更新で最新に保つ。
-  function topGutter() {
-    return clampGutter(((window.__ccPluginSettings || {})[NS] || {}).gutter);
+  function clamp(v, dflt, min, max) {
+    v = (v == null || isNaN(+v)) ? dflt : +v;
+    return Math.max(min, Math.min(max, v));
   }
 
-  // 注入先が Markdown プレビューか（プレビュー以外では false）。実測: #vscode-markdown-preview-data を持つ。
-  function isPreviewFrame(doc) {
-    try { return !!doc.getElementById('vscode-markdown-preview-data'); } catch (_) { return false; }
+  // ---- ターゲット定義（判定・スタイル生成・設定キー・既定/範囲・style 要素 id）----
+  var TARGETS = [
+    {
+      key: 'previewGutter', def: 12, min: 0, max: 80, styleId: 'cc-ww-preview',
+      match: function (doc) { try { return !!doc.getElementById('vscode-markdown-preview-data'); } catch (_) { return false; } },
+      css: function (px) {
+        return 'html{padding-left:0 !important;padding-right:0 !important;}' +
+          'body{padding-left:' + px + 'px !important;padding-right:' + px + 'px !important;}';
+      }
+    },
+    {
+      key: 'chatGutter', def: 0, min: 0, max: 200, styleId: 'cc-ww-chat',
+      match: function (doc) { try { return !!String(getComputedStyle(doc.documentElement).getPropertyValue('--app-claude-orange')).trim(); } catch (_) { return false; } },
+      css: function (px) {
+        var mw = px <= 0 ? 'none' : 'calc(100% - ' + (2 * px) + 'px)';
+        return '[class*=inputWrapper]{max-width:' + mw + ' !important;}';
+      }
+    }
+  ];
+  // この document に該当するターゲット（webview 葉フレームは高々1つに一致）。
+  function targetFor(doc) {
+    for (var i = 0; i < TARGETS.length; i++) { if (TARGETS[i].match(doc)) return TARGETS[i]; }
+    return null;
   }
-  // html を 0 に固定し gutter を body に載せる（総インセット = gutter px）。
-  function css(px) {
-    return 'html{padding-left:0 !important;padding-right:0 !important;}' +
-      'body{padding-left:' + px + 'px !important;padding-right:' + px + 'px !important;}';
+
+  // トップ一元の現在値（ローカル __ccPluginSettings はネイティブが main フレーム直接更新で最新）。
+  function gutters() {
+    var conf = (window.__ccPluginSettings || {})[NS] || {};
+    var out = {};
+    for (var i = 0; i < TARGETS.length; i++) { var t = TARGETS[i]; out[t.key] = clamp(conf[t.key], t.def, t.min, t.max); }
+    return out;
   }
-  var lastPx = null;                                   // 直近適用値。変化時のみ書き換えて無駄な再計算を避ける。
-  function applyGutter(px) {
-    if (!isPreviewFrame(document)) return;             // プレビュー以外では何もしない
+
+  var lastPx = {};                                    // styleId -> 直近適用値。変化時のみ書き換える。
+  function apply(t, px) {
     try {
-      var st = document.getElementById(STYLE_ID);
+      var st = document.getElementById(t.styleId);
       if (!st) {
         st = document.createElement('style');
-        st.id = STYLE_ID;
+        st.id = t.styleId;
         (document.head || document.documentElement).appendChild(st);
-        lastPx = null;                                 // 文書差し替えで消えた → 次で必ず書き直す
+        lastPx[t.styleId] = null;                     // 文書差し替えで消えた → 次で必ず書き直す
       }
-      if (px !== lastPx || !st.textContent) { st.textContent = css(px); lastPx = px; }
+      if (px !== lastPx[t.styleId] || !st.textContent) { st.textContent = t.css(px); lastPx[t.styleId] = px; }
     } catch (_) {}
   }
+  // この葉フレームの該当ターゲットへ、与えられたガター集合から適用する。
+  function applyFrom(g) {
+    var t = targetFor(document); if (!t) return;
+    apply(t, clamp(g[t.key], t.def, t.min, t.max));
+  }
 
-  // ---- トップ: gutter 照会に応答する（真実の一元供給元）----
+  // ---- トップ: ガター照会に応答する（真実の一元供給元）----
   if (isTop) {
     try {
       window.addEventListener('message', function (e) {
         var m = e && e.data;
-        if (m && m.k === MSG_Q && e.source) {
-          try { e.source.postMessage({ k: MSG_V, g: topGutter() }, '*'); } catch (_) {}
-        }
+        if (m && m.k === MSG_Q && e.source) { try { e.source.postMessage({ k: MSG_V, g: gutters() }, '*'); } catch (_) {} }
       }, false);
     } catch (_) {}
   }
 
-  // ---- 葉（プレビュー）: top へ照会し返信で適用 ----
-  var curGutter = null;                                // top からの受信値。未受信の間はローカルでフラッシュ防止。
+  // ---- 葉: top へ照会し返信で適用 ----
+  var curG = null;                                    // top からの受信値。未受信の間はローカルでフラッシュ防止。
   function onLeafMsg(e) {
     var m = e && e.data;
-    if (m && m.k === MSG_V && typeof m.g === 'number') { curGutter = clampGutter(m.g); applyGutter(curGutter); }
+    if (m && m.k === MSG_V && m.g) { curG = m.g; applyFrom(curG); }
   }
-  // 連鎖が届くフレームでは ccstudio:setting を受けて即再照会（届かないプレビューは下の tick ポーリングが拾う）。
   function onSettingEvt(e) {
     var d = e && e.detail;
-    if (d && d.plugin === NS && isPreviewFrame(document)) query();
+    if (d && d.plugin === NS && targetFor(document)) query();
   }
   function query() { try { window.top.postMessage({ k: MSG_Q }, '*'); } catch (_) {} }
   function arm() {
@@ -105,17 +127,26 @@
     } catch (_) {}
   }
 
-  // 1本の tick でリスナ再武装＋プレビューへの適用＋最新値の照会をまとめて面倒みる。
+  // 1本の tick でリスナ再武装＋該当ターゲットへの適用＋最新値の照会をまとめて面倒みる。
   function tick() {
     if (isTop) return;                                 // トップは応答役のみ
     arm();                                             // document.open で消えたリスナの再武装（冪等・軽量）
-    if (!isPreviewFrame(document)) return;             // プレビュー以外の葉では何もしない
-    applyGutter(curGutter === null ? topGutter() : curGutter);   // 初回はローカル（ロード時は正しい）でフラッシュ防止
-    query();                                           // 最新値を照会 → 返信で curGutter 更新・掛け直し
+    if (!targetFor(document)) return;                  // 対象 webview 以外の葉では何もしない
+    applyFrom(curG || gutters());                      // 初回はローカル（ロード時は正しい）でフラッシュ防止
+    query();                                           // 最新値を照会 → 返信で curG 更新・掛け直し
   }
 
   // ---- 起動 ----
-  arm();
-  tick();                                              // document-start で即適用
-  try { setInterval(tick, POLL_MS); } catch (_) {}
+  //   document-start 時点では判定マーカー（preview の meta / chat の CSS 変数）が未生成のことがある。
+  //   ui-zoom に倣い documentElement 準備を待って開始し、さらに初回だけ速い tick を数発撃って
+  //   マーカー出現直後に掛ける（フラッシュ短縮）。以後は 1s ポーリング。subtree observer は chat の
+  //   ストリーミングで多発コストがあるため採らず、短いバースト＋ポーリングで代替する。
+  function start() {
+    arm();
+    tick();                                            // 即適用（マーカーが既にあれば）
+    [80, 200, 400, 800].forEach(function (ms) { try { setTimeout(tick, ms); } catch (_) {} });
+    try { setInterval(tick, POLL_MS); } catch (_) {}
+  }
+  if (document.documentElement) start();
+  else document.addEventListener('DOMContentLoaded', start, { once: true });
 })();
