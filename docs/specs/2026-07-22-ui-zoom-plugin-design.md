@@ -120,9 +120,15 @@
   照会時点でトップの受信リスナは常に武装済み。返信が来ない間は補正しない（誤って拡大しない）。
 - 補正 zoom を掛けた葉では `window.innerWidth/innerHeight` を **zoom 後の座標系へ上書き**する
   （clientWidth 等は zoom 換算値なのに innerWidth だけ生値のままという不整合を解消）。
-  innerWidth 基準で fixed 要素を置くアプリ JS（例: Claude の画像プレビューの × ボタン）が
-  画面外へはみ出す実害があった（v0.5.1 まで。CDP 実測: 右端 227px vs 可視幅 170px → 修正後
-  ぴったり右端）。defineProperty は document.open を跨いでも window に生き残る。
+  innerWidth 基準で fixed 要素を置くアプリ JS が画面外へはみ出すのを防ぐ（v0.5.2）。
+  defineProperty は document.open を跨いでも window に生き残る。
+- **vw/vh 単位は CSS zoom の影響を受けない**（既知のギャップ）。viewport 単位でレイアウトする
+  全画面オーバーレイ（Claude の画像プレビュー: 90vw/90vh の中央寄せ＋コンテナ右上角の ×）は
+  補正 zoom 下で可視域より大きく組まれ、× が画面外へ押し出され「閉じられない」実害が出た
+  （v0.5.2 まで。CDP 実測: × 右端 380px vs 可視 331px）。v0.5.3 でオーバーレイ
+  `[class*="previewOverlay"]` に逆 zoom を注入し、内部を「補正なし」と同じ座標系へ戻して解消
+  （正味 1 倍。実物で × 画面内復帰とクリックで閉じるまで確認）。クラス名依存の限定逸脱 2 例目
+  （CSS-module の安定接頭辞のみ・失敗は現状維持側）。
 
 ### 5.3 ネイティブ UI のフォント等倍戻し（トップ）
 - ネイティブ UI はフレームでないため逆 zoom は使えない（§2 の部分スケール不可）。ジオメトリは

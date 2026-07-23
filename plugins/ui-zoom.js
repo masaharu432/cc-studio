@@ -1,6 +1,6 @@
 // ==CCStudioPlugin==
 // @name        ui-zoom
-// @version     0.5.2
+// @version     0.5.3
 // @description Shrink the workbench chrome via viewport scale; fonts and webview scale are adjustable live from settings.
 // @description:ja workbench の外枠 UI を viewport スケールで縮小。倍率・文字サイズは⚙設定からライブ調整できる。
 // @run-at      document-start
@@ -280,16 +280,37 @@
       iwPatched = true;
     } catch (_) {}
   }
+  // vw/vh は CSS zoom の影響を受けない（既知のギャップ）。viewport 単位でレイアウトする全画面
+  // オーバーレイ（Claude の画像プレビュー: max-*: 90vw/90vh の中央寄せ）は補正 zoom 下で可視域より
+  // 大きく組まれ、コンテナ右上角の × が画面外へ押し出され「閉じられない」実害が出る（CDP 実測:
+  // × 右端 380px vs 可視 331px）。オーバーレイ自体へ逆 zoom を掛け、内部を「補正なし」と同じ
+  // 座標系へ戻す（正味 1 倍 = プラグイン無しと同じ見た目・実測で × が画面内に復帰）。
+  // セレクタは Claude 拡張の CSS-module 名の安定接頭辞（ハッシュ接尾辞非依存）。規約の
+  // クラス名非依存からの限定逸脱 — 失敗しても「現状維持」に倒れる無害側。
+  var LEAF_STYLE_ID = 'cc-uz-leaf';
+  function ensureLeafCss(k) {
+    try {
+      var el = document.getElementById(LEAF_STYLE_ID);
+      if (Math.abs(k - 1) <= EPS) { if (el) el.parentNode.removeChild(el); return; }
+      var css = '[class*="previewOverlay"]{zoom:' + (1 / k).toFixed(5) + '}';
+      if (!el) {
+        el = document.createElement('style'); el.id = LEAF_STYLE_ID;
+        (document.head || document.documentElement).appendChild(el);
+      }
+      if (el.textContent !== css) el.textContent = css;
+    } catch (_) {}
+  }
   function applyFrame() {
     try {
       var de = document.documentElement; if (!de) return;
       var cur = parseFloat(de.style.zoom); if (!isFinite(cur) || cur <= 0) cur = 1;
       if (hasIframe()) {                  // 実は中間ラッパーフレームだった → 補正解除して以後何もしない
-        if (cur !== 1) { de.style.zoom = ''; patchViewportProps(1); emitLog('wrapper: comp removed'); }
+        if (cur !== 1) { de.style.zoom = ''; patchViewportProps(1); ensureLeafCss(1); emitLog('wrapper: comp removed'); }
         return;
       }
       if (topZ === null) return;          // 返信待ち（未注入環境でもここで止まり、拡大方向には倒れない）
       var k = 1 / topZ;
+      ensureLeafCss(k);                   // document.open で style が消えても毎 tick で復元（EPS return より前）
       if (Math.abs(k - cur) <= EPS) return;
       if (Math.abs(k - 1) <= EPS) { de.style.zoom = ''; patchViewportProps(1); }
       else { de.style.zoom = String(k); patchViewportProps(k); }
