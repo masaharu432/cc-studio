@@ -1,8 +1,8 @@
 // ==CCStudioPlugin==
 // @name        ui-zoom
-// @version     0.3.0
-// @description Shrink the workbench chrome via viewport scale while keeping webview content (chat etc.) at 1x.
-// @description:ja workbench の外枠 UI を viewport スケールで縮小し、チャット等の文字サイズは等倍に保つ。
+// @version     0.4.0
+// @description Shrink the workbench chrome via viewport scale; keep webview content and native UI text at 1x.
+// @description:ja workbench の外枠 UI を viewport スケールで縮小し、チャットとネイティブ UI の文字は等倍に保つ。
 // @run-at      document-start
 // @all-frames  true
 // @setting     enabled boolean true 外枠 UI（アクティビティバー等）を縮小表示する
@@ -26,6 +26,13 @@
 //   できないため、window.top へ倍率を postMessage で照会し、返信された topZ の逆倍率 1/topZ の
 //   CSS zoom を掛けて文字を等倍へ戻す。返信が来ない間は補正しない（誤って拡大しない）。iframe を
 //   抱える中間ラッパーフレームは何もしない。ロード途中で iframe が現れたら補正を解除する。
+//
+//   ネイティブ UI（エクスプローラ等のツリー・タブ・ステータスバー）はフレームでないため逆 zoom で
+//   戻すと VS Code の数値ピクセルレイアウトと衝突する（枠だけ縮めれば隙間・中身だけ拡げれば溢れ）。
+//   そこでジオメトリは 0.75 のまま、**フォントサイズだけ** 1/Z 倍へ上書きして可読性を保つ
+//   （行高は据え置き＝密度が上がる。失敗しても「文字が小さいまま」に倒れる無害な介入）。
+//   ここだけ規約の「クラス名非依存」を限定的に外し、VS Code 標準の .monaco-workbench /
+//   .part.statusbar のみ参照する（値は実測してから 1/Z 倍するので原値変更にも追従）。
 //
 //   フレーム判定は構造ルールのみ（クラス名非依存）。倍率 Z はファイル先頭定数、変更は版数 bump。
 //
@@ -115,6 +122,38 @@
         ineffLogged = true;               // 書き換え済みなのに広がらない＝アプリ側が未対応
         emitLog('top: scale not applied (app useWideViewPort?)');
       }
+      applyFonts();
+    } catch (_) {}
+  }
+
+  // ネイティブ UI のフォント等倍戻し（ヘッダコメント参照）。上書き対象は
+  //   .monaco-workbench（既定 13px・タブ等の em 指定はこれに追従）と、明示 px を持つ
+  //   .part.statusbar（既定 12px）のみ。原値は上書き前に実測してキャッシュする。
+  var FONT_STYLE_ID = 'cc-uz-font';
+  var baseRootPx = 0;                     // .monaco-workbench の原フォント px（実測）
+  var baseStatusPx = 0;                   // .part.statusbar の原フォント px（実測・後から現れ得る）
+  function measurePx(sel) {
+    try {
+      var el = document.querySelector(sel);
+      if (!el) return 0;
+      var v = parseFloat(getComputedStyle(el).fontSize);
+      return (isFinite(v) && v > 0) ? v : 0;
+    } catch (_) { return 0; }
+  }
+  function applyFonts() {
+    try {
+      var el = document.getElementById(FONT_STYLE_ID);
+      if (!(enabled() && scaleApplied())) { if (el) el.parentNode.removeChild(el); return; }
+      if (!baseRootPx) baseRootPx = measurePx('.monaco-workbench');
+      if (!baseRootPx) return;            // workbench 未生成（login 等）: 次 tick で
+      if (!baseStatusPx && !el) baseStatusPx = measurePx('.part.statusbar');  // 上書き前のみ実測
+      var css = '.monaco-workbench{font-size:' + (baseRootPx / Z).toFixed(2) + 'px !important}';
+      if (baseStatusPx) css += '\n.monaco-workbench .part.statusbar{font-size:' + (baseStatusPx / Z).toFixed(2) + 'px !important}';
+      if (!el) {
+        el = document.createElement('style'); el.id = FONT_STYLE_ID;
+        (document.head || document.documentElement).appendChild(el);
+      }
+      if (el.textContent !== css) { el.textContent = css; emitLog('top font x' + (1 / Z).toFixed(3)); }
     } catch (_) {}
   }
   if (isTop) {
