@@ -125,6 +125,16 @@ CDP で cc-studio を開き README.md をプレビュー表示し、全フレー
   - 「デフォルトに戻す」で 12px に復帰することを確認。
 - 実機スクリーンショットで、当初の無駄な左右余白が解消されていることを目視確認。
 
+### 実機検証結果（code-server 4.126.0 / mobile 412px / CDP・2026-07-23）
+
+プラグイン（gutter=12）＋検証ハーネスを注入し README.md プレビューを開いて body padding を計測。すべて PASS。
+
+- 全幅化: プレビュー body の左右 padding = **12px/12px**（プラグイン無しの実測 26px から詰まる＝基本ルールを上書き）。
+- スコープ限定: 非プレビュー2フレーム（ワークベンチ外殻 `agent-status-enabled…` / 空 body のフレーム）の padding は **0/0 のまま不変**。プラグインはプレビューフレームだけに作用。
+- ライブ反映: `ccstudio:setting` を 12 → **40/40** → **0/0** → **12/12** と流し、いずれもリロードなしで追従。
+- 「デフォルトに戻す」相当: 同一イベント経路（⚙ 共通ボタンが使うのと同じ `setSetting→ccstudio:setting`）で 12px へ復帰。
+- `@media(min-width:914px)` の大余白ルールも同じ `body` セレクタ・非 `!important` のため、`padding-left/right !important` の longhand が同様に勝つ（上書き機構が実測でプレビュー body に効くことを確認済み＝カバー）。
+
 ## 成果物
 
 - `plugins/md-preview-width.js`（新規・本数 11→12）
