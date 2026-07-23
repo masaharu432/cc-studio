@@ -108,8 +108,10 @@ CDP で cc-studio を開き README.md をプレビュー表示し、全フレー
   プレビューには `<meta id="vscode-markdown-preview-data" data-settings data-strings data-state data-initial-md-content>`
   が必ず存在する。エディタ本体・ワークベンチ外殻・その他 webview には無く、`vscode-body` クラスも付かないため
   スコープが綺麗に分離できる（実測でプレビュー以外のフレームはすべて非該当）。
-- **本文セレクタ（`BODY_SELECTOR`）**: `body`。左右余白は **body の padding** に乗る（`box-sizing: content-box`、margin 0）。
-  子の `.markdown-body` は padding/margin 0・max-width none で**側余白に寄与しない**ため、上書き対象は body だけでよい。
+- **本文セレクタ / 余白源**: 左右余白は **html と body の二段の padding**（各 `0 26px`）。body だけ 0 にしても html の
+  26px が残る（実機報告→gutter=0 でボックスモデル実測: html padL/R=26px, body.left=26px）。子の `.markdown-body` は
+  padding/margin 0 で寄与しない。**html=0 / body=gutter に固定**し総インセットを gutter に一致させる
+  （実測: gutter=0→content left=0（全幅）, gutter=12→content left=12）。
 - **既定 padding（`DEFAULT_PADDING_NOTE`）**: 基本 `body{ padding:0 26px }`（`.../extensions/github/markdown.css` 由来）。
   実機の大余白は `@media screen and (min-width:914px){ body{ padding:0 calc((100% - 862px)/2) } }` が正体
   （プレビュー内部幅が 914px 以上のとき中央 862px へ寄せる）。どちらのルールも `!important` ではないので、
