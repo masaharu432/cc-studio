@@ -85,10 +85,21 @@
     try { return !!document.querySelector('iframe,frame'); } catch (_) { return true; }
   }
 
+  // viewport スケールが実際に効いたか。効けば innerWidth ≒ screen.width / Z に広がる。
+  //   アプリが useWideViewPort 未対応（旧ビルド）だと meta 書き換えは無視され広がらない。
+  //   その場合に葉へ Z を配ると「縮小なしでチャットだけ拡大」する事故になるため、返信前に確認する。
+  function scaleApplied() {
+    try {
+      var sw = window.screen && window.screen.width;
+      return !!sw && window.innerWidth >= (sw / Z) * 0.9;
+    } catch (_) { return false; }
+  }
+
   // トップ: enabled に応じて viewport meta の scale を Z/原文へ切り替え、照会に現在倍率を返信する。
   //   meta は document-start 時点では未パースのことがある → MutationObserver/interval の tick で
   //   出現し次第書き換える（body パース前に書ければフラッシュは目立たない）。
   var origViewport = null;                // 初回書き換え前の原文（OFF で復元する）
+  var ineffLogged = false;
   function applyTop() {
     try {
       var m = document.querySelector('meta[name="viewport"]');
@@ -100,6 +111,9 @@
         emitLog('top scale=' + (enabled() ? Z : 1));
         // viewport 変更で innerWidth が変わる。ブラウザ自身の resize も飛ぶが、保険で一発通知。
         try { window.dispatchEvent(new Event('resize')); } catch (_) {}
+      } else if (enabled() && !ineffLogged && !scaleApplied()) {
+        ineffLogged = true;               // 書き換え済みなのに広がらない＝アプリ側が未対応
+        emitLog('top: scale not applied (app useWideViewPort?)');
       }
     } catch (_) {}
   }
@@ -110,7 +124,8 @@
         if (!m) return;
         if (m.k === HUD_MSG && typeof m.log === 'string') { pushShared(m.log); return; }
         if (m.k === MSG_Q && e.source) {
-          try { e.source.postMessage({ k: MSG_Z, z: enabled() ? Z : 1 }, '*'); } catch (_) {}
+          // 縮小が実際に効いているときだけ Z を配る（効いていないのに葉が拡大する事故を防ぐ）。
+          try { e.source.postMessage({ k: MSG_Z, z: (enabled() && scaleApplied()) ? Z : 1 }, '*'); } catch (_) {}
         }
       }, false);
     } catch (_) {}
