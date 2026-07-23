@@ -133,8 +133,14 @@ CDP で cc-studio を開き README.md をプレビュー表示し、全フレー
 
 - 全幅化: プレビュー body の左右 padding = **12px/12px**（プラグイン無しの実測 26px から詰まる＝基本ルールを上書き）。
 - スコープ限定: 非プレビュー2フレーム（ワークベンチ外殻 `agent-status-enabled…` / 空 body のフレーム）の padding は **0/0 のまま不変**。プラグインはプレビューフレームだけに作用。
-- ライブ反映: `ccstudio:setting` を 12 → **40/40** → **0/0** → **12/12** と流し、いずれもリロードなしで追従。
-- 「デフォルトに戻す」相当: 同一イベント経路（⚙ 共通ボタンが使うのと同じ `setSetting→ccstudio:setting`）で 12px へ復帰。
+- ライブ反映（重要な追加知見）: `ccstudio:setting` の postMessage 連鎖は**深くネストした Markdown プレビュー
+  葉フレームまで届かない**（実機報告「リロードしないと反映されない」を CDP で再現：本物のランタイムを全
+  フレーム注入しトップだけで `__ccApplyPluginSetting` を呼ぶと、プレビューフレームは `evt=0`＝イベント未達）。
+  対策として、プレビューは code-server と同一オリジンである利点を使い、**毎 tick で `window.top.__ccPluginSettings`
+  （ネイティブが main フレーム直接更新で常に最新）から gutter を読み直して適用**する経路を追加。実測：トップだけ
+  apply(40)→プレビューは `evt=0` のまま padding 12→40 に追従。`window.top` 非アクセス時はローカルへフォールバック
+  （cross-origin でも退行しない）。イベントが届く上位フレームでは従来どおり即時反映。
+- 「デフォルトに戻す」相当: 同経路（`setSetting` がトップ設定を更新）で tick が拾い 12px へ復帰。
 - `@media(min-width:914px)` の大余白ルールも同じ `body` セレクタ・非 `!important` のため、`padding-left/right !important` の longhand が同様に勝つ（上書き機構が実測でプレビュー body に効くことを確認済み＝カバー）。
 
 ## 成果物
