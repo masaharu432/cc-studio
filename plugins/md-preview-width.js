@@ -8,17 +8,18 @@
 // ==/CCStudioPlugin==
 // md-preview-width.js — CC Studio プラグイン。
 //
-//   VS Code の Markdown プレビューは body に `padding:0 26px` と、914px 以上では
-//   `@media(min-width:914px){body{padding:0 calc((100%-862px)/2)}}` が乗る（いずれも !important
-//   ではない）。スマホ縦画面の実効幅では後者が効き、本文が中央の細い帯に閉じ込められて左右に
-//   広い無駄な余白ができる。実機 CDP 実測（code-server 4.126.0）で確定した値をそのまま使う:
+//   VS Code の Markdown プレビューは html と body の両方に `padding:0 26px` を持ち、914px 以上では
+//   `@media(min-width:914px){body{padding:0 calc((100%-862px)/2)}}` も乗る（いずれも !important
+//   ではない）。本文が左右の余白で細い帯に閉じ込められる。実機 CDP 実測（code-server 4.126.0）:
 //     - プレビュー判定: 葉フレームは `<meta id="vscode-markdown-preview-data" …>` を必ず持つ
 //       （エディタ・チャット等の他 webview フレームは持たない）。`body.vscode-body` もこのフレーム
 //       にしかないが、meta の方が構造的に一意なのでこちらを判定に採る。
-//     - 上書き対象: body（box-sizing: content-box, margin: 0 の素の要素）。子の .markdown-body は
-//       padding/margin とも 0 で上書き不要。
-//   CSS は最小限（左右 padding のみ !important で上書き）。box-sizing や max-width は実測上すでに
-//   問題ないため強制しない（ノイズになるだけで効果がない上書きは書かない）。
+//     - 余白源は html と body の左右 padding の二段。body だけ 0 にしても html の 26px が残る
+//       （gutter=0 実測: html padL/R=26px → body.left=26px）。両方を制御する。
+//     - 総インセットを gutter に一致させるため html=0 / body=gutter に固定（子の .markdown-body は
+//       padding/margin とも 0 で寄与しないため触らない）。
+//   CSS は最小限（html と body の左右 padding のみ !important）。box-sizing/max-width は実測上すでに
+//   問題ないため強制しない（効果のない上書きは書かない）。
 (function () {
   'use strict';
   // フレームごとに 1 度だけ武装（二重注入で setInterval/リスナが二重化するのを防ぐ。ui-zoom と同じ作法）。
@@ -34,9 +35,6 @@
   function isPreviewFrame(doc) {
     try { return !!doc.getElementById('vscode-markdown-preview-data'); } catch (_) { return false; }
   }
-  // 左右 padding を持つ本文コンテナのセレクタ。実測確定: body（.markdown-body は上書き不要）。
-  var BODY_SELECTOR = 'body';
-
   function readGutter() {
     var conf = (window.__ccPluginSettings || {})[NS] || {};
     var v = conf.gutter;
@@ -44,11 +42,14 @@
     return Math.max(MIN, Math.min(MAX, v));
   }
 
+  // 余白は html と body の二段の左右 padding。html を 0 に固定し gutter を body に載せる
+  // ことで、総インセット = gutter px にそろえる（実測: body だけでは html の 26px が残る）。
   function css(px) {
-    return BODY_SELECTOR + '{' +
-      'padding-left:' + px + 'px !important;' +
-      'padding-right:' + px + 'px !important;' +
-    '}';
+    return 'html{padding-left:0 !important;padding-right:0 !important;}' +
+      'body{' +
+        'padding-left:' + px + 'px !important;' +
+        'padding-right:' + px + 'px !important;' +
+      '}';
   }
   function applyGutter(px) {
     var doc = document;
