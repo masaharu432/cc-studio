@@ -152,6 +152,35 @@ class CcBridge(
     @JavascriptInterface
     fun setSessionState(busy: Boolean, disconnected: Boolean) = onSessionState(busy, disconnected)
 
+    // ── プラグイン・メッセージバス（汎用 publish/subscribe） ──
+    // この WebView 構成では top→iframe（クロスオリジン）方向の postMessage が直送・ホップ中継とも
+    // 届かない実測があるため、全フレームに注入される本ブリッジを汎用メッセージバスとして開放する。
+    // 用途例: top に描いた操作 UI（rc-indicator の R ピル等）のイベントを chat フレームへ届ける。
+    // subscribe はポーリング型（呼ぶたびに次の未消費メッセージを 1 件返す・消費する）。
+    // トピック別 FIFO・30 秒で失効。ブリッジはスクリーンごとに別インスタンスなので、
+    // メッセージが他スクリーンへ漏れることはない。
+    private val pluginQueues =
+        java.util.concurrent.ConcurrentHashMap<String, java.util.concurrent.ConcurrentLinkedQueue<Pair<Long, String>>>()
+
+    /** topic 宛てにメッセージを発行する。payload は空文字以外（空は subscribe の「無し」と区別不能）。 */
+    @JavascriptInterface
+    fun pluginPublish(topic: String, payload: String) {
+        if (topic.isEmpty() || payload.isEmpty()) return
+        val q = pluginQueues.getOrPut(topic) { java.util.concurrent.ConcurrentLinkedQueue() }
+        q.add(System.currentTimeMillis() to payload)
+        while (q.size > 32) q.poll()   // 暴走プラグインでも溜め込まない
+    }
+
+    /** topic の次の未消費メッセージを受け取る（ポーリング購読・消費）。無ければ空文字。30 秒超の残留は捨てる。 */
+    @JavascriptInterface
+    fun pluginSubscribe(topic: String): String {
+        val q = pluginQueues[topic] ?: return ""
+        while (true) {
+            val head = q.poll() ?: return ""
+            if (System.currentTimeMillis() - head.first <= 30_000) return head.second
+        }
+    }
+
     /**
      * .md をテキストで開いた直後に呼ばれ、アクティブな WebView へ Ctrl+Shift+V
      * (markdown.togglePreview) をトラステッドなキーイベントとして送ってプレビュー化する。
