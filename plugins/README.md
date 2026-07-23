@@ -1,10 +1,10 @@
 # CC Studio プラグイン規約
 
 CC Studio のプラグインは、アプリが各スクリーンの WebView（code-server の workbench）へ注入する
-単体の `.js` ファイル。このディレクトリの 10 本がその本体。現状はアプリ同梱ではなく
+単体の `.js` ファイル。このディレクトリの 11 本がその本体。現状はアプリ同梱ではなく
 （`PluginStore.BUNDLED` は開発フェーズの意図的な空 placeholder。同梱登録は開発完了後の予定）、
 プラグイン管理スクリーンの「＋ Add plugin」から `.js` を手動インポートして使う。取り込み後は
-同スクリーンから ON/OFF・削除できる。ここでは 10 本から抽出した共通規約をまとめる（実装の典拠は
+同スクリーンから ON/OFF・削除できる。ここでは 11 本から抽出した共通規約をまとめる（実装の典拠は
 各ソースと `app/src/main/java/app/ccstudio/PluginMeta.kt` / `ScreenFactory.kt`）。
 
 ## 1. メタヘッダ

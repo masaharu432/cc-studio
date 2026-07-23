@@ -36,6 +36,9 @@
     font:700 18px/1 var(--sans);cursor:pointer;display:grid;place-items:center}
   .stepbtn:disabled{opacity:.35}
   .stepval{min-width:46px;text-align:center;font:700 13px/1 var(--mono);color:var(--brand-soft)}
+  .reset{width:100%;margin-top:16px;border:1px solid var(--line);background:#161b24;color:var(--dim);
+    border-radius:10px;padding:12px;font:600 12px/1 var(--sans);cursor:pointer}
+  .reset:hover{color:var(--ink);border-color:#3a4558}
   .note{margin-top:18px;font:500 11px/1.6 var(--sans);color:#5d6675}
   .empty{padding:24px 8px;text-align:center;color:var(--dim);font:500 12px/1.5 var(--sans)}
   @media (prefers-reduced-motion:reduce){.tgl,.tgl .knob{transition:none}}
@@ -59,11 +62,13 @@
   var T=JA?{
     docTitle:'プラグイン設定', title:'設定',
     note:'設定はリロード無しで、開いている全スクリーンに即反映されます。',
-    empty:'このプラグインに設定項目はありません。'
+    empty:'このプラグインに設定項目はありません。',
+    reset:'デフォルトに戻す'
   }:{
     docTitle:'Plugin settings', title:'Settings',
     note:'Changes apply immediately to all open screens — no reload needed.',
-    empty:'This plugin has no settings.'
+    empty:'This plugin has no settings.',
+    reset:'Reset to defaults'
   };
   function el(t,c){ var e=document.createElement(t); if(c) e.className=c; return e; }
   function view(){ try{ return JSON.parse(api().getSettingsView()||'{}'); }catch(_){ return {}; } }
@@ -133,6 +138,13 @@
       list.appendChild(e); return;
     }
     defs.forEach(function(s){ list.appendChild(s.type==='number'?numRow(v.name,s):boolRow(v.name,s)); });
+    // 全項目をスキーマ default へ戻す（保存＋ライブ反映は setSetting がやる）。戻した後は再描画。
+    var rst=el('button','reset'); rst.textContent=T.reset;
+    rst.addEventListener('click',function(){
+      defs.forEach(function(s){ try{ api().setSetting(v.name, s.key, String(s.default)); }catch(_){ } });
+      window.__ccRenderSettings();
+    });
+    list.appendChild(rst);
   };
   document.getElementById('back').addEventListener('click',function(){ try{ api().navBack(); }catch(_){ } });
   document.addEventListener('DOMContentLoaded', window.__ccRenderSettings);

@@ -1,6 +1,6 @@
 // ==CCStudioPlugin==
 // @name        ui-zoom
-// @version     0.5.0
+// @version     0.5.1
 // @description Shrink the workbench chrome via viewport scale; fonts and webview scale are adjustable live from settings.
 // @description:ja workbench の外枠 UI を viewport スケールで縮小。倍率・文字サイズは⚙設定からライブ調整できる。
 // @run-at      document-start
@@ -268,23 +268,47 @@
       emitLog('leaf topZ=' + topZ.toFixed(3) + ' comp=' + k.toFixed(3));
     } catch (_) {}
   }
-  if (!isTop) {
-    try {
-      window.addEventListener('message', function (e) {
-        var m = e && e.data;
-        if (m && m.k === MSG_Z && typeof m.z === 'number' && isFinite(m.z) && m.z > 0) {
-          topZ = m.z; applyFrame();
-        }
-      }, false);
-    } catch (_) {}
+  // 葉の受信ハンドラ。**名前付き参照で保持し、毎 tick 再登録する**（同一参照の addEventListener は
+  // 冪等なので重複しない）。理由: VS Code の webview は起動時に document.open()/write() で葉文書を
+  // 書き換え、その際 window の全リスナが仕様で消える。タイマーだけ生き残るため「照会は出るが返信を
+  // 聞けない」ゾンビ化し、⚙ のライブ変更がリロードまで効かなかった（v0.5.0 の実機バグ。CDP で特定）。
+  function onLeafMsg(e) {
+    var m = e && e.data;
+    if (m && m.k === MSG_Z && typeof m.z === 'number' && isFinite(m.z) && m.z > 0) {
+      topZ = m.z; applyFrame();
+    }
+  }
+  function onSettingEvt(e) {
+    var d = e && e.detail;
+    if (d && d.plugin === NAME) tick(true); // ライブ反映（葉は再照会で追従）
   }
   function query() {
     try { window.top.postMessage({ k: MSG_Q }, '*'); } catch (_) {}
   }
 
+  // リスナ・オブザーバの武装（初回と、document.open による消去後の再武装を兼ねる）。
+  //   オブザーバは documentElement が差し替わったときだけ張り直す。
+  var observedRoot = null;
+  function arm() {
+    try {
+      if (!isTop) {
+        window.addEventListener('message', onLeafMsg, false);        // 冪等
+        window.addEventListener('ccstudio:setting', onSettingEvt, false);
+      }
+      var de = document.documentElement;
+      if (de && de !== observedRoot) {
+        observedRoot = de;
+        new MutationObserver(function () { tick(false); }).observe(de, { subtree: true, childList: true });
+        // 非トップのみ: html の style 上書きを即検知して掛け直す（documentElement 単体監視）。
+        if (!isTop) new MutationObserver(function () { tick(false); }).observe(de, { attributes: true, attributeFilter: ['style'] });
+      }
+    } catch (_) {}
+  }
+
   //   照会は force（1s インターバル・設定イベント）と未受信時のみ。DOM 変異のたびに送ると
   //   チャットのストリーミング中に postMessage が乱発するため、変異では送らない。
   function tick(force) {
+    if (!isTop) arm();                    // document.open で消されたリスナの再武装（冪等・軽量）
     if (isTop) { applyTop(); return; }
     applyFrame();
     if ((force || topZ === null) && !hasIframe()) query();  // 返信ハンドラが topZ を更新して掛け直す
@@ -292,17 +316,10 @@
 
   // ---- 起動 ----
   function start() {
+    arm();
     tick(true);                           // document-start で即適用（フラッシュ防止）
-    try { window.addEventListener('ccstudio:setting', function (e) {
-      var d = e && e.detail;
-      if (d && d.plugin === NAME) tick(true); // enabled/diag のライブ反映（葉は再照会で追従）
-    }, false); } catch (_) {}
-    try { new MutationObserver(function () { tick(false); }).observe(document.documentElement, { subtree: true, childList: true }); } catch (_) {}
-    // 非トップのみ: html 要素の style 上書き（webview アプリが起動時に補正を消す）を即検知して掛け直す。
-    //   監視は documentElement 単体（subtree だと描画のたびに発火して無駄）。自分の再適用で 1 回
-    //   発火するが、次の applyFrame は EPS 一致で何もしないためループしない。
-    if (!isTop) {
-      try { new MutationObserver(function () { tick(false); }).observe(document.documentElement, { attributes: true, attributeFilter: ['style'] }); } catch (_) {}
+    if (isTop) {
+      try { window.addEventListener('ccstudio:setting', onSettingEvt, false); } catch (_) {}
     }
     try { setInterval(function () { tick(true); }, POLL_MS); } catch (_) {}
   }
