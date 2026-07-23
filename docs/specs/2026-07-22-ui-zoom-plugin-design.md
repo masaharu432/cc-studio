@@ -118,6 +118,11 @@
   即時再適用し、保険の 1s tick でも自己修復する。
 - トップが先・子が後にロードされる順序（iframe は親文書が作る）なので、document-start 注入なら
   照会時点でトップの受信リスナは常に武装済み。返信が来ない間は補正しない（誤って拡大しない）。
+- 補正 zoom を掛けた葉では `window.innerWidth/innerHeight` を **zoom 後の座標系へ上書き**する
+  （clientWidth 等は zoom 換算値なのに innerWidth だけ生値のままという不整合を解消）。
+  innerWidth 基準で fixed 要素を置くアプリ JS（例: Claude の画像プレビューの × ボタン）が
+  画面外へはみ出す実害があった（v0.5.1 まで。CDP 実測: 右端 227px vs 可視幅 170px → 修正後
+  ぴったり右端）。defineProperty は document.open を跨いでも window に生き残る。
 
 ### 5.3 ネイティブ UI のフォント等倍戻し（トップ）
 - ネイティブ UI はフレームでないため逆 zoom は使えない（§2 の部分スケール不可）。ジオメトリは

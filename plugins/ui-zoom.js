@@ -1,6 +1,6 @@
 // ==CCStudioPlugin==
 // @name        ui-zoom
-// @version     0.5.1
+// @version     0.5.2
 // @description Shrink the workbench chrome via viewport scale; fonts and webview scale are adjustable live from settings.
 // @description:ja workbench の外枠 UI を viewport スケールで縮小。倍率・文字サイズは⚙設定からライブ調整できる。
 // @run-at      document-start
@@ -252,19 +252,47 @@
   //   アプリ（Claude 拡張等）が起動時に html の style を上書きして補正を消すことがあり、
   //   記憶比較だと“適用済み”と誤認して二度と直らない（v0.4.1 までの実機バグ）。
   var topZ = null;
+  // 葉の window.innerWidth/innerHeight を zoom 後の座標系へ補正する。
+  //   zoom 下では clientWidth 等は zoom 換算値を返すのに innerWidth だけ生値のままで、
+  //   innerWidth 基準で fixed 要素を置く JS（例: Claude の画像プレビューの × ボタン）が
+  //   画面外へはみ出す（実機で × が押せない不具合。CDP で実測特定）。座標系を揃えて解消する。
+  //   defineProperty は document.open を跨いでも window に生き残る。
+  var realIWGet = null, realIHGet = null, iwPatched = false;
+  function patchViewportProps(k) {
+    try {
+      if (!realIWGet) {
+        var dW = Object.getOwnPropertyDescriptor(window, 'innerWidth');
+        var dH = Object.getOwnPropertyDescriptor(window, 'innerHeight');
+        if (!dW || !dW.get || !dH || !dH.get) return;   // 想定外の環境では何もしない（現状維持）
+        realIWGet = dW.get; realIHGet = dH.get;
+      }
+      if (Math.abs(k - 1) <= EPS) {
+        if (iwPatched) {
+          Object.defineProperty(window, 'innerWidth', { configurable: true, get: realIWGet });
+          Object.defineProperty(window, 'innerHeight', { configurable: true, get: realIHGet });
+          iwPatched = false;
+        }
+        return;
+      }
+      var kk = k;
+      Object.defineProperty(window, 'innerWidth', { configurable: true, get: function () { return Math.round(realIWGet.call(window) / kk); } });
+      Object.defineProperty(window, 'innerHeight', { configurable: true, get: function () { return Math.round(realIHGet.call(window) / kk); } });
+      iwPatched = true;
+    } catch (_) {}
+  }
   function applyFrame() {
     try {
       var de = document.documentElement; if (!de) return;
       var cur = parseFloat(de.style.zoom); if (!isFinite(cur) || cur <= 0) cur = 1;
       if (hasIframe()) {                  // 実は中間ラッパーフレームだった → 補正解除して以後何もしない
-        if (cur !== 1) { de.style.zoom = ''; emitLog('wrapper: comp removed'); }
+        if (cur !== 1) { de.style.zoom = ''; patchViewportProps(1); emitLog('wrapper: comp removed'); }
         return;
       }
       if (topZ === null) return;          // 返信待ち（未注入環境でもここで止まり、拡大方向には倒れない）
       var k = 1 / topZ;
       if (Math.abs(k - cur) <= EPS) return;
-      if (Math.abs(k - 1) <= EPS) de.style.zoom = '';
-      else de.style.zoom = String(k);
+      if (Math.abs(k - 1) <= EPS) { de.style.zoom = ''; patchViewportProps(1); }
+      else { de.style.zoom = String(k); patchViewportProps(k); }
       emitLog('leaf topZ=' + topZ.toFixed(3) + ' comp=' + k.toFixed(3));
     } catch (_) {}
   }
