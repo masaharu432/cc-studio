@@ -1,6 +1,6 @@
 // ==CCStudioPlugin==
 // @name        ui-zoom
-// @version     0.4.1
+// @version     0.4.2
 // @description Shrink the workbench chrome via viewport scale; keep webview content and native UI text at 1x.
 // @description:ja workbench の外枠 UI を viewport スケールで縮小し、チャットとネイティブ UI の文字は等倍に保つ。
 // @run-at      document-start
@@ -177,21 +177,24 @@
   // 非トップ: 葉フレームなら top から配布された topZ の逆倍率で等倍へ。中間フレームなら補正解除。
   //   topZ 未受信の間は補正しない（誤って拡大しない）。enabled は読まない: 真実はトップ一元で、
   //   OFF ならば返信が z=1 になり補正も自然に消える。
-  var own = 1;
+  //   判定は「自分が掛けた記憶」ではなく **現在の style.zoom の実測** と比較する: webview の
+  //   アプリ（Claude 拡張等）が起動時に html の style を上書きして補正を消すことがあり、
+  //   記憶比較だと“適用済み”と誤認して二度と直らない（v0.4.1 までの実機バグ）。
   var topZ = null;
   function applyFrame() {
     try {
       var de = document.documentElement; if (!de) return;
+      var cur = parseFloat(de.style.zoom); if (!isFinite(cur) || cur <= 0) cur = 1;
       if (hasIframe()) {                  // 実は中間ラッパーフレームだった → 補正解除して以後何もしない
-        if (own !== 1) { de.style.zoom = ''; own = 1; emitLog('wrapper: comp removed'); }
+        if (cur !== 1) { de.style.zoom = ''; emitLog('wrapper: comp removed'); }
         return;
       }
       if (topZ === null) return;          // 返信待ち（未注入環境でもここで止まり、拡大方向には倒れない）
       var k = 1 / topZ;
-      if (Math.abs(k - own) <= EPS) return;
-      if (Math.abs(k - 1) <= EPS) { de.style.zoom = ''; own = 1; }
-      else { de.style.zoom = String(k); own = k; }
-      emitLog('leaf topZ=' + topZ.toFixed(3) + ' comp=' + own.toFixed(3));
+      if (Math.abs(k - cur) <= EPS) return;
+      if (Math.abs(k - 1) <= EPS) de.style.zoom = '';
+      else de.style.zoom = String(k);
+      emitLog('leaf topZ=' + topZ.toFixed(3) + ' comp=' + k.toFixed(3));
     } catch (_) {}
   }
   if (!isTop) {
@@ -224,6 +227,12 @@
       if (d && d.plugin === NAME) tick(true); // enabled/diag のライブ反映（葉は再照会で追従）
     }, false); } catch (_) {}
     try { new MutationObserver(function () { tick(false); }).observe(document.documentElement, { subtree: true, childList: true }); } catch (_) {}
+    // 非トップのみ: html 要素の style 上書き（webview アプリが起動時に補正を消す）を即検知して掛け直す。
+    //   監視は documentElement 単体（subtree だと描画のたびに発火して無駄）。自分の再適用で 1 回
+    //   発火するが、次の applyFrame は EPS 一致で何もしないためループしない。
+    if (!isTop) {
+      try { new MutationObserver(function () { tick(false); }).observe(document.documentElement, { attributes: true, attributeFilter: ['style'] }); } catch (_) {}
+    }
     try { setInterval(function () { tick(true); }, POLL_MS); } catch (_) {}
   }
 
