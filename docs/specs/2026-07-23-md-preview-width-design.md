@@ -1,4 +1,8 @@
-# md-preview-width プラグイン 設計
+# webview-width プラグイン 設計（旧 md-preview-width）
+
+> v0.3.0 で `md-preview-width` を汎用の `webview-width` へ改称し、ターゲット別に独立ガターを持つ多ターゲット
+> 構成へ発展させた。以下は当初の Markdown プレビュー設計に、Claude 拡張チャットのターゲットを追記したもの。
+> 末尾「Claude 拡張チャット ターゲット」節を参照。
 
 - 日付: 2026-07-23
 - 対象: cc-studio / plugins
@@ -151,3 +155,33 @@ CDP で cc-studio を開き README.md をプレビュー表示し、全フレー
 - `plugins/md-preview-width.js`（新規・本数 11→12）
 - `plugins/README.md` / README(日英) の本数・一覧更新
 - 本設計ドキュメント
+
+## Claude 拡張チャット ターゲット（webview-width v0.3.0 で追加）
+
+Claude Code 公式拡張のチャット webview は、広い幅で会話コンテンツ列が中央の帯に固定され左右が大きく余る
+（「横幅が全然使えてない」の実機報告）。汎用化した `webview-width` に 2 つ目のターゲットとして追加した。
+
+### 実機確定値（code-server 4.126.0 / Claude 拡張 2.1.218 / CDP 実測・2026-07-24）
+
+workbench-probe スキルの手順（folder 付き URL → Workspace Trust 付与 → アクティビティバーの Claude アイコン
+クリック → webview は同一オリジンなので `contentWindow` で葉フレームへ潜る。テンプレ
+[claude-view-template.js](../../.claude/skills/workbench-probe/claude-view-template.js)）で会話フレームを実測。
+
+- **フレーム判定**: Claude webview 葉フレームは `<html>` に CSS 変数 `--app-claude-orange`（`#d97757`）を持つ。
+  `getComputedStyle(html).getPropertyValue('--app-claude-orange')` が非空なら Claude フレーム。プレビュー・エディタ等
+  とは別物として綺麗に分離できる。
+- **幅の制約源**: 会話コンテンツ列 `[class*=inputWrapper]` が `max-width:680px` ＋ auto マージンで中央寄せ
+  （実測: 幅 1052px で列 680px・左右 169px ずつ余る）。狭い幅（〜412px 等）では 680 未満のため余白は出ないが、
+  ui-zoom 縮小・横向き・広ペインで幅が 680 を超えると左右が余る。
+  ※ クラス名はハッシュ付き（`inputWrapper_cKsPxg` 等・ビルドで変動）なので **`[class*=inputWrapper]` の前方一致**
+  で拾う（バージョン差に強い）。
+- **上書き**: `[class*=inputWrapper]{ max-width: <chatGutter=0 なら none／>0 なら calc(100% - 2*gutter px)> !important }`。
+  gutter=0 で全幅、>0 で左右 gutter px の中央寄せ。auto マージンはそのまま（中央寄せ維持）。
+
+### 設定・検証
+
+- 設定は **ターゲット別に独立**: `@setting previewGutter number 12 0 80 4` / `@setting chatGutter number 0 0 200 8`
+  （chat 既定 0 = 全幅）。判定は webview 葉フレームで高々 1 ターゲットに一致し、その `<style>`（`cc-ww-preview` /
+  `cc-ww-chat`）に適用。ライブ反映・「デフォルトに戻す」はプレビューと同一の ui-zoom 同型 postMessage 照会経路。
+- 実機検証（幅 1052px・プラグイン注入）: chatGutter=0 → `max-width:none`・列 680→**1019px 全幅**。chatGutter=40 →
+  `calc(100% - 80px)`・中央寄せ。previewGutter=0 → プレビュー本文 left=0（全幅維持・退行なし）。
