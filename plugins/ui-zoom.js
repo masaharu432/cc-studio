@@ -1,6 +1,6 @@
 // ==CCStudioPlugin==
 // @name        ui-zoom
-// @version     0.4.0
+// @version     0.4.1
 // @description Shrink the workbench chrome via viewport scale; keep webview content and native UI text at 1x.
 // @description:ja workbench の外枠 UI を viewport スケールで縮小し、チャットとネイティブ UI の文字は等倍に保つ。
 // @run-at      document-start
@@ -126,11 +126,13 @@
     } catch (_) {}
   }
 
-  // ネイティブ UI のフォント等倍戻し（ヘッダコメント参照）。上書き対象は
-  //   .monaco-workbench（既定 13px・タブ等の em 指定はこれに追従）と、明示 px を持つ
-  //   .part.statusbar（既定 12px）のみ。原値は上書き前に実測してキャッシュする。
+  // ネイティブ UI のフォント等倍戻し（ヘッダコメント参照）。上書き対象は 3 つ:
+  //   .monaco-workbench（既定 13px）/ .part > .content（既定 13px の明示再指定。ツリー・タブは
+  //   ここから継承しており、root だけ上書きしても届かない — 実 workbench の CDP 実測で確認）/
+  //   .part.statusbar（明示 12px）。原値は上書き前に実測してキャッシュする。
   var FONT_STYLE_ID = 'cc-uz-font';
   var baseRootPx = 0;                     // .monaco-workbench の原フォント px（実測）
+  var baseContentPx = 0;                  // .part > .content の原フォント px（実測）
   var baseStatusPx = 0;                   // .part.statusbar の原フォント px（実測・後から現れ得る）
   function measurePx(sel) {
     try {
@@ -146,8 +148,10 @@
       if (!(enabled() && scaleApplied())) { if (el) el.parentNode.removeChild(el); return; }
       if (!baseRootPx) baseRootPx = measurePx('.monaco-workbench');
       if (!baseRootPx) return;            // workbench 未生成（login 等）: 次 tick で
+      if (!baseContentPx && !el) baseContentPx = measurePx('.monaco-workbench .part > .content');  // 上書き前のみ実測
       if (!baseStatusPx && !el) baseStatusPx = measurePx('.part.statusbar');  // 上書き前のみ実測
       var css = '.monaco-workbench{font-size:' + (baseRootPx / Z).toFixed(2) + 'px !important}';
+      css += '\n.monaco-workbench .part > .content{font-size:' + ((baseContentPx || baseRootPx) / Z).toFixed(2) + 'px !important}';
       if (baseStatusPx) css += '\n.monaco-workbench .part.statusbar{font-size:' + (baseStatusPx / Z).toFixed(2) + 'px !important}';
       if (!el) {
         el = document.createElement('style'); el.id = FONT_STYLE_ID;

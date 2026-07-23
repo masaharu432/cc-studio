@@ -116,8 +116,14 @@
 ### 5.3 ネイティブ UI のフォント等倍戻し（トップ）
 - ネイティブ UI はフレームでないため逆 zoom は使えない（§2 の部分スケール不可）。ジオメトリは
   縮小のまま、`<style id="cc-uz-font">` を注入して**フォントサイズだけ** 1/Z 倍へ上書きする:
-  - `.monaco-workbench { font-size: 実測値/Z !important }` — 既定 13px。タブ等の em 指定は追従。
+  - `.monaco-workbench { font-size: 実測値/Z !important }` — 既定 13px。
+  - `.monaco-workbench .part > .content { font-size: 実測値/Z !important }` — 既定 13px の明示
+    再指定。**ツリー・タブはここから継承**しており root だけでは届かない（v0.4.0 の不具合。
+    稼働中の code-server 4.126.0 に CDP で注入して実測特定・修正確認。サブモジュールの版と
+    生きているサーバの版は別物なので、カスケード検証は必ず実物に対して行うこと）。
   - `.monaco-workbench .part.statusbar { font-size: 実測値/Z !important }` — 明示 12px のため個別。
+- なお「workbench UI のフォントサイズ設定」は VS Code に存在しない（editor.fontSize は
+  エディタ本文のみ・window.zoomLevel は Electron 専用）ため、settings.json では代替できない。
 - 原値は**上書き前に実測**してキャッシュ（VS Code 側の原値変更に追従。実測できるまで適用しない）。
 - 適用条件は enabled かつ scaleApplied（§5.2 のガードと同じ）。OFF/未適用では style を除去。
 - 行高は据え置きなので密度が上がる（13px/22px 行 → 17.3px/22px 行）。失敗モードは
