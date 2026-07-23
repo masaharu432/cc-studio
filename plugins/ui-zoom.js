@@ -1,8 +1,8 @@
 // ==CCStudioPlugin==
 // @name        ui-zoom
-// @version     0.2.0
-// @description Shrink the workbench chrome via CSS zoom while keeping webview content (chat etc.) at 1x.
-// @description:ja workbench の外枠 UI を CSS zoom で縮小し、チャット等の文字サイズは等倍に保つ。
+// @version     0.3.0
+// @description Shrink the workbench chrome via viewport scale while keeping webview content (chat etc.) at 1x.
+// @description:ja workbench の外枠 UI を viewport スケールで縮小し、チャット等の文字サイズは等倍に保つ。
 // @run-at      document-start
 // @all-frames  true
 // @setting     enabled boolean true 外枠 UI（アクティビティバー等）を縮小表示する
@@ -13,15 +13,19 @@
 // ui-zoom.js — CC Studio プラグイン。
 //
 //   スマホ縦画面ではアクティビティバー等の外枠 UI が横幅を食う。window.zoomLevel は Electron 専用で
-//   code-server Web 版では効かないため、トップフレームへ CSS zoom を注入して外枠ごと縮小する
-//   （transform と違いレイアウトごと縮むので、空いた幅にサイドバー/エディタが詰まる）。
+//   code-server Web 版では効かないため、トップフレームの viewport meta を initial-scale=Z に書き換えて
+//   全体を縮小する（ピンチズーム相当: レイアウト幅が 1/Z 倍に広がり、workbench は「少し大きい画面」
+//   として自然に敷き直す。アプリ側の useWideViewPort=true が前提）。
 //
-//   CSS zoom は iframe 内へ視覚的に継承される（css-viewport 標準, Chromium 128+）が、子フレームの
-//   currentCSSZoom は親ドキュメント由来の zoom を含まず、継承は子から観測できない（v0.1 の敗因）。
-//   そこでチャット等のコンテンツフレーム（＝自文書に iframe を持たない葉フレーム）は window.top へ
-//   倍率を postMessage で照会し、返信された topZ の逆倍率 1/topZ を掛けて等倍へ戻す。返信が来ない間は
-//   補正しない（誤って拡大しない）。iframe を抱える中間ラッパーフレームは何もしない。ロード途中で
-//   iframe が現れたら（＝実は中間フレームだった）補正を解除する。
+//   CSS zoom を top root に掛ける旧方式（〜v0.2）は不採用: VS Code は getClientArea(body) で
+//   window.innerWidth（zoom 非補正）を読むため縮んだ分の L 字空白が残り、さらに標準化 zoom は
+//   getBoundingClientRect が視覚座標・style ピクセルがローカル座標と分裂するため、メニュー等の
+//   位置決めが 1-Z ぶんズレる。viewport スケールは全 API が一貫するのでどちらも起きない。
+//
+//   チャット等のコンテンツフレーム（＝自文書に iframe を持たない葉フレーム）は縮小を自分では観測
+//   できないため、window.top へ倍率を postMessage で照会し、返信された topZ の逆倍率 1/topZ の
+//   CSS zoom を掛けて文字を等倍へ戻す。返信が来ない間は補正しない（誤って拡大しない）。iframe を
+//   抱える中間ラッパーフレームは何もしない。ロード途中で iframe が現れたら補正を解除する。
 //
 //   フレーム判定は構造ルールのみ（クラス名非依存）。倍率 Z はファイル先頭定数、変更は版数 bump。
 //
@@ -38,6 +42,9 @@
   var HUD_MSG = 'cc-uz-hud';              // クロスオリジンフレーム → top へのログ中継種別
   var MSG_Q = 'cc-uz-q';                  // 葉 → top: 現在倍率の照会
   var MSG_Z = 'cc-uz-z';                  // top → 葉: 現在倍率の返信 { z: Z | 1 }
+  // 有効時の viewport（workbench.html の原文と同形式で scale だけ Z に）。ピンチ無効は維持。
+  var VIEWPORT_ON = 'width=device-width, initial-scale=' + Z +
+    ', maximum-scale=' + Z + ', minimum-scale=' + Z + ', user-scalable=no';
 
   var isTop; try { isTop = (window === window.top); } catch (_) { isTop = false; }
 
@@ -78,14 +85,21 @@
     try { return !!document.querySelector('iframe,frame'); } catch (_) { return true; }
   }
 
-  // トップ: enabled に応じて Z を適用/除去し、葉からの照会に現在倍率を返信する。
+  // トップ: enabled に応じて viewport meta の scale を Z/原文へ切り替え、照会に現在倍率を返信する。
+  //   meta は document-start 時点では未パースのことがある → MutationObserver/interval の tick で
+  //   出現し次第書き換える（body パース前に書ければフラッシュは目立たない）。
+  var origViewport = null;                // 初回書き換え前の原文（OFF で復元する）
   function applyTop() {
     try {
-      var de = document.documentElement; if (!de) return;
-      var want = enabled() ? String(Z) : '';
-      if (de.style.zoom !== want) {
-        de.style.zoom = want;
-        emitLog('top zoom=' + (want || '1'));
+      var m = document.querySelector('meta[name="viewport"]');
+      if (!m) return;                     // 未パース: 次 tick で再試行
+      if (origViewport === null) origViewport = m.getAttribute('content') || '';
+      var want = enabled() ? VIEWPORT_ON : origViewport;
+      if (m.getAttribute('content') !== want) {
+        m.setAttribute('content', want);
+        emitLog('top scale=' + (enabled() ? Z : 1));
+        // viewport 変更で innerWidth が変わる。ブラウザ自身の resize も飛ぶが、保険で一発通知。
+        try { window.dispatchEvent(new Event('resize')); } catch (_) {}
       }
     } catch (_) {}
   }
