@@ -49,6 +49,33 @@ CSS カスケードの犯人探しは、祖先チェーンの computed 値を並
 --eval '(function(){var e=document.querySelector(".monaco-list-row"),o=[];while(e&&e!==document.body){o.push([String(e.className).slice(0,50),getComputedStyle(e).fontSize]);e=e.parentElement}return o})()'
 ```
 
+## Claude チャット（公式拡張の webview）へ入る手順
+
+素の probe 起動では **Claude 拡張は起動しない**（「測定できない」と感じたらまずこれ）。理由は 2 つ:
+probe は毎回まっさらなブラウザプロファイルで開くため ①フォルダ未オープンで拡張が
+アクティベートされない ② Workspace Trust 未付与（Restricted Mode）で拡張が無効化される。
+
+到達手順（テンプレ [claude-view-template.js](claude-view-template.js) を `--eval "$(cat …)"` で渡すのが早い）:
+
+1. `--url 'http://127.0.0.1:8088/?folder=/path/to/repo'` — **フォルダ付きで開く**（必須）。
+2. ステータスバーの Restricted Mode → Trust ボタンを DOM クリックで押し、拡張ホスト再起動を ~10s 待つ。
+3. アクティビティバーから `aria-label` が /claude/i の `.action-label` を待ってクリック（~8s 待つ）。
+   **狭い画面ではバー直置きでなく「Additional Views」オーバーフローメニュー内**に入る。monaco の
+   メニュー項目は素の `click()` では反応しない — mouseover→mousedown→mouseup→click の実イベント列で押す
+   （テンプレの `realClick` 参照）。
+4. **チャット葉フレーム**を掴む: code-server の webview は同一オリジンなので `contentWindow` で潜れる。
+   構造は top → webview ホスト iframe（内側に iframe を 1 個持つ）→ **active-frame = Claude UI 本体**。
+5. セッションを開く・画像をタップ等も葉の DOM に対する `click()` で可能（実績: セッション選択→
+   画像プレビュー展開→ × クリックまで自動化）。
+
+補足:
+- 多段 UI 操作は async IIFE 1 本を `--eval` に渡す（probe は awaitPromise 対応）。
+- 設定ランタイム（`__ccPluginSettings` / `__ccApplyPluginSetting`）は**アプリが注入するもので probe には無い**。
+  ライブ設定変更を試すときは `ScreenFactory.kt` の `SETTINGS_RUNTIME_JS` を抽出し、対象プラグインより
+  先に `--plugin` で注入する。
+- webview は起動時に `document.open()` で葉文書を書き換え、**window のリスナを消す**（タイマーは残る）。
+  「一度は動いたのに反応しなくなった」はこれを疑う。
+
 ## できないこと
 
 - **クロスプロセス iframe (OOPIF)** への `--plugin` 注入は届かない（code-server は
