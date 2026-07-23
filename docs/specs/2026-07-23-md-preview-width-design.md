@@ -136,10 +136,13 @@ CDP で cc-studio を開き README.md をプレビュー表示し、全フレー
 - ライブ反映（重要な追加知見）: `ccstudio:setting` の postMessage 連鎖は**深くネストした Markdown プレビュー
   葉フレームまで届かない**（実機報告「リロードしないと反映されない」を CDP で再現：本物のランタイムを全
   フレーム注入しトップだけで `__ccApplyPluginSetting` を呼ぶと、プレビューフレームは `evt=0`＝イベント未達）。
-  対策として、プレビューは code-server と同一オリジンである利点を使い、**毎 tick で `window.top.__ccPluginSettings`
-  （ネイティブが main フレーム直接更新で常に最新）から gutter を読み直して適用**する経路を追加。実測：トップだけ
-  apply(40)→プレビューは `evt=0` のまま padding 12→40 に追従。`window.top` 非アクセス時はローカルへフォールバック
-  （cross-origin でも退行しない）。イベントが届く上位フレームでは従来どおり即時反映。
+  対策として **ui-zoom と同じ postMessage 照会方式（プル型）** に統一：真実はトップ一元
+  （ネイティブが main フレームの `window.__ccPluginSettings` を直接更新し常に最新）。葉（プレビュー）は
+  `window.top` へ `MSG_Q` を投げ、トップが現在 gutter を `MSG_V` で返信 → 葉が適用。1s ポーリング＋
+  （届く場合の）`ccstudio:setting` で再照会し、document.open 対策でリスナを毎 tick 再武装する。
+  postMessage はクロスオリジン webview 葉でも通るため、`window.top` 直読み（同一オリジン限定）より堅牢で
+  規約整合。実測：本物のランタイムを全フレーム注入しトップだけ apply(40)→プレビューは `evt=0`（イベント未達）
+  のまま照会/返信で padding 12→40 に追従。
 - 「デフォルトに戻す」相当: 同経路（`setSetting` がトップ設定を更新）で tick が拾い 12px へ復帰。
 - `@media(min-width:914px)` の大余白ルールも同じ `body` セレクタ・非 `!important` のため、`padding-left/right !important` の longhand が同様に勝つ（上書き機構が実測でプレビュー body に効くことを確認済み＝カバー）。
 
