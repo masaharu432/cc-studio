@@ -389,9 +389,9 @@ class MainActivity : AppCompatActivity() {
             }
         },
         settingsViewJsonFn = { settingsViewJson() },
-        onSetSetting = { name, key, value ->
-            store.setSettingRaw(name, key, value.toString())
-            runOnUiThread { pushSettingLive(name, key, value) }
+        onSetSetting = { name, key, raw ->
+            store.setSettingRaw(name, key, raw)
+            runOnUiThread { pushSettingLive(name, key, raw) }
         },
         onClosePluginSettings = { runOnUiThread { popBack() } },
         onSessionState = { busy, disconnected -> onSessionState(screenId, busy, disconnected) },
@@ -783,9 +783,17 @@ class MainActivity : AppCompatActivity() {
      * evaluateJavascript が届くのはメインフレームのみ。サブフレームへは
      * __ccApplyPluginSetting（SETTINGS_RUNTIME_JS）が message で下方に再伝搬する。
      */
-    private fun pushSettingLive(name: String, key: String, value: Boolean) {
+    private fun pushSettingLive(name: String, key: String, raw: String) {
+        // raw をスキーマの型で coerce してから JS リテラル化（number は clamp 済みの数値になる）。
+        val def = store.settingsOf(name).firstOrNull { it.key == key }
+        val v: Any = if (def != null) PluginSettings.coerce(def, raw) else raw
+        val lit = when (v) {
+            is Boolean -> v.toString()
+            is Double -> if (v.isFinite()) v.toString() else "0"
+            else -> JSONObject.quote(v.toString())
+        }
         val js = "window.__ccApplyPluginSetting && window.__ccApplyPluginSetting(" +
-            "${JSONObject.quote(name)}, ${JSONObject.quote(key)}, $value);"
+            "${JSONObject.quote(name)}, ${JSONObject.quote(key)}, $lit);"
         screens.webScreens().forEach { it.webView.evaluateJavascript(js, null) }
     }
 

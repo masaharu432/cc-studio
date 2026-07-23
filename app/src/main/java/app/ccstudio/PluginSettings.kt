@@ -7,14 +7,23 @@ object PluginSettings {
         val out = LinkedHashMap<String, Any>()
         for (d in defs) {
             val v = raw[d.key] ?: d.default
-            out[d.key] = coerce(d.type, v)
+            out[d.key] = coerce(d, v)
         }
         return out
     }
 
-    /** 文字列表現を型に応じた値へ。v1 は boolean のみ（他は文字列のまま）。 */
-    fun coerce(type: String, value: String): Any = when (type) {
+    /**
+     * 文字列表現を型に応じた値へ。number は [min,max] へ clamp（壊れた保存値への防御）。
+     * 数値でない raw は default へフォールバック。
+     */
+    fun coerce(def: SettingDef, value: String): Any = when (def.type) {
         "boolean" -> value.equals("true", ignoreCase = true)
+        "number" -> {
+            var v = value.toDoubleOrNull() ?: def.default.toDoubleOrNull() ?: 0.0
+            def.min?.let { if (v < it) v = it }
+            def.max?.let { if (v > it) v = it }
+            v
+        }
         else -> value
     }
 }

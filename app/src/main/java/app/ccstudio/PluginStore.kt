@@ -163,9 +163,10 @@ class PluginStore(private val context: Context) {
         prefs.edit().putString("setting:$name:$key", value).apply()
     }
 
-    /** 対象プラグインの設定スキーマ（無ければ空）。 */
-    fun settingsOf(name: String): List<SettingDef> =
-        list().firstOrNull { it.name == name }?.settings ?: emptyList()
+    /** 対象プラグインの設定スキーマ（無ければ空）。ns は設定 namespace（displayName=@name）。
+     *  ファイル名（内部 ID）でも一致させる: @name 未宣言プラグインは displayName=ファイル名のため。 */
+    fun settingsOf(ns: String): List<SettingDef> =
+        list().firstOrNull { it.displayName == ns || it.name == ns }?.settings ?: emptyList()
 
     /**
      * 設定を持つ全プラグインの「default を保存値で上書き＋型変換した」有効値マップ。

@@ -31,6 +31,11 @@
   .tgl .knob{position:absolute;top:2.5px;left:2.5px;width:21px;height:21px;border-radius:50%;background:#aeb7c4;transition:transform .18s,background .18s}
   .tgl[aria-pressed="true"]{background:var(--live-dim)}
   .tgl[aria-pressed="true"] .knob{transform:translateX(20px);background:var(--live)}
+  .stepper{display:flex;align-items:center;gap:2px;flex:0 0 auto}
+  .stepbtn{width:36px;height:36px;border-radius:9px;border:1px solid var(--line);background:#161b24;color:var(--ink);
+    font:700 18px/1 var(--sans);cursor:pointer;display:grid;place-items:center}
+  .stepbtn:disabled{opacity:.35}
+  .stepval{min-width:46px;text-align:center;font:700 13px/1 var(--mono);color:var(--brand-soft)}
   .note{margin-top:18px;font:500 11px/1.6 var(--sans);color:#5d6675}
   .empty{padding:24px 8px;text-align:center;color:var(--dim);font:500 12px/1.5 var(--sans)}
   @media (prefers-reduced-motion:reduce){.tgl,.tgl .knob{transition:none}}
@@ -73,10 +78,46 @@
     tgl.appendChild(el('span','knob'));
     tgl.addEventListener('click',function(){
       var next = tgl.getAttribute('aria-pressed')!=='true';
-      try{ api().setSetting(name, s.key, next); }catch(_){ }
+      try{ api().setSetting(name, s.key, String(next)); }catch(_){ }
       tgl.setAttribute('aria-pressed', String(next));
     });
     row.appendChild(tgl);
+    return row;
+  }
+
+  // number 行: ラベル [−] 値 [+]。step 刻みで min/max に clamp。表示桁は step から導出。
+  function numRow(name,s){
+    var min=(typeof s.min==='number')?s.min:0, max=(typeof s.max==='number')?s.max:1;
+    var step=(typeof s.step==='number'&&s.step>0)?s.step:0.05;
+    var digits=(String(step).split('.')[1]||'').length;
+    var val=(typeof s.value==='number')?s.value:(typeof s.default==='number'?s.default:min);
+    var row=el('div','row');
+    var ic=el('div','ic'); ic.textContent='⚙'; row.appendChild(ic);
+    var main=el('div','row-main');
+    var t=el('div','row-t'); t.textContent=s.label||s.key; main.appendChild(t);
+    row.appendChild(main);
+    var box=el('div','stepper');
+    var dec=el('button','stepbtn'); dec.textContent='−';
+    var out=el('span','stepval');
+    var inc=el('button','stepbtn'); inc.textContent='＋';
+    function show(){
+      out.textContent=val.toFixed(digits);
+      dec.disabled = val <= min + 1e-9;
+      inc.disabled = val >= max - 1e-9;
+    }
+    function bump(dir){
+      // 浮動小数の蓄積誤差を避けるため step 格子に丸めてから clamp する。
+      var next=Math.round((val+dir*step)/step)*step;
+      next=Math.min(max,Math.max(min,next));
+      if(Math.abs(next-val)<1e-9) return;
+      val=next; show();
+      try{ api().setSetting(name, s.key, val.toFixed(digits)); }catch(_){ }
+    }
+    dec.addEventListener('click',function(){ bump(-1); });
+    inc.addEventListener('click',function(){ bump(+1); });
+    show();
+    box.appendChild(dec); box.appendChild(out); box.appendChild(inc);
+    row.appendChild(box);
     return row;
   }
 
@@ -86,12 +127,12 @@
     document.querySelector('.note').textContent=T.note;
     document.getElementById('title').textContent = v.displayName || v.name || T.title;
     var list=document.getElementById('list'); list.innerHTML='';
-    var defs=(v.settings||[]).filter(function(s){ return s.type==='boolean'; });
+    var defs=(v.settings||[]).filter(function(s){ return s.type==='boolean'||s.type==='number'; });
     if(!defs.length){
       var e=el('div','empty'); e.textContent=T.empty;
       list.appendChild(e); return;
     }
-    defs.forEach(function(s){ list.appendChild(boolRow(v.name, s)); });
+    defs.forEach(function(s){ list.appendChild(s.type==='number'?numRow(v.name,s):boolRow(v.name,s)); });
   };
   document.getElementById('back').addEventListener('click',function(){ try{ api().navBack(); }catch(_){ } });
   document.addEventListener('DOMContentLoaded', window.__ccRenderSettings);

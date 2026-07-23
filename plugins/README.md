@@ -29,7 +29,7 @@ CC Studio のプラグインは、アプリが各スクリーンの WebView（co
 | `@description` | 管理スクリーンのカードに出す説明 | — |
 | `@run-at` | `document-start` / `document-idle`。それ以外の値は document-start に正規化 | `document-start` |
 | `@all-frames` | `true`: 全フレーム × document-start 登録。`false`: メインフレームのみ・ロード完了後に注入 | `true` |
-| `@setting` | `<key> <type> <default> <label...>` の設定宣言（複数可）。v1 は `boolean` のみ | — |
+| `@setting` | 設定宣言（複数可）。boolean: `<key> boolean <default> <label...>` / number (v2): `<key> number <default> <min> <max> <step> <label...>`（⚙ に −/+ ステッパーで表示・ライブ反映） | — |
 
 補足:
 - ファイル名がプラグインの内部 ID（ブリッジ操作のキー）。`@name` は表示と設定 namespace。

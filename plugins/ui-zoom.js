@@ -1,13 +1,21 @@
 // ==CCStudioPlugin==
 // @name        ui-zoom
-// @version     0.4.5
-// @description Shrink the workbench chrome via viewport scale; keep webview content and native UI text at 1x.
-// @description:ja workbench の外枠 UI を viewport スケールで縮小し、チャットとネイティブ UI の文字は等倍に保つ。
+// @version     0.5.0
+// @description Shrink the workbench chrome via viewport scale; fonts and webview scale are adjustable live from settings.
+// @description:ja workbench の外枠 UI を viewport スケールで縮小。倍率・文字サイズは⚙設定からライブ調整できる。
 // @run-at      document-start
 // @all-frames  true
-// @setting     enabled boolean true 外枠 UI（アクティビティバー等）を縮小表示する
+// @setting     enabled boolean true Shrink the outer UI (activity bar etc.)
 // @setting:ja  enabled 外枠 UI（アクティビティバー等）を縮小表示する
-// @setting     diag boolean true 診断ログを focus-hud に出す
+// @setting     shrink number 0.75 0.5 1.0 0.05 Chrome shrink ratio (smaller = narrower bars)
+// @setting:ja  shrink 外枠の縮小率（小さいほどバーが細い）
+// @setting     sidebarFont number 0.9 0.7 1.3 0.05 Sidebar text size (1.0 = original)
+// @setting:ja  sidebarFont サイドバー文字（1.0 = 縮小前と同じ）
+// @setting     uiFont number 0.9 0.7 1.3 0.05 Other UI text size (tabs/status bar etc.)
+// @setting:ja  uiFont その他 UI 文字（タブ・ステータスバー等）
+// @setting     claudeFont number 1.0 0.7 1.3 0.05 Claude webview scale (1.0 = original)
+// @setting:ja  claudeFont Claude 表示倍率（1.0 = 縮小前と同じ）
+// @setting     diag boolean true Emit diagnostics to focus-hud
 // @setting:ja  diag 診断ログを focus-hud に出す
 // ==/CCStudioPlugin==
 // ui-zoom.js — CC Studio プラグイン。
@@ -29,41 +37,57 @@
 //
 //   ネイティブ UI（エクスプローラ等のツリー・タブ・ステータスバー）はフレームでないため逆 zoom で
 //   戻すと VS Code の数値ピクセルレイアウトと衝突する（枠だけ縮めれば隙間・中身だけ拡げれば溢れ）。
-//   そこでジオメトリは 0.75 のまま、**フォントサイズだけ** 1/Z 倍へ上書きして可読性を保つ
-//   （行高は据え置き＝密度が上がる。失敗しても「文字が小さいまま」に倒れる無害な介入）。
-//   ここだけ規約の「クラス名非依存」を限定的に外し、VS Code 標準の .monaco-workbench /
-//   .part.statusbar のみ参照する（値は実測してから 1/Z 倍するので原値変更にも追従）。
+//   そこでジオメトリは縮小のまま、**フォントサイズだけ**上書きして可読性を保つ（行高は据え置き＝
+//   密度が上がる。失敗しても「文字が小さいまま」に倒れる無害な介入）。ここだけ規約の
+//   「クラス名非依存」を限定的に外し、VS Code 標準の .monaco-workbench / .part 系のみ参照する
+//   （値は実測してから係数を掛けるので原値変更にも追従。textZoom は実測して除去）。
 //
-//   フレーム判定は構造ルールのみ（クラス名非依存）。倍率 Z はファイル先頭定数、変更は版数 bump。
+//   フレーム判定は構造ルールのみ（クラス名非依存）。v0.5: 縮小率 shrink・サイドバー文字
+//   sidebarFont・その他 UI 文字 uiFont・webview 倍率 claudeFont は ⚙ 設定からライブ変更できる
+//   （文字系は 1.0 = 縮小前の見かけ。旧アプリでは設定が出ず内蔵既定値で動く）。
 //
-//   設計: docs/specs/2026-07-22-ui-zoom-plugin-design.md
+//   設計: docs/specs/2026-07-22-ui-zoom-plugin-design.md,
+//         docs/specs/2026-07-23-plugin-settings-number-design.md
 (function () {
   'use strict';
   if (window.__ccUiZoom) return;          // フレームごとに 1 度だけ武装
   window.__ccUiZoom = true;
 
   var NAME = 'ui-zoom';
-  var Z = 0.75;                           // 外枠縮小倍率（チューニングは @version bump とセットで変更）
-  var FONT_TRIM = 0.90;                   // ネイティブ文字戻しの微調整（1.0=完全等倍。行内の詰まり緩和用）
   var POLL_MS = 1000;                     // 倍率照会＋自己校正（トップのトグル追従・iframe 出現検知）
+  var VP_DEBOUNCE_MS = 300;               // viewport 再書き換えのデバウンス（ステッパー連打対策）
   var EPS = 0.001;
   var HUD_MSG = 'cc-uz-hud';              // クロスオリジンフレーム → top へのログ中継種別
   var MSG_Q = 'cc-uz-q';                  // 葉 → top: 現在倍率の照会
-  var MSG_Z = 'cc-uz-z';                  // top → 葉: 現在倍率の返信 { z: Z | 1 }
-  // 有効時の viewport（workbench.html の原文と同形式で scale だけ Z に）。ピンチ無効は維持。
-  var VIEWPORT_ON = 'width=device-width, initial-scale=' + Z +
-    ', maximum-scale=' + Z + ', minimum-scale=' + Z + ', user-scalable=no';
+  var MSG_Z = 'cc-uz-z';                  // top → 葉: 現在倍率の返信 { z }（葉は 1/z を掛ける）
 
   var isTop; try { isTop = (window === window.top); } catch (_) { isTop = false; }
 
-  // ---- 設定 ----
-  function setting(key, dflt) {
+  // ---- 設定（⚙ からライブ変更される。既定値は旧アプリ＝設定未注入でも成立する内蔵値） ----
+  function boolSetting(key, dflt) {
     try { var s = window.__ccPluginSettings && window.__ccPluginSettings[NAME]; if (s && typeof s[key] === 'boolean') return s[key]; }
     catch (_) {}
     return dflt;
   }
-  function enabled() { return setting('enabled', true); }
-  function diagOn() { return setting('diag', true); }
+  function numSetting(key, dflt, min, max) {
+    try {
+      var s = window.__ccPluginSettings && window.__ccPluginSettings[NAME];
+      var v = s && s[key];
+      if (typeof v === 'number' && isFinite(v)) return Math.min(max, Math.max(min, v));
+    } catch (_) {}
+    return dflt;
+  }
+  function enabled() { return boolSetting('enabled', true); }
+  function diagOn() { return boolSetting('diag', true); }
+  function shrink() { return numSetting('shrink', 0.75, 0.5, 1.0); }         // 外枠縮小率 Z
+  function sidebarFont() { return numSetting('sidebarFont', 0.9, 0.7, 1.3); } // 1.0 = 縮小前の見かけ
+  function uiFont() { return numSetting('uiFont', 0.9, 0.7, 1.3); }
+  function claudeFont() { return numSetting('claudeFont', 1.0, 0.7, 1.3); }
+  // 有効時の viewport 文字列（workbench.html の原文と同形式で scale だけ z に）。ピンチ無効は維持。
+  function viewportContent(z) {
+    return 'width=device-width, initial-scale=' + z +
+      ', maximum-scale=' + z + ', minimum-scale=' + z + ', user-scalable=no';
+  }
 
   // ---- HUD ログ: focus-hud 共有バッファへ 'UZ ' プレフィックスで（変化時のみ・低量）。
   //   クロスオリジン(webview)フレームは window.top へ直書きできないので postMessage で top へ中継する。
@@ -93,32 +117,47 @@
     try { return !!document.querySelector('iframe,frame'); } catch (_) { return true; }
   }
 
-  // viewport スケールが実際に効いたか。効けば innerWidth ≒ screen.width / Z に広がる。
+  // viewport スケールが実際に効いたか。効けば innerWidth ≒ screen.width / z に広がる。
   //   アプリが useWideViewPort 未対応（旧ビルド）だと meta 書き換えは無視され広がらない。
-  //   その場合に葉へ Z を配ると「縮小なしでチャットだけ拡大」する事故になるため、返信前に確認する。
+  //   その場合に葉へ z を配ると「縮小なしでチャットだけ拡大」する事故になるため、返信前に確認する。
   function scaleApplied() {
     try {
       var sw = window.screen && window.screen.width;
-      return !!sw && window.innerWidth >= (sw / Z) * 0.9;
+      return !!sw && window.innerWidth >= (sw / shrink()) * 0.9;
     } catch (_) { return false; }
   }
 
-  // トップ: enabled に応じて viewport meta の scale を Z/原文へ切り替え、照会に現在倍率を返信する。
+  // トップ: enabled/shrink に応じて viewport meta を切り替え、照会に現在倍率を返信する。
   //   meta は document-start 時点では未パースのことがある → MutationObserver/interval の tick で
   //   出現し次第書き換える（body パース前に書ければフラッシュは目立たない）。
+  //   2 回目以降の書き換え（⚙ ステッパー連打）は VP_DEBOUNCE_MS でデバウンスし、発火時に最新値で書く。
   var origViewport = null;                // 初回書き換え前の原文（OFF で復元する）
   var ineffLogged = false;
+  var vpAppliedOnce = false;
+  var vpTimer = null;
+  function writeViewport() {
+    try {
+      var m = document.querySelector('meta[name="viewport"]');
+      if (!m) return;
+      var want = enabled() ? viewportContent(shrink()) : origViewport;
+      if (want !== null && m.getAttribute('content') !== want) {
+        m.setAttribute('content', want);
+        vpAppliedOnce = true;
+        emitLog('top scale=' + (enabled() ? shrink() : 1));
+        // viewport 変更で innerWidth が変わる。ブラウザ自身の resize も飛ぶが、保険で一発通知。
+        try { window.dispatchEvent(new Event('resize')); } catch (_) {}
+      }
+    } catch (_) {}
+  }
   function applyTop() {
     try {
       var m = document.querySelector('meta[name="viewport"]');
       if (!m) return;                     // 未パース: 次 tick で再試行
       if (origViewport === null) origViewport = m.getAttribute('content') || '';
-      var want = enabled() ? VIEWPORT_ON : origViewport;
+      var want = enabled() ? viewportContent(shrink()) : origViewport;
       if (m.getAttribute('content') !== want) {
-        m.setAttribute('content', want);
-        emitLog('top scale=' + (enabled() ? Z : 1));
-        // viewport 変更で innerWidth が変わる。ブラウザ自身の resize も飛ぶが、保険で一発通知。
-        try { window.dispatchEvent(new Event('resize')); } catch (_) {}
+        if (!vpAppliedOnce) writeViewport();          // 初回は即時（フラッシュ防止）
+        else if (!vpTimer) vpTimer = setTimeout(function () { vpTimer = null; writeViewport(); applyFonts(); }, VP_DEBOUNCE_MS);
       } else if (enabled() && !ineffLogged && !scaleApplied()) {
         ineffLogged = true;               // 書き換え済みなのに広がらない＝アプリ側が未対応
         emitLog('top: scale not applied (app useWideViewPort?)');
@@ -168,18 +207,24 @@
       if (!baseRootPx) return;            // workbench 未生成（login 等）: 次 tick で
       if (!baseContentPx && !el) baseContentPx = measurePx('.monaco-workbench .part > .content');  // 上書き前のみ実測
       if (!baseStatusPx && !el) baseStatusPx = measurePx('.part.statusbar');  // 上書き前のみ実測
-      var fk = FONT_TRIM / Z;             // 戻し倍率（等倍 1/Z × 微調整）
-      var css = '.monaco-workbench{font-size:' + (baseRootPx * fk).toFixed(2) + 'px !important}';
-      css += '\n.monaco-workbench .part > .content{font-size:' + ((baseContentPx || baseRootPx) * fk).toFixed(2) + 'px !important}';
-      if (baseStatusPx) css += '\n.monaco-workbench .part.statusbar{font-size:' + (baseStatusPx * fk).toFixed(2) + 'px !important}';
+      // 戻し倍率 = 係数 / shrink（係数 1.0 = 縮小前の見かけ。shrink を変えても見かけが不変になる）。
+      var z = shrink();
+      var fkUi = uiFont() / z;
+      var fkSide = sidebarFont() / z;
+      var contentPx = baseContentPx || baseRootPx;
+      var css = '.monaco-workbench{font-size:' + (baseRootPx * fkUi).toFixed(2) + 'px !important}';
+      css += '\n.monaco-workbench .part > .content{font-size:' + (contentPx * fkUi).toFixed(2) + 'px !important}';
+      // サイドバーは個別係数（.part > .content より特異度が高いのでこちらが勝つ）。
+      css += '\n.monaco-workbench .part.sidebar > .content{font-size:' + (contentPx * fkSide).toFixed(2) + 'px !important}';
+      if (baseStatusPx) css += '\n.monaco-workbench .part.statusbar{font-size:' + (baseStatusPx * fkUi).toFixed(2) + 'px !important}';
       // アプリ自前のオーバーレイ（⋮ スクリーン切替ボタン）は縮小せず元の見かけサイズに戻す。
       // fixed 配置の独立要素への zoom は VS Code のレイアウトと衝突しない。第一者 UI なので id 参照可。
-      css += '\n#ccstudio-menu-btn{zoom:' + (1 / Z).toFixed(4) + '}';
+      css += '\n#ccstudio-menu-btn{zoom:' + (1 / z).toFixed(4) + '}';
       if (!el) {
         el = document.createElement('style'); el.id = FONT_STYLE_ID;
         (document.head || document.documentElement).appendChild(el);
       }
-      if (el.textContent !== css) { el.textContent = css; emitLog('top font x' + (1 / Z).toFixed(3)); }
+      if (el.textContent !== css) { el.textContent = css; emitLog('top font ui=' + uiFont() + ' side=' + sidebarFont()); }
     } catch (_) {}
   }
   if (isTop) {
@@ -189,8 +234,12 @@
         if (!m) return;
         if (m.k === HUD_MSG && typeof m.log === 'string') { pushShared(m.log); return; }
         if (m.k === MSG_Q && e.source) {
-          // 縮小が実際に効いているときだけ Z を配る（効いていないのに葉が拡大する事故を防ぐ）。
-          try { e.source.postMessage({ k: MSG_Z, z: (enabled() && scaleApplied()) ? Z : 1 }, '*'); } catch (_) {}
+          // 縮小が実際に効いているときだけ配る（効いていないのに葉が拡大する事故を防ぐ）。
+          // z = shrink/claudeFont: 葉は 1/z を掛けるので正味 claudeFont 倍（1.0 で縮小前と同じ）。
+          try {
+            var z = (enabled() && scaleApplied()) ? (shrink() / claudeFont()) : 1;
+            e.source.postMessage({ k: MSG_Z, z: z }, '*');
+          } catch (_) {}
         }
       }, false);
     } catch (_) {}

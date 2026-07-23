@@ -34,7 +34,7 @@ class CcBridge(
     private val pluginSettingsJsonFn: () -> String,
     private val onOpenPluginSettings: (name: String) -> Unit,
     private val settingsViewJsonFn: () -> String,
-    private val onSetSetting: (name: String, key: String, value: Boolean) -> Unit,
+    private val onSetSetting: (name: String, key: String, value: String) -> Unit,
     private val onClosePluginSettings: () -> Unit,
     private val onSessionState: (busy: Boolean, disconnected: Boolean) -> Unit,
     private val onMarkdownPreview: () -> Unit,
@@ -140,8 +140,9 @@ class CcBridge(
     @JavascriptInterface fun openPluginSettings(name: String) = onOpenPluginSettings(name)
     /** 設定スクリーンの描画素材（{name, displayName, settings:[{key,type,default,label,value}]}）。 */
     @JavascriptInterface fun getSettingsView(): String = settingsViewJsonFn()
-    /** 設定値を保存し、全 WEB スクリーンへリロード無しでライブ反映する（v1: boolean）。 */
-    @JavascriptInterface fun setSetting(name: String, key: String, value: Boolean) =
+    /** 設定値を保存し、全 WEB スクリーンへリロード無しでライブ反映する。
+     *  value は raw 文字列（boolean は "true"/"false"、number は "0.75" 等。型変換は app 側）。 */
+    @JavascriptInterface fun setSetting(name: String, key: String, value: String) =
         onSetSetting(name, key, value)
     /** 設定スクリーンを閉じて Plugins 画面へ戻す。 */
     @JavascriptInterface fun closePluginSettings() = onClosePluginSettings()
