@@ -73,6 +73,7 @@ The UI vocabulary is unified around two words: **Screen** and **Plugin**.
 | You must run `/remote-control` by hand every time before the mobile app / `claude.ai/code` can drive the session | `rc-autoconnect` plugin — automatically runs `/remote-control` on newly started sessions (and right after a reload) to turn Remote Control on |
 | The persistent "Remote Control is active" banner eats the chat area | `rc-indicator` plugin — hides the banner (RC stays on) and shows a slim "R" tab at the left edge instead; tap to toggle RC manually |
 | The activity bar and other chrome eat horizontal space, squeezing the chat | `ui-zoom` plugin — shrinks the chrome via viewport scale; shrink ratio, sidebar / UI text sizes and Claude webview scale are **adjustable live** from ⚙ with −/+ steppers (no reload; includes "Reset to defaults") |
+| The Markdown preview is trapped in a narrow strip by wide left/right margins | `md-preview-width` plugin — widens the Markdown preview by trimming its left/right body padding (gutter adjustable in ⚙) |
 
 ## Features
 
@@ -88,7 +89,7 @@ The UI vocabulary is unified around two words: **Screen** and **Plugin**.
 background — queue up the next job while Claude is thinking hard on another screen.</sub></p>
 
 - **Plugins** — `.js` files that remove mobile friction; toggle / add / delete them on the full-screen
-  management screen. Eleven bundled plugins live in [`plugins/`](plugins/) (the ones in the table above
+  management screen. Twelve bundled plugins live in [`plugins/`](plugins/) (the ones in the table above
   plus the diagnostic `focus-hud` / `select-diag`). Plugins with `@setting` are configurable via ⚙,
   and changes apply **live, no reload needed**. To write your own, see
   [docs/specs/2026-07-02-architecture-and-implementation-notes.md](docs/specs/2026-07-02-architecture-and-implementation-notes.md).
