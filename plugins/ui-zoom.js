@@ -1,6 +1,6 @@
 // ==CCStudioPlugin==
 // @name        ui-zoom
-// @version     0.4.2
+// @version     0.4.3
 // @description Shrink the workbench chrome via viewport scale; keep webview content and native UI text at 1x.
 // @description:ja workbench の外枠 UI を viewport スケールで縮小し、チャットとネイティブ UI の文字は等倍に保つ。
 // @run-at      document-start
@@ -131,15 +131,32 @@
   //   ここから継承しており、root だけ上書きしても届かない — 実 workbench の CDP 実測で確認）/
   //   .part.statusbar（明示 12px）。原値は上書き前に実測してキャッシュする。
   var FONT_STYLE_ID = 'cc-uz-font';
-  var baseRootPx = 0;                     // .monaco-workbench の原フォント px（実測）
-  var baseContentPx = 0;                  // .part > .content の原フォント px（実測）
-  var baseStatusPx = 0;                   // .part.statusbar の原フォント px（実測・後から現れ得る）
+  var baseRootPx = 0;                     // .monaco-workbench の原フォント px（実測・textZoom 除去済み）
+  var baseContentPx = 0;                  // .part > .content の原フォント px（同上）
+  var baseStatusPx = 0;                   // .part.statusbar の原フォント px（同上・後から現れ得る）
+  // Android WebView の textZoom（システムフォントスケール）は computed font-size に乗って見える。
+  // 実測値をそのまま CSS に書き戻すと textZoom が二重適用され 1.15 倍等に膨らむ（実機 uz-diag で
+  // 実測特定: 上書き 19.93px → computed 22.92px = ×1.15）。font-size:100px のプローブ要素で
+  // 倍率を実測し、測定値から除いてから書く。デスクトップ Chrome では 1 になり無害。
+  var tzoom = 0;                          // 0=未測定
+  function textZoomFactor() {
+    try {
+      var s = document.createElement('span');
+      s.style.cssText = 'position:absolute;visibility:hidden;font-size:100px';
+      (document.body || document.documentElement).appendChild(s);
+      var t = parseFloat(getComputedStyle(s).fontSize) / 100;
+      s.parentNode.removeChild(s);
+      return (isFinite(t) && t > 0.3 && t < 4) ? t : 1;
+    } catch (_) { return 1; }
+  }
   function measurePx(sel) {
     try {
       var el = document.querySelector(sel);
       if (!el) return 0;
       var v = parseFloat(getComputedStyle(el).fontSize);
-      return (isFinite(v) && v > 0) ? v : 0;
+      if (!(isFinite(v) && v > 0)) return 0;
+      if (!tzoom) tzoom = textZoomFactor();
+      return v / tzoom;                   // textZoom を除いた素の CSS 値へ正規化
     } catch (_) { return 0; }
   }
   function applyFonts() {
