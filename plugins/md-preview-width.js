@@ -12,91 +12,110 @@
 //   `@media(min-width:914px){body{padding:0 calc((100%-862px)/2)}}` も乗る（いずれも !important
 //   ではない）。本文が左右の余白で細い帯に閉じ込められる。実機 CDP 実測（code-server 4.126.0）:
 //     - プレビュー判定: 葉フレームは `<meta id="vscode-markdown-preview-data" …>` を必ず持つ
-//       （エディタ・チャット等の他 webview フレームは持たない）。`body.vscode-body` もこのフレーム
-//       にしかないが、meta の方が構造的に一意なのでこちらを判定に採る。
-//     - 余白源は html と body の左右 padding の二段。body だけ 0 にしても html の 26px が残る
-//       （gutter=0 実測: html padL/R=26px → body.left=26px）。両方を制御する。
-//     - 総インセットを gutter に一致させるため html=0 / body=gutter に固定（子の .markdown-body は
-//       padding/margin とも 0 で寄与しないため触らない）。
-//   CSS は最小限（html と body の左右 padding のみ !important）。box-sizing/max-width は実測上すでに
-//   問題ないため強制しない（効果のない上書きは書かない）。
+//       （エディタ・チャット等の他 webview フレームは持たない）。meta が構造的に一意なので判定に採る。
+//     - 余白源は html と body の二段の左右 padding。body だけ 0 にしても html の 26px が残る
+//       （gutter=0 実測: html padL/R=26px）。html=0 / body=gutter に固定して総インセット=gutter に揃える
+//       （子の .markdown-body は padding/margin 0 で寄与しない）。
+//
+//   ライブ反映は ui-zoom と同じ **postMessage 照会方式**（プル型）。設定ランタイムの ccstudio:setting は
+//   postMessage 連鎖で下方伝搬されるが、深くネストしたプレビュー葉フレームまで届かない（実機で確認）。
+//   真実はトップ一元（ネイティブが main フレームの window.__ccPluginSettings を直接更新し常に最新）。
+//   葉は window.top へ MSG_Q を投げ、トップが現在 gutter を MSG_V で返信 → 葉が適用する。postMessage は
+//   クロスオリジン webview 葉でも通る（window.top 直読みは同一オリジン限定なので採らない）。
+//   webview は起動時に document.open()/write() で葉文書を書き換えリスナが消えるため、毎 tick で再武装する。
+//
+//   設計: docs/specs/2026-07-23-md-preview-width-design.md
 (function () {
   'use strict';
-  // フレームごとに 1 度だけ武装（二重注入で setInterval/リスナが二重化するのを防ぐ。ui-zoom と同じ作法）。
-  if (window.__ccMdPreviewWidth) return;
+  if (window.__ccMdPreviewWidth) return;              // フレームごとに 1 度だけ武装
   window.__ccMdPreviewWidth = true;
+
   var NS = 'md-preview-width';
   var STYLE_ID = 'md-preview-width';
-  var DEFAULT_GUTTER = 12;           // メタの @setting default と一致させる
-  var MIN = 0, MAX = 80;             // クランプ用（メタと一致）
+  var DEFAULT_GUTTER = 12;                             // メタの @setting default と一致
+  var MIN = 0, MAX = 80;                               // クランプ（メタと一致）
+  var POLL_MS = 1000;                                  // 照会＋自己校正（トップのライブ変更追従）
+  var MSG_Q = 'cc-mpw-q';                              // 葉 → top: 現在 gutter の照会
+  var MSG_V = 'cc-mpw-v';                              // top → 葉: 現在 gutter の返信 { g }
 
-  // 注入先ドキュメントが Markdown プレビューか判定する（プレビュー以外では false）。
-  // 実測確定: プレビュー葉フレームは常に #vscode-markdown-preview-data の meta を持つ。
-  function isPreviewFrame(doc) {
-    try { return !!doc.getElementById('vscode-markdown-preview-data'); } catch (_) { return false; }
-  }
-  // ライブ反映の要。設定ランタイムの ccstudio:setting は postMessage 連鎖で下方伝搬されるが、
-  // 深くネストした Markdown プレビュー葉フレームまでは届かないことが実機で判明（連鎖が途中で切れる）。
-  // 一方トップフレームの window.__ccPluginSettings はネイティブが main フレーム直接更新で常に最新。
-  // プレビューは code-server と同一オリジンなので window.top を読める。トップ優先で読み、失敗時は自フレーム。
-  function settingsSource() {
-    try { if (window.top && window.top.__ccPluginSettings) return window.top.__ccPluginSettings; } catch (_) {}
-    return window.__ccPluginSettings || {};
-  }
+  var isTop; try { isTop = (window === window.top); } catch (_) { isTop = false; }
+
   function clampGutter(v) {
     v = (v == null || isNaN(+v)) ? DEFAULT_GUTTER : +v;
     return Math.max(MIN, Math.min(MAX, v));
   }
-  function readGutter() {
-    return clampGutter((settingsSource()[NS] || {}).gutter);
+  // トップ一元の現在値。ローカル __ccPluginSettings はネイティブが main フレーム直接更新で最新に保つ。
+  function topGutter() {
+    return clampGutter(((window.__ccPluginSettings || {})[NS] || {}).gutter);
   }
 
-  // 余白は html と body の二段の左右 padding。html を 0 に固定し gutter を body に載せる
-  // ことで、総インセット = gutter px にそろえる（実測: body だけでは html の 26px が残る）。
+  // 注入先が Markdown プレビューか（プレビュー以外では false）。実測: #vscode-markdown-preview-data を持つ。
+  function isPreviewFrame(doc) {
+    try { return !!doc.getElementById('vscode-markdown-preview-data'); } catch (_) { return false; }
+  }
+  // html を 0 に固定し gutter を body に載せる（総インセット = gutter px）。
   function css(px) {
     return 'html{padding-left:0 !important;padding-right:0 !important;}' +
-      'body{' +
-        'padding-left:' + px + 'px !important;' +
-        'padding-right:' + px + 'px !important;' +
-      '}';
+      'body{padding-left:' + px + 'px !important;padding-right:' + px + 'px !important;}';
   }
-  var lastPx = null;                                  // 直近適用値。変化時のみ書き換えて無駄な再計算を避ける。
+  var lastPx = null;                                   // 直近適用値。変化時のみ書き換えて無駄な再計算を避ける。
   function applyGutter(px) {
-    var doc = document;
-    if (!isPreviewFrame(doc)) return;               // プレビュー以外では何もしない
+    if (!isPreviewFrame(document)) return;             // プレビュー以外では何もしない
     try {
-      var st = doc.getElementById(STYLE_ID);
+      var st = document.getElementById(STYLE_ID);
       if (!st) {
-        st = doc.createElement('style');
+        st = document.createElement('style');
         st.id = STYLE_ID;
-        (doc.head || doc.documentElement).appendChild(st);
-        lastPx = null;                              // 文書差し替えで消えた → 次で必ず書き直す
+        (document.head || document.documentElement).appendChild(st);
+        lastPx = null;                                 // 文書差し替えで消えた → 次で必ず書き直す
       }
       if (px !== lastPx || !st.textContent) { st.textContent = css(px); lastPx = px; }
     } catch (_) {}
   }
 
-  // ⚙ での変更・「デフォルトに戻す」の両方が setSetting 経由で同イベントを発火する。連鎖が届く
-  // フレームでは即時反映、届かないプレビューフレームでは下の tick ポーリングが拾う（二重の保険）。
-  function onSetting(e) {
-    var d = e && e.detail; if (!d || d.plugin !== NS || d.key !== 'gutter') return;
-    applyGutter(clampGutter(d.value));
-  }
-  function bind() {
-    try { window.removeEventListener('ccstudio:setting', onSetting); } catch (_) {}
-    try { window.addEventListener('ccstudio:setting', onSetting); } catch (_) {}
+  // ---- トップ: gutter 照会に応答する（真実の一元供給元）----
+  if (isTop) {
+    try {
+      window.addEventListener('message', function (e) {
+        var m = e && e.data;
+        if (m && m.k === MSG_Q && e.source) {
+          try { e.source.postMessage({ k: MSG_V, g: topGutter() }, '*'); } catch (_) {}
+        }
+      }, false);
+    } catch (_) {}
   }
 
-  // webview は起動時に document.open()/write() で葉文書を書き換えることがあり、<style> と
-  // リスナが消える（ui-zoom v0.5.1 の既知事例）。1本の tick で「リスナ再登録」「<style> 再適用」に
-  // 加え、毎回 readGutter() で最新値を適用する（イベントが届かないプレビューフレームのライブ反映経路。
-  // lastPx ガードで値が変わらない限り DOM は書き換えない）。
-  function tick() {
-    bind();
-    if (!isPreviewFrame(document)) return;
-    applyGutter(readGutter());
+  // ---- 葉（プレビュー）: top へ照会し返信で適用 ----
+  var curGutter = null;                                // top からの受信値。未受信の間はローカルでフラッシュ防止。
+  function onLeafMsg(e) {
+    var m = e && e.data;
+    if (m && m.k === MSG_V && typeof m.g === 'number') { curGutter = clampGutter(m.g); applyGutter(curGutter); }
   }
-  applyGutter(readGutter());                        // 初回
-  bind();                                            // 初回
-  try { setInterval(tick, 1000); } catch (_) {}      // 差し替え検知の保険（軽量・存在チェックのみ）
+  // 連鎖が届くフレームでは ccstudio:setting を受けて即再照会（届かないプレビューは下の tick ポーリングが拾う）。
+  function onSettingEvt(e) {
+    var d = e && e.detail;
+    if (d && d.plugin === NS && isPreviewFrame(document)) query();
+  }
+  function query() { try { window.top.postMessage({ k: MSG_Q }, '*'); } catch (_) {} }
+  function arm() {
+    if (isTop) return;
+    try {
+      window.addEventListener('message', onLeafMsg, false);          // 冪等
+      window.addEventListener('ccstudio:setting', onSettingEvt, false);
+    } catch (_) {}
+  }
+
+  // 1本の tick でリスナ再武装＋プレビューへの適用＋最新値の照会をまとめて面倒みる。
+  function tick() {
+    if (isTop) return;                                 // トップは応答役のみ
+    arm();                                             // document.open で消えたリスナの再武装（冪等・軽量）
+    if (!isPreviewFrame(document)) return;             // プレビュー以外の葉では何もしない
+    applyGutter(curGutter === null ? topGutter() : curGutter);   // 初回はローカル（ロード時は正しい）でフラッシュ防止
+    query();                                           // 最新値を照会 → 返信で curGutter 更新・掛け直し
+  }
+
+  // ---- 起動 ----
+  arm();
+  tick();                                              // document-start で即適用
+  try { setInterval(tick, POLL_MS); } catch (_) {}
 })();
