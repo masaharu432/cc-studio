@@ -73,9 +73,13 @@
     return '[class*=messagesContainer]{padding-left:' + side + ' !important;padding-right:' + side + ' !important;}';
   }
   function inputCss(px) {                              // inputGutter: 入力欄（cap 解除＋absolute インセット）
+    // 注意: `inputContainer` は 2 要素ある — 外側 DIV（position:absolute）と内側 FIELDSET
+    // （position:relative）。left/right を relative な FIELDSET に掛けると right が無視され左だけ
+    // ずれて非対称になる（実測: gutter=40 で L=81/R=0）。**div[...] に限定**して absolute な外側
+    // DIV だけに効かせる（FIELDSET は内側で全幅追従）。
     var side = px <= 0 ? '0' : 'min(' + px + 'px, 12vw)';
     return '[class*=inputWrapper]{max-width:none !important;}' +
-      '[class*=inputContainer]{left:' + side + ' !important;right:' + side + ' !important;width:auto !important;max-width:none !important;}';
+      'div[class*=inputContainer]{left:' + side + ' !important;right:' + side + ' !important;width:auto !important;max-width:none !important;}';
   }
 
   // ---- ターゲット（この葉フレームに該当する 1 つに、複数の独立ガターをまとめて適用） ----
