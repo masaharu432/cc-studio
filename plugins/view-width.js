@@ -1,5 +1,5 @@
 // ==CCStudioPlugin==
-// @name        webview-width
+// @name        view-width
 // @version     0.3.0
 // @description Reclaim wasted side space in webviews (Markdown preview / Claude Code chat); gutters adjustable live.
 // @description:ja webview の無駄な左右余白を詰めて全幅化（Markdown プレビュー / Claude Code 拡張）。⚙で調整。
@@ -10,7 +10,7 @@
 // @setting     chatGutter number 0 0 200 8 Claude chat left/right gutter (px; 0 = full width)
 // @setting:ja  chatGutter Claude 拡張チャットの左右ガター(px。0=全幅)
 // ==/CCStudioPlugin==
-// webview-width.js — CC Studio プラグイン。狭い画面で横幅を食い潰されている webview の
+// view-width.js — CC Studio プラグイン。狭い画面で横幅を食い潰されている webview の
 // 無駄な左右余白を詰める汎用プラグイン。ターゲットごとに ⚙ で独立にガター(px)を調整できる。
 //
 //   実機 CDP 実測（code-server 4.126.0 / Claude 拡張 2.1.218）で確定したターゲット:
@@ -28,16 +28,16 @@
 //   window.__ccPluginSettings を直接更新し常に最新）。葉は window.top へ MSG_Q を投げ、トップが現在の
 //   全ガター値を MSG_V で返信 → 葉が自分の該当ターゲットへ適用する。document.open 対策で毎 tick 再武装。
 //
-//   設計: docs/specs/2026-07-23-md-preview-width-design.md（webview-width へ発展）
+//   設計: docs/specs/2026-07-23-md-preview-width-design.md（view-width へ発展）
 (function () {
   'use strict';
-  if (window.__ccWebviewWidth) return;                // フレームごとに 1 度だけ武装
-  window.__ccWebviewWidth = true;
+  if (window.__ccViewWidth) return;                // フレームごとに 1 度だけ武装
+  window.__ccViewWidth = true;
 
-  var NS = 'webview-width';
+  var NS = 'view-width';
   var POLL_MS = 1000;
-  var MSG_Q = 'cc-ww-q';                              // 葉 → top: 現在ガター値の照会
-  var MSG_V = 'cc-ww-v';                              // top → 葉: 現在ガター値の返信 { g:{previewGutter,chatGutter} }
+  var MSG_Q = 'cc-vw-q';                              // 葉 → top: 現在ガター値の照会
+  var MSG_V = 'cc-vw-v';                              // top → 葉: 現在ガター値の返信 { g:{previewGutter,chatGutter} }
 
   var isTop; try { isTop = (window === window.top); } catch (_) { isTop = false; }
 
@@ -49,7 +49,7 @@
   // ---- ターゲット定義（判定・スタイル生成・設定キー・既定/範囲・style 要素 id）----
   var TARGETS = [
     {
-      key: 'previewGutter', def: 12, min: 0, max: 80, styleId: 'cc-ww-preview',
+      key: 'previewGutter', def: 12, min: 0, max: 80, styleId: 'cc-vw-preview',
       match: function (doc) { try { return !!doc.getElementById('vscode-markdown-preview-data'); } catch (_) { return false; } },
       css: function (px) {
         return 'html{padding-left:0 !important;padding-right:0 !important;}' +
@@ -57,7 +57,7 @@
       }
     },
     {
-      key: 'chatGutter', def: 0, min: 0, max: 200, styleId: 'cc-ww-chat',
+      key: 'chatGutter', def: 0, min: 0, max: 200, styleId: 'cc-vw-chat',
       match: function (doc) { try { return !!String(getComputedStyle(doc.documentElement).getPropertyValue('--app-claude-orange')).trim(); } catch (_) { return false; } },
       css: function (px) {
         // 余白は 2 系統: ① 会話コンテンツ列 [class*=inputWrapper] の max-width:680px（広幅で中央帯化）
