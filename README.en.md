@@ -73,7 +73,7 @@ The UI vocabulary is unified around two words: **Screen** and **Plugin**.
 | You must run `/remote-control` by hand every time before the mobile app / `claude.ai/code` can drive the session | `rc-autoconnect` plugin — automatically runs `/remote-control` on newly started sessions (and right after a reload) to turn Remote Control on |
 | The persistent "Remote Control is active" banner eats the chat area | `rc-indicator` plugin — hides the banner (RC stays on) and shows a slim "R" tab at the left edge instead; tap to toggle RC manually |
 | The activity bar and other chrome eat horizontal space, squeezing the chat | `ui-zoom` plugin — shrinks the chrome via viewport scale; shrink ratio, sidebar / UI text sizes and Claude webview scale are **adjustable live** from ⚙ with −/+ steppers (no reload; includes "Reset to defaults") |
-| A webview (Markdown preview / Claude extension chat) is trapped in a narrow strip by wide left/right margins | `view-width` plugin — reclaims the wasted side space for full-width display (preview and chat tuned separately in ⚙) |
+| A webview (Markdown preview / Claude Code chat) is trapped in a narrow centered strip by wide left/right margins and can't use the width | `view-width` plugin — trims the wasted side space for full-width display. The preview (body side padding) and the chat (its centered conversation column + message side padding) are tuned **independently and live** via `previewGutter` / `chatGutter` with ⚙ −/+ steppers (no reload; "Reset to defaults"; **0 = widest**, defaults: preview 12px, chat 0) |
 
 ## Features
 
