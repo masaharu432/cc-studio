@@ -60,7 +60,9 @@
       key: 'chatGutter', def: 0, min: 0, max: 200, styleId: 'cc-ww-chat',
       match: function (doc) { try { return !!String(getComputedStyle(doc.documentElement).getPropertyValue('--app-claude-orange')).trim(); } catch (_) { return false; } },
       css: function (px) {
-        var mw = px <= 0 ? 'none' : 'calc(100% - ' + (2 * px) + 'px)';
+        // px=0 → 全幅(none)。>0 → 左右 px の中央寄せだが、狭い幅で gutter を大きくしても
+        // 入力欄が潰れないよう max() で下限 280px を確保する（calc 単独だと極小化して壊れる）。
+        var mw = px <= 0 ? 'none' : 'max(280px, calc(100% - ' + (2 * px) + 'px))';
         return '[class*=inputWrapper]{max-width:' + mw + ' !important;}';
       }
     }
