@@ -60,17 +60,20 @@
       key: 'chatGutter', def: 0, min: 0, max: 200, styleId: 'cc-vw-chat',
       match: function (doc) { try { return !!String(getComputedStyle(doc.documentElement).getPropertyValue('--app-claude-orange')).trim(); } catch (_) { return false; } },
       css: function (px) {
-        // 余白は 2 系統: ① 会話コンテンツ列 [class*=inputWrapper] の max-width:680px（広幅で中央帯化）
-        // ② メッセージ列 [class*=messagesContainer] の左右 padding（既定 20px。狭幅で常に効く）。
-        // chatGutter は両方に効かせる。狭幅で大きな gutter を入れても潰れないよう、各側は min(px, 12vw)
-        // に制限し、inputWrapper には下限 280px を敷く。px=0 は全幅（cap 解除・padding 0）。
+        // 余白は 3 系統（実測）: ① 会話列 [class*=inputWrapper] の max-width:680px（広幅で中央帯化）
+        // ② メッセージ列 [class*=messagesContainer] の左右 padding 20px（狭幅で常に効く）
+        // ③ 入力欄の親 [class*=inputContainer] は position:absolute で left/right に ~16px のインセット
+        //    を持ち中央帯化（入力欄がメッセージより狭く見える主因）。絶対配置なので left/right を詰める
+        //    （width は auto にして left/right に幅を委ねる）。chatGutter を 3 つすべてに効かせる。狭幅で
+        //    大きな gutter でも潰れないよう各側は min(px,12vw) に制限。px=0 は全幅。
         if (px <= 0) {
           return '[class*=inputWrapper]{max-width:none !important;}' +
+            '[class*=inputContainer]{left:0 !important;right:0 !important;width:auto !important;max-width:none !important;}' +
             '[class*=messagesContainer]{padding-left:0 !important;padding-right:0 !important;}';
         }
         var side = 'min(' + px + 'px, 12vw)';          // 片側ガター（vw 上限で潰れ防止）
-        var both = 'min(' + (2 * px) + 'px, 24vw)';    // 両側合計
-        return '[class*=inputWrapper]{max-width:max(280px, calc(100% - ' + both + ')) !important;}' +
+        return '[class*=inputWrapper]{max-width:none !important;}' +
+          '[class*=inputContainer]{left:' + side + ' !important;right:' + side + ' !important;width:auto !important;max-width:none !important;}' +
           '[class*=messagesContainer]{padding-left:' + side + ' !important;padding-right:' + side + ' !important;}';
       }
     }
