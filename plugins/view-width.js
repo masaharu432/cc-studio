@@ -7,9 +7,9 @@
 // @all-frames  true
 // @setting     previewGutter number 12 0 80 4 Markdown preview left/right gutter (px)
 // @setting:ja  previewGutter Markdown プレビュー本文の左右ガター(px)
-// @setting     chatGutter number 0 0 200 8 Claude chat MESSAGE left/right gutter (px; 0 = full width)
+// @setting     chatGutter number 0 0 200 4 Claude chat MESSAGE left/right gutter (px; 0 = full width)
 // @setting:ja  chatGutter Claude チャットの「メッセージ」左右ガター(px。0=全幅)
-// @setting     inputGutter number 0 0 200 8 Claude chat INPUT box left/right gutter (px; 0 = full width)
+// @setting     inputGutter number 0 0 200 4 Claude chat INPUT box left/right gutter (px; 0 = full width)
 // @setting:ja  inputGutter Claude チャットの「入力欄」左右ガター(px。0=全幅)
 // ==/CCStudioPlugin==
 // view-width.js — CC Studio プラグイン。狭い画面で横幅を食い潰されている webview の無駄な左右余白を
